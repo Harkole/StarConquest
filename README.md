@@ -226,11 +226,43 @@ flowchart TD
 
 ---
 
-## 10. Development & Git Workflow
+## 10. Initial Baseline Balance Tables (`src/shared/config/`)
 
+All balance numbers live in `src/shared/config/` for rapid tuning and headless testing:
+
+### Ship Class Baseline Stats (`src/shared/config/ships.ts`)
+
+| Ship Class | Cost (Ore / Crystal) | Build Time | Supply | Shields (Regen/s) | Hull | Speed | Evasion | Special Rules |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Fighter Squadron** | 60 / 15 | 7s | 1 | 0 *(Hull Only)* | 110 | 95 | 0.85 | Requires Carrier/Hub; `2.5x` Shield Damage; `±25%` dogfight luck variance |
+| **Destroyer** | 140 / 40 | 12s | 2 | 0 *(Hull Only)* | 420 | 68 | 0.55 | Medium guns (`1.35x` Hull mult) + light Flak PD |
+| **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
+| **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
+| **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.18` tracking) |
+| **Resource Harvester** | 100 / 20 | 10s | 0 | 0 *(Hull Only)* | 300 | 38 | 0.20 | 1 spawned free with C&C and each Refinery; queues at Refineries |
+
+### Deep-Space Structures (`src/shared/config/structures.ts`)
+
+| Structure | Cost (Ore / Crystal) | Build Time | Shields / Hull | Special / Weapon Profile |
+| :--- | :---: | :---: | :---: | :--- |
+| **Logistics Hub** | 250 / 100 | 20s | 500 / 900 | `180` Build Radius, Fighter Operations staging, `+15` Fleet Supply |
+| **Point Defence Tower** | 150 / 50 | 14s | 400 / 850 | Requires Hub Radius; `0.95` tracking, `18` alpha every `0.35s` |
+| **Hull Breaker Tower** | 220 / 180 | 22s | 600 / 1,200 | Requires Hub Radius; `0.15` tracking, `320` alpha every `3.5s` |
+
+---
+
+## 11. Development, Build Commands & Git Workflow
+
+### Project Commands
+* `npm install` — Install dependencies (`three`, `postprocessing`, `vite`, `vitest`, `typescript`).
+* `npm run dev` — Start the Vite development server at `http://localhost:5173`.
+* `npm run build` — Run strict TypeScript typechecking (`tsc --noEmit`) and bundle for production (`vite build`).
+* `npm test` — Execute the Vitest unit and balance invariant test suite (`vitest run`).
+
+### Git Branching & Pull Request Rules
 * **Focused Topic Branches**: All new work must be done on a dedicated branch named after the specific feature, bug, or task being worked on:
   * `feature/<descriptive-name>` (e.g., `feature/planetary-shaders`, `feature/orbital-ring-slots`)
   * `fix/<descriptive-name>` (e.g., `fix/harvester-wormhole-pathing`)
-  * `task/<descriptive-name>` (e.g., `task/vite-three-scaffold`)
+  * `task/<descriptive-name>` (e.g., `task/scaffold-vite-three`)
 * **Pre-Commit Verification**: Code must compile cleanly (`npm run build`) and pass all unit tests (`npm test`) prior to every commit on the working branch.
 * **Human PR Approval**: All Pull Requests require human review and approval before merging into `main`.
