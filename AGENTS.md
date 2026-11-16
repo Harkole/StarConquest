@@ -128,3 +128,6 @@ Every agent must strictly follow this source-control workflow when making code c
 3. **Human-Only Pull Request Approval**:
    * All completed branch work must be submitted via Pull Request (or presented ready for PR review).
    * **Every PR must be approved by a human (the user).** The agent must **never** merge a PR or merge a working branch into `main` without explicit human instruction and approval.
+4. **Autonomous `git` & `npm` Execution**:
+   * Do not ask the user for chat confirmation before running routine `git` actions (branch creation, status, diff, staging, committing on the working branch) or `npm` actions (`npm install`, `npm run build`, `npm test`, `npm run dev`).
+   * Always invoke `git` and `npm` as single, direct, prefix-matchable commands (avoiding `&&`, `;`, or subshells) so that Antigravity's **Always Allow** prefix approval applies automatically without re-prompting.
