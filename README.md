@@ -278,3 +278,17 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * `task/<descriptive-name>` (e.g., `task/scaffold-vite-three`)
 * **Pre-Commit Verification**: Code must compile cleanly (`npm run build`) and pass all unit tests (`npm test`) prior to every commit on the working branch.
 * **Human PR Approval**: All Pull Requests require human review and approval before merging into `main`.
+
+---
+
+## 12. Future Work & Known Bug Fixes
+
+### Harvester Drop-Off & Refinery Logistics Overhaul
+* **Known Issue**: Harvesters currently return to any point on the host planet's orbital ring (`44` units from planet center) and deposit cargo instantaneously instead of flying to and docking with a specific **Command & Control** or **Orbital Refinery** platform.
+* **Planned Behavior**:
+  * **Home Platform Assignment**: Every Harvester must track the specific **Refinery** or **Command & Control** platform it was built/spawned from as its `"home"` platform and fly directly to that platform's orbital docking position to unload.
+  * **Differential Unload Rates**:
+    * **Orbital Refinery**: Unloads cargo at **`10` units/second** (4 seconds for a full `40`-unit load).
+    * **Command & Control (C&C)**: Unloads cargo at **`4` units/second** (10 seconds for a full `40`-unit load).
+  * **Refinery Docking Capacity (Queueing)**: A **Refinery** can only unload **`2` Harvester frigates simultaneously**; additional arriving Harvesters must wait in a holding queue until a docking pad clears. This makes building multiple Refineries a key logistics investment to accelerate player income.
+  * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
