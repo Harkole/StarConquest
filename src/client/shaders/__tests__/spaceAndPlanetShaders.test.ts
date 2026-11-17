@@ -204,4 +204,21 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     library.dispose();
   });
+
+  it('curves the Hephaes Orbital Refinery segments along the host planet orbital ring', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const refineryGroup = library.buildStationMesh('refinery', true, ringRadius);
+
+    expect(refineryGroup.children).toHaveLength(7);
+    // Outer arc segments should curve inward (-X) relative to the center segment (x = 0)
+    const firstSeg = refineryGroup.children[0];
+    const centerSeg = refineryGroup.children[3];
+    const lastSeg = refineryGroup.children[6];
+    expect(centerSeg?.position.x).toBeCloseTo(0, 4);
+    expect(firstSeg?.position.x).toBeLessThan(0);
+    expect(lastSeg?.position.x).toBeLessThan(0);
+
+    library.dispose();
+  });
 });

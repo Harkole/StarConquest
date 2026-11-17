@@ -30,6 +30,7 @@ To ensure every ship and orbital platform shares a cohesive visual language acro
 | **Navigation / Antenna Beacon (Signal Red)** | `#ef4444` | — | — | Small pinpoint beacon at the tip of dorsal communication masts |
 | **Station Prow / Spire Tip Accent (Crimson Oxide)** | `#b91c1c` | `0.45` | `0.50` | Weathered red-tipped prows on radial docking arms and command spires |
 | **Solar Array Panels (Deep Photovoltaic Blue)** | `#1e3a5f` | `0.65` | `0.25` | Solar collector wings with subtle dark structural frame borders |
+| **Forge Heat-Sink Glow (Molten Copper-Orange)** | `#fb923c` | `0.25` | `0.25` | Emissive `#ea580c` (`0.95` intensity) between dark radiator fins on Refinery banks |
 
 ---
 
@@ -104,3 +105,20 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Each arm features stepped gunmetal armor, ochre industrial plates, dark structural rib bands, recessed docking bay openings, glowing observation slit windows, and crimson-tipped prows.
 5. **Solar Array Panels & Point Defence Turrets**:
    * Deep Photovoltaic Blue (`#1e3a5f`) solar array wings projecting from the mid-collar, plus twin dorsal Point Defence turret mounts.
+
+---
+
+### 03. Orbital Refinery — Star-Station "Hephaes"
+
+* **Orthographic Blueprint**: ![Hephaes Refinery Orthographic Reference](./refinery-hephaes-orthographic.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
+
+#### Anatomical Breakdown & Orbital Arc Curvature
+1. **Orbital Ring Arc Curvature (1-Slot Footprint)**:
+   * Rather than a rigid flat rectangle, the "Hephaes" platform (`~14.5u` arc length × `~6.8u` radial width) is segmented and **bent along the host planet's exact `orbitalRingRadius`** so its spine, deck aprons, and heat-sink rows follow the orbital ring track seamlessly without overlapping adjacent slots.
+2. **Central Linear Forge Spine & Ventral Material Transport Elevators**:
+   * Stepped Gunmetal Slate (`#3e4652`) central spine running along the curved arc, crowned by a central refinery control tower and underpinned by a tapered ventral cargo/elevator keel (`-Y`).
+3. **Parallel Glowing Heat-Sink Banks (Iron/Silicate Smelters)**:
+   * Twin rows of parallel, slightly V-canted radiator fin banks flanking the central spine. Dark Charcoal Iron (`#1e232a`) fin plates frame glowing **Molten Copper-Orange (`#fb923c` / emissive `#ea580c`)** smelter cores, matching the signature thermal glow in the schematic.
+4. **Flanking Landing & Cargo Pads + Crystal Processing Array**:
+   * Outer deck aprons along both sides of the heat-sink banks feature recessed Harvester landing/cargo pads with subtle cyan/amber beacon strips, plus a Crystal Processing Array at the end of the central spine.

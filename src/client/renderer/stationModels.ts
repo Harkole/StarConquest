@@ -55,6 +55,13 @@ export class StationModelLibrary {
   private readonly beaconRedMat = new THREE.MeshBasicMaterial({
     color: 0xef4444,
   });
+  private readonly moltenHeatSinkMat = new THREE.MeshStandardMaterial({
+    color: 0xfb923c,
+    emissive: 0xea580c,
+    emissiveIntensity: 0.95,
+    metalness: 0.25,
+    roughness: 0.25,
+  });
 
   // Wireframe & Baseline Materials
   private readonly buildingWireframeMat = new THREE.MeshBasicMaterial({
@@ -70,22 +77,12 @@ export class StationModelLibrary {
     metalness: 0.82,
     roughness: 0.25,
   });
-  private readonly baselineRefineryMat = new THREE.MeshStandardMaterial({
-    color: 0xd97706,
-    emissive: 0xb45309,
-    emissiveIntensity: 0.5,
-    metalness: 0.75,
-    roughness: 0.35,
-  });
 
   private readonly geometries: THREE.BufferGeometry[] = [];
 
-  // Baseline geometries for non-C&C structures
+  // Baseline geometries for remaining structures (to be upgraded one-by-one)
   private readonly outpostDishGeom = this.registerGeom(
     new THREE.ConeGeometry(2.8, 3.8, 12),
-  );
-  private readonly refinerySiloGeom = this.registerGeom(
-    new THREE.CylinderGeometry(1.8, 1.8, 6.2, 12),
   );
   private readonly dockyardGantryGeom = this.registerGeom(
     new THREE.BoxGeometry(4.8, 2.6, 12.5),
@@ -98,6 +95,38 @@ export class StationModelLibrary {
   );
   private readonly defenseWingGeom = this.registerGeom(
     new THREE.BoxGeometry(3.2, 1.4, 14),
+  );
+
+  // Hephaes Orbital Refinery reusable geometries (curved along orbital arc)
+  private readonly refDeckSegGeom = this.registerGeom(
+    new THREE.BoxGeometry(6.6, 0.42, 2.15),
+  );
+  private readonly refKeelSegGeom = this.registerGeom(
+    new THREE.BoxGeometry(3.4, 0.75, 1.95),
+  );
+  private readonly refSpineSegGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.15, 0.78, 2.15),
+  );
+  private readonly refControlTowerGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.72, 1.05, 1.45, 8),
+  );
+  private readonly refControlWindowGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.76, 0.86, 0.34, 8),
+  );
+  private readonly refHeatSinkCoreGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.35, 1.25, 1.55),
+  );
+  private readonly refHeatSinkFinGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.48, 1.45, 0.14),
+  );
+  private readonly refLandingPadGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.95, 0.14, 1.65),
+  );
+  private readonly refPadBeaconGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.16, 0.18, 1.2),
+  );
+  private readonly refCrystalArrayGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.45, 0.95, 1.35),
   );
 
   // Prometheus C&C reusable geometries (total radial reach <= 6.8u to stay clear of planet)
@@ -181,29 +210,21 @@ export class StationModelLibrary {
   public buildStationMesh(
     structureId: OrbitalStructureId,
     isComplete: boolean,
+    orbitalRingRadius = 42.56,
   ): THREE.Group {
     if (structureId === 'command_and_control') {
       return this.buildPrometheusCommandAndControl(isComplete);
     }
+    if (structureId === 'refinery') {
+      return this.buildHephaesRefinery(isComplete, orbitalRingRadius);
+    }
 
     const group = new THREE.Group();
-    const mat = !isComplete
-      ? this.buildingWireframeMat
-      : structureId === 'refinery'
-        ? this.baselineRefineryMat
-        : this.baselineStationMat;
+    const mat = !isComplete ? this.buildingWireframeMat : this.baselineStationMat;
 
     switch (structureId) {
       case 'planetary_outpost': {
         group.add(new THREE.Mesh(this.outpostDishGeom, mat));
-        break;
-      }
-      case 'refinery': {
-        const s1 = new THREE.Mesh(this.refinerySiloGeom, mat);
-        s1.position.set(0, 0, -1.6);
-        const s2 = new THREE.Mesh(this.refinerySiloGeom, mat);
-        s2.position.set(0, 0, 1.6);
-        group.add(s1, s2);
         break;
       }
       case 'orbital_dockyard': {
@@ -236,9 +257,9 @@ export class StationModelLibrary {
     this.observationWindowMat.dispose();
     this.warmCabinMat.dispose();
     this.beaconRedMat.dispose();
+    this.moltenHeatSinkMat.dispose();
     this.buildingWireframeMat.dispose();
     this.baselineStationMat.dispose();
-    this.baselineRefineryMat.dispose();
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
@@ -423,6 +444,108 @@ export class StationModelLibrary {
       turretGroup.add(barrel);
 
       root.add(turretGroup);
+    }
+
+    return root;
+  }
+
+  /**
+   * Builds the "Hephaes" Star-Station Orbital Refinery (docs/artstyle.md #03).
+   * Curves the rectangular forge platform along the host planet's exact `orbitalRingRadius`
+   * so the deck, central forge spine, and twin glowing heat-sink banks hug the orbital arc.
+   */
+  private buildHephaesRefinery(
+    isComplete: boolean,
+    orbitalRingRadius: number,
+  ): THREE.Group {
+    const root = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+    const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
+
+    const ringR = Math.max(18, orbitalRingRadius);
+    const segmentCount = 7;
+    const segmentArcSpacing = 2.02; // ~14.1u total arc length (fits inside 1 orbital slot)
+    const halfSpan = ((segmentCount - 1) * segmentArcSpacing) * 0.5;
+
+    for (let i = 0; i < segmentCount; i++) {
+      const arcS = -halfSpan + i * segmentArcSpacing;
+      const theta = arcS / ringR;
+      const segPivot = new THREE.Group();
+
+      // Map segment onto circular orbital arc centered at (-ringR, 0, 0)
+      segPivot.position.set(
+        ringR * Math.cos(theta) - ringR,
+        0,
+        ringR * Math.sin(theta),
+      );
+      segPivot.rotation.y = -theta;
+
+      // 1. Main Curved Platform Deck & Ventral Material Transport Elevator Keel
+      segPivot.add(new THREE.Mesh(this.refDeckSegGeom, hullMat));
+
+      const keel = new THREE.Mesh(this.refKeelSegGeom, frameMat);
+      keel.position.set(0, -0.52, 0);
+      segPivot.add(keel);
+
+      // 2. Central Linear Forge Spine
+      const spine = new THREE.Mesh(this.refSpineSegGeom, trimMat);
+      spine.position.set(0, 0.58, 0);
+      segPivot.add(spine);
+
+      // 3. Twin Parallel Glowing Heat-Sink Banks (Iron/Silicate Smelters) on inner & outer flanks
+      for (const side of [-1, 1]) {
+        const bankGroup = new THREE.Group();
+        bankGroup.position.set(side * 1.48, 0.85, 0);
+        // Slight outward V-cant matching the Front View schematic
+        bankGroup.rotation.z = -side * 0.14;
+
+        bankGroup.add(new THREE.Mesh(this.refHeatSinkCoreGeom, heatMat));
+
+        // 4 dark radiator fins framing each glowing copper-orange smelter core
+        for (const finZ of [-0.66, -0.22, 0.22, 0.66]) {
+          const fin = new THREE.Mesh(this.refHeatSinkFinGeom, frameMat);
+          fin.position.set(0, 0.08, finZ);
+          bankGroup.add(fin);
+        }
+
+        segPivot.add(bankGroup);
+
+        // 4. Outer Landing & Cargo Pads along the deck apron edges
+        if (i === 1 || i === 3 || i === 5) {
+          const pad = new THREE.Mesh(this.refLandingPadGeom, frameMat);
+          pad.position.set(side * 2.75, 0.24, 0);
+          segPivot.add(pad);
+
+          const beacon = new THREE.Mesh(
+            this.refPadBeaconGeom,
+            i === 3 ? cabinMat : obsMat,
+          );
+          beacon.position.set(side * 3.18, 0.26, 0);
+          segPivot.add(beacon);
+        }
+      }
+
+      // 5. Central Forge Control Tower (at center segment) & Crystal Processing Array (at end)
+      if (i === Math.floor(segmentCount / 2)) {
+        const tower = new THREE.Mesh(this.refControlTowerGeom, ochreMat);
+        tower.position.set(0, 1.42, 0);
+        segPivot.add(tower);
+
+        const towerWin = new THREE.Mesh(this.refControlWindowGeom, obsMat);
+        towerWin.position.set(0, 1.72, 0);
+        segPivot.add(towerWin);
+      } else if (i === segmentCount - 1) {
+        const crystalArray = new THREE.Mesh(this.refCrystalArrayGeom, obsMat);
+        crystalArray.position.set(0, 0.92, 0);
+        segPivot.add(crystalArray);
+      }
+
+      root.add(segPivot);
     }
 
     return root;

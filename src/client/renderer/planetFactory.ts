@@ -291,6 +291,7 @@ export function createLivingPlanetGroup(
       const stationGroup = stationModels.buildStationMesh(
         struct.structureId,
         struct.isComplete,
+        orbitalRingRadius,
       );
       stationGroup.position.set(
         Math.cos(angle) * orbitalRingRadius,
