@@ -42,6 +42,8 @@ export interface AnimatedPlanetHandle {
   readonly planet: PlanetNode;
   readonly rootGroup: THREE.Group;
   readonly orbitalRingRadius: number;
+  isHabited(): boolean;
+  setHabited(habited: boolean): void;
   update(elapsedSeconds: number, deltaSeconds: number): void;
   dispose(): void;
 }
@@ -84,6 +86,7 @@ export function createLivingPlanetGroup(
   const isTerranType =
     planet.visualTheme === 'terran' || planet.visualTheme === 'super_earth';
   const surfaceTimeUniform = { value: 0 };
+  const isHabitedUniform = { value: planet.ownerId !== null ? 1.0 : 0.0 };
   timeUniforms.push(surfaceTimeUniform);
 
   const surfaceMaterial = new THREE.ShaderMaterial({
@@ -98,6 +101,7 @@ export function createLivingPlanetGroup(
           uOceanLevel: { value: themeParams.oceanLevel },
           uCloudDriftSpeed: { value: themeParams.cloudDriftSpeed },
           uIsSuperEarth: { value: planet.visualTheme === 'super_earth' ? 1.0 : 0.0 },
+          uIsHabited: isHabitedUniform,
           uSunDirection: { value: sunDirection.clone().normalize() },
           uAtmosphereColor: {
             value: new THREE.Color(...themeParams.atmosphereColor),
@@ -271,6 +275,12 @@ export function createLivingPlanetGroup(
     planet,
     rootGroup,
     orbitalRingRadius,
+    isHabited(): boolean {
+      return isHabitedUniform.value > 0.5;
+    },
+    setHabited(habited: boolean): void {
+      isHabitedUniform.value = habited ? 1.0 : 0.0;
+    },
     update(elapsedSeconds: number, deltaSeconds: number): void {
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;

@@ -177,6 +177,7 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
 2. **Multi-Layered Living Planets**:
    * **Terran / Earth & Super-Earth Worlds**:
      * **Surface Layer**: Custom PBR/GLSL shader with distinct continents, relief/normal mapping, and specular ocean reflections that catch the system's star light.
+     * **Habitation & Cityscapes**: Inhabited worlds with orbital platforms (such as starter Homeworlds) render textured grey urban cityscapes on the sunlit side that transition seamlessly into glowing warm-amber city lights as they rotate onto the night side. Unclaimed worlds with no orbital platforms (such as the Central Nexus Super-Earth before a Planetary Outpost is built) remain uninhabited wilderness with no cities until claimed.
      * **Drifting Cloud Layer**: A secondary, slightly larger transparent sphere rotating at an independent speed with cloud coverage and subtle shadow projection onto the surface below.
      * **Atmospheric Halo**: An outer Fresnel rim-lighting shader shell giving the planet horizon a realistic atmospheric scatter (azure blue for Earth/Super-Earth worlds).
    * **Rock / Volcanic / Lava Worlds**:

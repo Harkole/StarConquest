@@ -65,16 +65,30 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     const galaxy = createFiveSystemGalaxy();
     const starterSystem = galaxy.systems[0];
     const homeworld = starterSystem?.planets[0];
+    const centralHub = galaxy.systems.find((s) => s.isCentralHub);
+    const superEarth = centralHub?.planets[0];
     expect(homeworld).toBeDefined();
+    expect(superEarth).toBeDefined();
 
-    if (homeworld) {
-      const handle = createLivingPlanetGroup(
+    if (homeworld && superEarth) {
+      const homeHandle = createLivingPlanetGroup(
         homeworld,
         new THREE.Vector3(1, 0.5, -1),
       );
-      expect(handle.rootGroup.children.length).toBeGreaterThanOrEqual(2);
-      handle.update(2.5, 0.016);
-      handle.dispose();
+      expect(homeHandle.rootGroup.children.length).toBeGreaterThanOrEqual(2);
+      expect(homeHandle.isHabited()).toBe(true);
+      homeHandle.update(2.5, 0.016);
+      homeHandle.dispose();
+
+      // Unclaimed Central Nexus Super-Earth has no orbital platforms yet and should be uninhabited
+      const superEarthHandle = createLivingPlanetGroup(
+        superEarth,
+        new THREE.Vector3(1, 0.5, -1),
+      );
+      expect(superEarthHandle.isHabited()).toBe(false);
+      superEarthHandle.setHabited(true);
+      expect(superEarthHandle.isHabited()).toBe(true);
+      superEarthHandle.dispose();
     }
   });
 

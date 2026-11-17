@@ -125,6 +125,7 @@ uniform float uSeed;
 uniform float uOceanLevel;
 uniform float uCloudDriftSpeed;
 uniform float uIsSuperEarth;
+uniform float uIsHabited;
 uniform vec3 uSunDirection;
 uniform vec3 uAtmosphereColor;
 
@@ -189,6 +190,19 @@ void main() {
 
   // Polar ice caps
   float polarIce = smoothstep(0.76, 0.90, latitude + (detail - 0.5) * 0.18);
+
+  // Habited urban cityscapes: only appear when planet is claimed / has orbital platforms (uIsHabited > 0)
+  // On the day side, cities appear as grey metropolitan sprawl; on the night side, they glow with lights
+  float cityFootprint =
+    smoothstep(0.62, 0.76, detail) *
+    smoothstep(0.45, 0.05, landHeight) *
+    isLand *
+    (1.0 - polarIce) *
+    uIsHabited;
+  float urbanTexture = noise3D(nObj * 36.0 + seedOffset);
+  vec3 urbanCityscape = mix(vec3(0.32, 0.35, 0.39), vec3(0.50, 0.53, 0.57), urbanTexture);
+  landColor = mix(landColor, urbanCityscape, smoothstep(0.05, 0.55, cityFootprint));
+
   vec3 baseAlbedo = mix(oceanColor, landColor, isLand);
   baseAlbedo = mix(baseAlbedo, snowPeak, polarIce);
 
@@ -208,10 +222,15 @@ void main() {
   float oceanSpec = pow(specBase, 48.0) * (1.0 - isLand) * (1.0 - polarIce) * shadowFactor * max(0.0, ndotl);
   vec3 specColor = vec3(1.0, 0.93, 0.78) * oceanSpec * 0.95;
 
-  // Night-side planetary city lights on land for Terran & Super-Earth worlds
-  float nightMask = smoothstep(0.05, -0.22, ndotl) * isLand * (1.0 - polarIce);
-  float cityCluster = smoothstep(0.64, 0.78, detail) * smoothstep(0.45, 0.05, landHeight);
-  vec3 cityGlow = vec3(1.0, 0.72, 0.32) * nightMask * cityCluster * (0.65 + 0.55 * uIsSuperEarth);
+  // Night-side planetary city lights over the exact same urban cityscape footprint
+  float nightMask = smoothstep(0.06, -0.20, ndotl);
+  float lightSparkle = smoothstep(0.25, 0.85, urbanTexture);
+  vec3 cityGlow =
+    vec3(1.0, 0.72, 0.32) *
+    nightMask *
+    cityFootprint *
+    (0.55 + 0.45 * lightSparkle) *
+    (0.65 + 0.55 * uIsSuperEarth);
 
   // Subtle atmospheric Fresnel scatter on sunlit surface horizon only
   float fresnel = pow(1.0 - max(0.0, dot(nWorld, viewDir)), 3.2);
