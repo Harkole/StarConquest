@@ -280,17 +280,18 @@ export function createStarSystemEnvironment(
   beltsGroup.add(oreInstanced, crystalInstanced);
   rootGroup.add(beltsGroup);
 
-  // 5. DS9-Style Proximity Wormhole Gateways (Compact Dormant Marker -> Dramatic 3D Funnel Vortex)
-  const wormholeDiskGeom = new THREE.PlaneGeometry(115, 115, 64, 64);
+  // 5. DS9-Style Proximity Wormhole Gateways (Compact Dormant Marker -> 3D Multi-Layered Cloud Tunnel)
+  const wormholeDiskGeom = new THREE.PlaneGeometry(130, 130, 72, 72);
   wormholeDiskGeom.rotateX(-Math.PI / 2);
-  const dormantMarkerRingGeom = new THREE.TorusGeometry(8.5, 0.32, 10, 48);
+  const dormantMarkerRingGeom = new THREE.TorusGeometry(8.5, 0.3, 10, 48);
   dormantMarkerRingGeom.rotateX(Math.PI / 2);
-  const beaconPylonGeom = new THREE.OctahedronGeometry(1.3, 0);
+  const beaconPylonGeom = new THREE.OctahedronGeometry(1.2, 0);
   disposables.push(wormholeDiskGeom, dormantMarkerRingGeom, beaconPylonGeom);
 
   interface InternalWormholeState {
     readonly handle: WormholeInstanceHandle;
     readonly markerGroup: THREE.Group;
+    readonly markerMat: THREE.MeshBasicMaterial;
     readonly openProgressUniform: { value: number };
     readonly flashBurstUniform: { value: number };
     targetOpen: boolean;
@@ -301,36 +302,25 @@ export function createStarSystemEnvironment(
 
   const wormholeStates: InternalWormholeState[] = [];
 
+  // 3 stacked 3D funnel cloud layers descending into subspace below the orbital plane
+  const funnelLayers = [
+    { depthOffset: 0.0, scale: 1.0, opacity: 0.94, rotY: 0.0 },
+    { depthOffset: 16.0, scale: 0.78, opacity: 0.82, rotY: 1.1 },
+    { depthOffset: 32.0, scale: 0.56, opacity: 0.74, rotY: 2.3 },
+  ] as const;
+
   for (const item of wormholesInSystem) {
     const whTimeUniform = { value: 0 };
     const openProgressUniform = { value: 0 };
     const flashBurstUniform = { value: 0 };
     timeUniforms.push(whTimeUniform);
 
-    const whMat = new THREE.ShaderMaterial({
-      vertexShader: WORMHOLE_VERTEX_SHADER,
-      fragmentShader: WORMHOLE_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        uTime: whTimeUniform,
-        uOpenProgress: openProgressUniform,
-        uFlashBurst: flashBurstUniform,
-        uOuterColor: { value: new THREE.Color(...palette.primaryNebula) },
-        uInnerColor: {
-          value: new THREE.Color(...palette.accentGlow).multiplyScalar(1.6),
-        },
-      },
-    });
-
     const markerMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(...palette.accentGlow),
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.42,
     });
-    disposables.push(whMat, markerMat);
+    disposables.push(markerMat);
 
     const whGroup = new THREE.Group();
     whGroup.position.set(item.localPosition.x, 0.5, item.localPosition.z);
@@ -348,13 +338,44 @@ export function createStarSystemEnvironment(
       pylon.position.set(Math.cos(a) * 8.5, 0, Math.sin(a) * 8.5);
       markerGroup.add(pylon);
     }
-
     whGroup.add(markerGroup);
-    whGroup.add(new THREE.Mesh(wormholeDiskGeom, whMat));
+
+    // Add deep 3D cloud tunnel layers (rendered bottom-to-top with NormalBlending for smoky DS9 clouds)
+    for (let idx = funnelLayers.length - 1; idx >= 0; idx--) {
+      const layerCfg = funnelLayers[idx];
+      if (!layerCfg) {
+        continue;
+      }
+      const layerMat = new THREE.ShaderMaterial({
+        vertexShader: WORMHOLE_VERTEX_SHADER,
+        fragmentShader: WORMHOLE_FRAGMENT_SHADER,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.NormalBlending,
+        uniforms: {
+          uTime: whTimeUniform,
+          uOpenProgress: openProgressUniform,
+          uFlashBurst: flashBurstUniform,
+          uLayerDepthOffset: { value: layerCfg.depthOffset },
+          uLayerScale: { value: layerCfg.scale },
+          uLayerOpacity: { value: layerCfg.opacity },
+          uOuterColor: { value: new THREE.Color(...palette.primaryNebula) },
+          uInnerColor: { value: new THREE.Color(...palette.accentGlow) },
+        },
+      });
+      disposables.push(layerMat);
+
+      const layerMesh = new THREE.Mesh(wormholeDiskGeom, layerMat);
+      layerMesh.rotation.y = layerCfg.rotY;
+      whGroup.add(layerMesh);
+    }
+
     rootGroup.add(whGroup);
 
     const state: InternalWormholeState = {
       markerGroup,
+      markerMat,
       openProgressUniform,
       flashBurstUniform,
       targetOpen: false,
@@ -427,7 +448,8 @@ export function createStarSystemEnvironment(
 
         wh.openProgressUniform.value = wh.openProgress;
         wh.flashBurstUniform.value = wh.flashBurst;
-        wh.markerGroup.rotation.y += deltaSeconds * (0.4 + wh.openProgress * 1.8);
+        wh.markerMat.opacity = 0.42 * (1.0 - wh.openProgress * 0.72);
+        wh.markerGroup.rotation.y += deltaSeconds * (0.4 + wh.openProgress * 1.4);
       }
     },
     dispose(): void {
