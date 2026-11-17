@@ -1,11 +1,17 @@
 import {
   MATCH_PRESETS,
   ORBITAL_STRUCTURES,
+  PLANET_CLASSES,
   SHIP_CLASSES,
   type MatchPresetId,
   type OrbitalStructureId,
 } from '../config/index.ts';
-import type { GameCommand, PlayerSlotId, Vector2D } from '../protocol/commands.ts';
+import type {
+  GameCommand,
+  PlayerSlotId,
+  ResourceTargetFocus,
+  Vector2D,
+} from '../protocol/commands.ts';
 import {
   type AsteroidBeltRockInstance,
   getAsteroidWorldPosition,
@@ -17,11 +23,12 @@ import {
   type PlanetNode,
 } from './galaxy.ts';
 
+export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
+
 /**
  * Harvester Phase 1 Speed & Mining Constants:
- * - Previous speed was 55.1 u/s (38 * 1.45).
- * - Empty outward speed slowed by 25% -> 41.325 u/s.
- * - Full return speed slowed by 50% -> 27.55 u/s.
+ * - Empty outward speed: 41.325 u/s (-25% from base 55.1)
+ * - Full return speed: 27.55 u/s (-50% from base 55.1)
  * - Mining 40 units takes 12.5 seconds (within the 10–15s window) -> 3.2 units/sec.
  */
 export const HARVESTER_EMPTY_SPEED = 41.325;
@@ -30,6 +37,15 @@ export const HARVESTER_CARGO_CAPACITY = 40;
 export const HARVESTER_MINING_DURATION_SECONDS = 12.5;
 export const HARVESTER_MINING_RATE_PER_SECOND =
   HARVESTER_CARGO_CAPACITY / HARVESTER_MINING_DURATION_SECONDS;
+
+/**
+ * Harvester Drop-Off & Refinery Logistics Constants:
+ * - Orbital Refinery unloads at 10 units/sec (4s for full 40-unit load), max 2 concurrent docks.
+ * - Command & Control unloads at 4 units/sec (10s for full 40-unit load).
+ */
+export const REFINERY_UNLOAD_RATE_PER_SECOND = 10;
+export const CNC_UNLOAD_RATE_PER_SECOND = 4;
+export const REFINERY_MAX_CONCURRENT_DOCKS = 2;
 
 export interface OrbitalStructureInstance {
   readonly id: string;
@@ -43,6 +59,9 @@ export interface OrbitalStructureInstance {
   isComplete: boolean;
   shields: number;
   hull: number;
+  targetResource: ResourceTargetFocus;
+  readonly activeDockingHarvesterIds: string[];
+  readonly queuedDockingHarvesterIds: string[];
 }
 
 export interface PlanetRuntimeState {
@@ -65,14 +84,17 @@ export type HarvesterActivityState =
   | 'flying_to_belt'
   | 'mining'
   | 'returning_to_dropoff'
+  | 'waiting_to_unload'
+  | 'unloading'
   | 'transiting_to_hub'
   | 'transiting_to_home';
 
 export interface HarvesterUnitState {
   readonly id: string;
   readonly ownerId: PlayerSlotId;
-  readonly homeSystemId: string;
-  readonly homePlanetId: string;
+  homeStructureId: string;
+  homeSystemId: string;
+  homePlanetId: string;
   currentSystemId: string;
   position: Vector2D;
   headingRadians: number;
@@ -83,6 +105,7 @@ export interface HarvesterUnitState {
   miningStandoffAngle: number;
   cargoType: 'ore' | 'crystal';
   cargoAmount: number;
+  depositAccumulator: number;
   readonly cargoCapacity: number;
   mineCrossSystemHub: boolean;
 }
@@ -135,6 +158,44 @@ export class GameSimulation {
     return p;
   }
 
+  public getStructureById(
+    structureId: string,
+  ): { readonly planetState: PlanetRuntimeState; readonly structure: OrbitalStructureInstance } | undefined {
+    for (const planetState of this.planets.values()) {
+      const structure = planetState.structures.find((s) => s.id === structureId);
+      if (structure) {
+        return { planetState, structure };
+      }
+    }
+    return undefined;
+  }
+
+  public getStructureWorldPosition(
+    planetState: PlanetRuntimeState,
+    structure: OrbitalStructureInstance,
+  ): Vector2D {
+    const planet = planetState.planet;
+    const radius = PLANET_CLASSES[planet.planetClass].radiusUnits * 1.52;
+    const totalSlots = planet.orbitalSlots;
+    const s0 = structure.occupiedSlots[0] ?? 0;
+    let baseAngle = (s0 / totalSlots) * Math.PI * 2;
+    if (structure.occupiedSlots.length === 2) {
+      const s1 = structure.occupiedSlots[1] ?? 0;
+      let a1 = (s1 / totalSlots) * Math.PI * 2;
+      if (a1 < baseAngle) {
+        a1 += Math.PI * 2;
+      }
+      baseAngle = (baseAngle + a1) * 0.5;
+    }
+
+    const worldAngle =
+      baseAngle - this.elapsedSeconds * ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC;
+    return {
+      x: planet.position.x + Math.cos(worldAngle) * radius,
+      z: planet.position.z + Math.sin(worldAngle) * radius,
+    };
+  }
+
   public getPlanetsInSystem(systemId: string): readonly PlanetRuntimeState[] {
     const result: PlanetRuntimeState[] = [];
     for (const p of this.planets.values()) {
@@ -172,6 +233,49 @@ export class GameSimulation {
     }
   }
 
+  public destroyOrbitalStructure(structureId: string): boolean {
+    for (const planetState of this.planets.values()) {
+      const idx = planetState.structures.findIndex((s) => s.id === structureId);
+      if (idx === -1) {
+        continue;
+      }
+      const [removed] = planetState.structures.splice(idx, 1);
+      if (!removed) {
+        return false;
+      }
+
+      if (removed.isComplete) {
+        const player = this.players.get(removed.ownerId);
+        const config = ORBITAL_STRUCTURES[removed.structureId];
+        if (player) {
+          player.supplyCap = Math.max(0, player.supplyCap - config.supplyProvided);
+          if (removed.structureId === 'tech_module') {
+            player.techModulesCompleted = Math.max(
+              0,
+              player.techModulesCompleted - 1,
+            );
+          }
+        }
+      }
+
+      if (
+        planetState.structures.length === 0 &&
+        planetState.planet.planetClass !== 'large'
+      ) {
+        planetState.ownerId = null;
+      }
+
+      // Reassign any Harvesters whose home platform was destroyed to the closest friendly dropoff
+      for (const h of this.harvesters) {
+        if (h.homeStructureId === structureId) {
+          this.reassignHarvesterToClosestHome(h);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
   public submitCommand(command: GameCommand): CommandResult {
     switch (command.type) {
       case 'BUILD_ORBITAL_STRUCTURE':
@@ -189,6 +293,12 @@ export class GameSimulation {
           );
         }
         return { ok: true };
+      case 'SET_REFINERY_TARGET':
+        return this.handleSetRefineryTarget(
+          command.playerId,
+          command.structureId,
+          command.targetResource,
+        );
       default:
         return { ok: true };
     }
@@ -219,7 +329,7 @@ export class GameSimulation {
       }
     }
 
-    // 3. Update automated Harvester mining & movement
+    // 3. Update automated Harvester mining, docking queues, & movement
     for (const harvester of this.harvesters) {
       this.updateHarvester(harvester, deltaSeconds);
     }
@@ -246,7 +356,6 @@ export class GameSimulation {
     }
 
     for (const system of this.galaxy.systems) {
-      // Populate targetable individual asteroid & crystal rocks from shared belt layout
       const reserveBase = Math.round(1200 * preset.asteroidReserveMultiplier);
       const layout = getSystemAsteroidLayout(system);
 
@@ -263,7 +372,6 @@ export class GameSimulation {
         });
       }
 
-      // Initialize planets & starting Homeworld Command & Control (2 slots)
       for (const planet of system.planets) {
         const runtimePlanet: PlanetRuntimeState = {
           planet,
@@ -286,6 +394,9 @@ export class GameSimulation {
             isComplete: true,
             shields: cncConfig.maxShields,
             hull: cncConfig.maxHull,
+            targetResource: 'auto',
+            activeDockingHarvesterIds: [],
+            queuedDockingHarvesterIds: [],
           };
           runtimePlanet.structures.push(cncInstance);
           this.onOrbitalStructureCompleted(runtimePlanet, cncInstance);
@@ -319,7 +430,6 @@ export class GameSimulation {
       return { ok: false, reason: 'Orbital slot index out of range' };
     }
 
-    // Rule: Unclaimed secondary planets require a Planetary Outpost first
     if (planetState.ownerId === null) {
       if (structureId !== 'planetary_outpost') {
         return {
@@ -371,6 +481,9 @@ export class GameSimulation {
       isComplete: config.buildTimeSeconds === 0,
       shields: config.maxShields,
       hull: config.maxHull,
+      targetResource: 'auto',
+      activeDockingHarvesterIds: [],
+      queuedDockingHarvesterIds: [],
     };
 
     planetState.structures.push(instance);
@@ -391,18 +504,9 @@ export class GameSimulation {
     }
 
     let targetPlanet: PlanetRuntimeState | undefined;
+    let targetStructure: OrbitalStructureInstance | undefined;
+
     for (const p of this.planets.values()) {
-      if (p.planet.id === structureOrPlanetId && p.ownerId === playerId) {
-        const hasDropoff = p.structures.some(
-          (s) =>
-            s.isComplete &&
-            (s.structureId === 'refinery' || s.structureId === 'command_and_control'),
-        );
-        if (hasDropoff) {
-          targetPlanet = p;
-          break;
-        }
-      }
       const matchingStruct = p.structures.find(
         (s) =>
           s.id === structureOrPlanetId &&
@@ -412,11 +516,24 @@ export class GameSimulation {
       );
       if (matchingStruct) {
         targetPlanet = p;
+        targetStructure = matchingStruct;
         break;
+      }
+      if (p.planet.id === structureOrPlanetId && p.ownerId === playerId) {
+        const dropoff = p.structures.find(
+          (s) =>
+            s.isComplete &&
+            (s.structureId === 'refinery' || s.structureId === 'command_and_control'),
+        );
+        if (dropoff) {
+          targetPlanet = p;
+          targetStructure = dropoff;
+          break;
+        }
       }
     }
 
-    if (!targetPlanet) {
+    if (!targetPlanet || !targetStructure) {
       return {
         ok: false,
         reason: 'Requires a completed Orbital Refinery or Command & Control',
@@ -430,7 +547,42 @@ export class GameSimulation {
 
     player.ore -= cost.ore;
     player.crystal -= cost.crystal;
-    this.spawnHarvesterAtPlanet(playerId, targetPlanet);
+    this.spawnHarvesterAtStructure(playerId, targetPlanet, targetStructure);
+
+    return { ok: true };
+  }
+
+  private handleSetRefineryTarget(
+    playerId: PlayerSlotId,
+    structureId: string,
+    targetResource: ResourceTargetFocus,
+  ): CommandResult {
+    const found = this.getStructureById(structureId);
+    if (!found || found.structure.ownerId !== playerId) {
+      return { ok: false, reason: 'Structure not found or not owned by player' };
+    }
+    if (
+      found.structure.structureId !== 'refinery' &&
+      found.structure.structureId !== 'command_and_control'
+    ) {
+      return { ok: false, reason: 'Only Refineries and C&C can set mining focus' };
+    }
+
+    found.structure.targetResource = targetResource;
+
+    // Immediately update any outbound Harvesters assigned to this home platform
+    if (targetResource !== 'auto') {
+      for (const h of this.harvesters) {
+        if (
+          h.homeStructureId === structureId &&
+          h.state === 'flying_to_belt' &&
+          h.cargoAmount === 0
+        ) {
+          h.cargoType = targetResource;
+          h.targetBeltId = null;
+        }
+      }
+    }
 
     return { ok: true };
   }
@@ -451,28 +603,34 @@ export class GameSimulation {
     }
 
     if (config.spawnsFreeHarvester) {
-      this.spawnHarvesterAtPlanet(structure.ownerId, planetState);
+      this.spawnHarvesterAtStructure(structure.ownerId, planetState, structure);
     }
   }
 
-  private spawnHarvesterAtPlanet(
+  private spawnHarvesterAtStructure(
     ownerId: PlayerSlotId,
     planetState: PlanetRuntimeState,
+    homeStructure: OrbitalStructureInstance,
   ): HarvesterUnitState {
     const harvesterIndex = this.harvesters.filter((h) => h.ownerId === ownerId).length;
+    const structPos = this.getStructureWorldPosition(planetState, homeStructure);
     const angle = (harvesterIndex * 1.7) % (Math.PI * 2);
-    const spawnRadius = 48;
     const spawnPos: Vector2D = {
-      x: planetState.planet.position.x + Math.cos(angle) * spawnRadius,
-      z: planetState.planet.position.z + Math.sin(angle) * spawnRadius,
+      x: structPos.x + Math.cos(angle) * 6,
+      z: structPos.z + Math.sin(angle) * 6,
     };
 
     const preferredResource: 'ore' | 'crystal' =
-      harvesterIndex % 2 === 0 ? 'ore' : 'crystal';
+      homeStructure.targetResource !== 'auto'
+        ? homeStructure.targetResource
+        : harvesterIndex % 2 === 0
+          ? 'ore'
+          : 'crystal';
 
     const harvester: HarvesterUnitState = {
       id: `harvester_${this.nextEntityCounter++}`,
       ownerId,
+      homeStructureId: homeStructure.id,
       homeSystemId: planetState.planet.systemId,
       homePlanetId: planetState.planet.id,
       currentSystemId: planetState.planet.systemId,
@@ -485,6 +643,7 @@ export class GameSimulation {
       miningStandoffAngle: angle,
       cargoType: preferredResource,
       cargoAmount: 0,
+      depositAccumulator: 0,
       cargoCapacity: HARVESTER_CARGO_CAPACITY,
       mineCrossSystemHub: false,
     };
@@ -504,11 +663,70 @@ export class GameSimulation {
     );
   }
 
+  private reassignHarvesterToClosestHome(harvester: HarvesterUnitState): void {
+    let bestPlanet: PlanetRuntimeState | undefined;
+    let bestStruct: OrbitalStructureInstance | undefined;
+    let bestScore = Infinity;
+
+    for (const p of this.planets.values()) {
+      if (p.ownerId !== harvester.ownerId) {
+        continue;
+      }
+      for (const s of p.structures) {
+        if (
+          !s.isComplete ||
+          (s.structureId !== 'refinery' && s.structureId !== 'command_and_control')
+        ) {
+          continue;
+        }
+        const sPos = this.getStructureWorldPosition(p, s);
+        const dist = Math.hypot(
+          sPos.x - harvester.position.x,
+          sPos.z - harvester.position.z,
+        );
+        // Prefer platforms in the same system first
+        const systemPenalty = p.planet.systemId === harvester.currentSystemId ? 0 : 100000;
+        const score = dist + systemPenalty;
+        if (score < bestScore) {
+          bestScore = score;
+          bestPlanet = p;
+          bestStruct = s;
+        }
+      }
+    }
+
+    if (bestPlanet && bestStruct) {
+      harvester.homeStructureId = bestStruct.id;
+      harvester.homePlanetId = bestPlanet.planet.id;
+      harvester.homeSystemId = bestPlanet.planet.systemId;
+    }
+  }
+
+  private removeHarvesterFromDockingLists(
+    harvesterId: string,
+    structure: OrbitalStructureInstance,
+  ): void {
+    const activeIdx = structure.activeDockingHarvesterIds.indexOf(harvesterId);
+    if (activeIdx !== -1) {
+      structure.activeDockingHarvesterIds.splice(activeIdx, 1);
+    }
+    const queueIdx = structure.queuedDockingHarvesterIds.indexOf(harvesterId);
+    if (queueIdx !== -1) {
+      structure.queuedDockingHarvesterIds.splice(queueIdx, 1);
+    }
+  }
+
   private updateHarvester(harvester: HarvesterUnitState, deltaSeconds: number): void {
     const speed = this.computeHarvesterSpeed(harvester);
     harvester.currentSpeed = speed;
 
-    // If assigned to cross-system Central Hub mining and currently in starter system with empty cargo:
+    // Ensure assigned home platform still exists; fallback to closest friendly platform if destroyed
+    let homeLookup = this.getStructureById(harvester.homeStructureId);
+    if (!homeLookup) {
+      this.reassignHarvesterToClosestHome(harvester);
+      homeLookup = this.getStructureById(harvester.homeStructureId);
+    }
+
     if (
       harvester.mineCrossSystemHub &&
       harvester.currentSystemId !== 'system_central_hub' &&
@@ -539,11 +757,17 @@ export class GameSimulation {
     }
 
     if (harvester.state === 'flying_to_belt') {
+      if (homeLookup && homeLookup.structure.targetResource !== 'auto') {
+        harvester.cargoType = homeLookup.structure.targetResource;
+      }
+
       let belt = this.miningBelts.find(
         (b) =>
           b.id === harvester.targetBeltId &&
           b.systemId === harvester.currentSystemId &&
-          b.remainingReserves > 0,
+          b.remainingReserves > 0 &&
+          (homeLookup?.structure.targetResource === 'auto' ||
+            b.resourceType === homeLookup?.structure.targetResource),
       );
       if (!belt) {
         belt = this.selectBestBeltInSystem(harvester);
@@ -596,7 +820,6 @@ export class GameSimulation {
         return;
       }
 
-      // Lock position & heading to follow the exact rotating asteroid/crystal rock!
       const standoffRadius = 11.5;
       harvester.position = {
         x: belt.position.x + Math.cos(harvester.miningStandoffAngle) * standoffRadius,
@@ -612,7 +835,6 @@ export class GameSimulation {
         belt.position.z - harvester.position.z,
       );
 
-      // Extract 40 units over 12.5 seconds (3.2 units/sec)
       const extractAmount = HARVESTER_MINING_RATE_PER_SECOND * deltaSeconds;
       harvester.cargoAmount = Math.min(
         harvester.cargoCapacity,
@@ -633,57 +855,171 @@ export class GameSimulation {
       harvester.state === 'transiting_to_home'
     ) {
       harvester.targetRockWorldPos = null;
-      const localDropoffPlanet = this.findNearestFriendlyDropoffPlanet(
-        harvester.ownerId,
-        harvester.currentSystemId,
-        harvester.position,
-      );
+      if (!homeLookup) {
+        return;
+      }
 
-      if (localDropoffPlanet) {
-        const arrived = this.movePositionTowards(
-          harvester,
-          localDropoffPlanet.planet.position,
-          speed * deltaSeconds,
-          44,
+      // If Harvester is in a different system from its home platform (e.g. Central Nexus),
+      // check if player built a closer local Refinery in this system; otherwise transit home via wormhole
+      if (harvester.currentSystemId !== homeLookup.planetState.planet.systemId) {
+        const localDropoff = this.findNearestFriendlyDropoffInSystem(
+          harvester.ownerId,
+          harvester.currentSystemId,
+          harvester.position,
         );
-        if (arrived) {
-          const player = this.players.get(harvester.ownerId);
-          if (player) {
-            if (harvester.cargoType === 'ore') {
-              player.ore += Math.round(harvester.cargoAmount);
-            } else {
-              player.crystal += Math.round(harvester.cargoAmount);
+        if (localDropoff) {
+          homeLookup = localDropoff;
+          harvester.homeStructureId = localDropoff.structure.id;
+          harvester.homePlanetId = localDropoff.planetState.planet.id;
+          harvester.homeSystemId = localDropoff.planetState.planet.systemId;
+        } else {
+          harvester.state = 'transiting_to_home';
+          const returnWormhole = this.galaxy.wormholes.find(
+            (wh) => wh.fromSystemId === harvester.homeSystemId,
+          );
+          if (returnWormhole) {
+            const arrivedWh = this.movePositionTowards(
+              harvester,
+              returnWormhole.toPosition,
+              speed * deltaSeconds,
+            );
+            if (arrivedWh) {
+              harvester.currentSystemId = harvester.homeSystemId;
+              harvester.position = {
+                x: returnWormhole.fromPosition.x * 0.92,
+                z: returnWormhole.fromPosition.z * 0.92,
+              };
+              harvester.state = 'returning_to_dropoff';
             }
           }
-          harvester.cargoAmount = 0;
-          if (player) {
-            harvester.cargoType =
-              player.crystal * 1.4 < player.ore ? 'crystal' : 'ore';
-          }
-          harvester.targetBeltId = null;
-          harvester.state = 'flying_to_belt';
+          return;
         }
-      } else if (harvester.currentSystemId === 'system_central_hub') {
-        harvester.state = 'transiting_to_home';
-        const returnWormhole = this.galaxy.wormholes.find(
-          (wh) => wh.fromSystemId === harvester.homeSystemId,
-        );
-        if (returnWormhole) {
-          const arrived = this.movePositionTowards(
-            harvester,
-            returnWormhole.toPosition,
-            speed * deltaSeconds,
-          );
-          if (arrived) {
-            harvester.currentSystemId = harvester.homeSystemId;
-            harvester.position = {
-              x: returnWormhole.fromPosition.x * 0.92,
-              z: returnWormhole.fromPosition.z * 0.92,
-            };
-            harvester.state = 'returning_to_dropoff';
+      }
+
+      const homePos = this.getStructureWorldPosition(
+        homeLookup.planetState,
+        homeLookup.structure,
+      );
+      const arrivedAtPlatform = this.movePositionTowards(
+        harvester,
+        homePos,
+        speed * deltaSeconds,
+        6.0,
+      );
+      if (arrivedAtPlatform) {
+        this.enterPlatformDockOrQueue(harvester, homeLookup.structure);
+      }
+      return;
+    }
+
+    if (harvester.state === 'waiting_to_unload') {
+      if (!homeLookup) {
+        harvester.state = 'returning_to_dropoff';
+        return;
+      }
+      const struct = homeLookup.structure;
+      const homePos = this.getStructureWorldPosition(homeLookup.planetState, struct);
+
+      // Hold position near the home platform while waiting in the docking queue
+      const queueIdx = Math.max(0, struct.queuedDockingHarvesterIds.indexOf(harvester.id));
+      const holdAngle = queueIdx * 0.8 + 0.5;
+      const holdPos: Vector2D = {
+        x: homePos.x + Math.cos(holdAngle) * 11,
+        z: homePos.z + Math.sin(holdAngle) * 11,
+      };
+      this.movePositionTowards(harvester, holdPos, speed * deltaSeconds, 1.5);
+
+      const maxDocks =
+        struct.structureId === 'refinery' ? REFINERY_MAX_CONCURRENT_DOCKS : Infinity;
+      const isFirstInQueue = struct.queuedDockingHarvesterIds[0] === harvester.id;
+      if (struct.activeDockingHarvesterIds.length < maxDocks && isFirstInQueue) {
+        struct.queuedDockingHarvesterIds.shift();
+        struct.activeDockingHarvesterIds.push(harvester.id);
+        harvester.state = 'unloading';
+      }
+      return;
+    }
+
+    if (harvester.state === 'unloading') {
+      if (!homeLookup) {
+        harvester.state = 'returning_to_dropoff';
+        return;
+      }
+      const struct = homeLookup.structure;
+      const homePos = this.getStructureWorldPosition(homeLookup.planetState, struct);
+      const dockIdx = Math.max(0, struct.activeDockingHarvesterIds.indexOf(harvester.id));
+      const dockOffset = dockIdx === 0 ? -3.2 : 3.2;
+      harvester.position = {
+        x: homePos.x + dockOffset,
+        z: homePos.z + 4.5,
+      };
+      harvester.headingRadians = Math.atan2(
+        homePos.x - harvester.position.x,
+        homePos.z - harvester.position.z,
+      );
+
+      const unloadRate =
+        struct.structureId === 'refinery'
+          ? REFINERY_UNLOAD_RATE_PER_SECOND
+          : CNC_UNLOAD_RATE_PER_SECOND;
+      const unloadAmount = Math.min(harvester.cargoAmount, unloadRate * deltaSeconds);
+      harvester.cargoAmount = Math.max(0, harvester.cargoAmount - unloadAmount);
+      harvester.depositAccumulator += unloadAmount;
+
+      const wholeUnits = Math.floor(harvester.depositAccumulator + 1e-9);
+      if (wholeUnits > 0) {
+        harvester.depositAccumulator -= wholeUnits;
+        const player = this.players.get(harvester.ownerId);
+        if (player) {
+          if (harvester.cargoType === 'ore') {
+            player.ore += wholeUnits;
+          } else {
+            player.crystal += wholeUnits;
           }
         }
       }
+
+      if (harvester.cargoAmount <= 1e-6) {
+        harvester.cargoAmount = 0;
+        harvester.depositAccumulator = 0;
+        this.removeHarvesterFromDockingLists(harvester.id, struct);
+
+        const player = this.players.get(harvester.ownerId);
+        if (struct.targetResource !== 'auto') {
+          harvester.cargoType = struct.targetResource;
+        } else if (player) {
+          harvester.cargoType =
+            player.crystal * 1.4 < player.ore ? 'crystal' : 'ore';
+        }
+        harvester.targetBeltId = null;
+        harvester.state = 'flying_to_belt';
+      }
+    }
+  }
+
+  private enterPlatformDockOrQueue(
+    harvester: HarvesterUnitState,
+    structure: OrbitalStructureInstance,
+  ): void {
+    const maxDocks =
+      structure.structureId === 'refinery' ? REFINERY_MAX_CONCURRENT_DOCKS : Infinity;
+
+    if (structure.activeDockingHarvesterIds.includes(harvester.id)) {
+      harvester.state = 'unloading';
+      return;
+    }
+
+    if (
+      structure.activeDockingHarvesterIds.length < maxDocks &&
+      structure.queuedDockingHarvesterIds.length === 0
+    ) {
+      structure.activeDockingHarvesterIds.push(harvester.id);
+      harvester.state = 'unloading';
+    } else {
+      if (!structure.queuedDockingHarvesterIds.includes(harvester.id)) {
+        structure.queuedDockingHarvesterIds.push(harvester.id);
+      }
+      harvester.state = 'waiting_to_unload';
     }
   }
 
@@ -697,7 +1033,6 @@ export class GameSimulation {
       return undefined;
     }
 
-    // Avoid picking the exact same rock another Harvester is already mining if possible
     const occupiedBeltIds = new Set(
       this.harvesters
         .filter((h) => h.id !== harvester.id && h.targetBeltId !== null)
@@ -728,35 +1063,40 @@ export class GameSimulation {
     return best;
   }
 
-  private findNearestFriendlyDropoffPlanet(
+  private findNearestFriendlyDropoffInSystem(
     ownerId: PlayerSlotId,
     systemId: string,
     fromPos: Vector2D,
-  ): PlanetRuntimeState | undefined {
-    let best: PlanetRuntimeState | undefined;
+  ): { readonly planetState: PlanetRuntimeState; readonly structure: OrbitalStructureInstance } | undefined {
+    let bestPlanet: PlanetRuntimeState | undefined;
+    let bestStruct: OrbitalStructureInstance | undefined;
     let bestDist = Infinity;
+
     for (const p of this.planets.values()) {
       if (p.planet.systemId !== systemId || p.ownerId !== ownerId) {
         continue;
       }
-      const hasCompletedDropoff = p.structures.some(
-        (s) =>
-          s.isComplete &&
-          (s.structureId === 'refinery' || s.structureId === 'command_and_control'),
-      );
-      if (!hasCompletedDropoff) {
-        continue;
-      }
-      const d = Math.hypot(
-        p.planet.position.x - fromPos.x,
-        p.planet.position.z - fromPos.z,
-      );
-      if (d < bestDist) {
-        bestDist = d;
-        best = p;
+      for (const s of p.structures) {
+        if (
+          !s.isComplete ||
+          (s.structureId !== 'refinery' && s.structureId !== 'command_and_control')
+        ) {
+          continue;
+        }
+        const sPos = this.getStructureWorldPosition(p, s);
+        const d = Math.hypot(sPos.x - fromPos.x, sPos.z - fromPos.z);
+        if (d < bestDist) {
+          bestDist = d;
+          bestPlanet = p;
+          bestStruct = s;
+        }
       }
     }
-    return best;
+
+    if (bestPlanet && bestStruct) {
+      return { planetState: bestPlanet, structure: bestStruct };
+    }
+    return undefined;
   }
 
   private movePositionTowards(

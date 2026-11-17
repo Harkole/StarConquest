@@ -164,6 +164,7 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
         {
           id: 'harvester_1',
           ownerId: 'player_1',
+          homeStructureId: 'struct_1',
           homeSystemId: 'system_starter_1',
           homePlanetId: 'system_starter_1_homeworld',
           currentSystemId: 'system_starter_1',
@@ -176,6 +177,7 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
           miningStandoffAngle: 0,
           cargoType: 'ore',
           cargoAmount: 20,
+          depositAccumulator: 0,
           cargoCapacity: 40,
           mineCrossSystemHub: false,
         },

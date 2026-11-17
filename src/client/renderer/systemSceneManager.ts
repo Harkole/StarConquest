@@ -223,7 +223,7 @@ export class SystemSceneManager {
     for (const handle of this.planetHandles) {
       const runtimeState = this.simAdapter.simulation.getPlanetState(handle.planet.id);
       handle.syncStructures(runtimeState);
-      handle.update(elapsedSeconds, deltaSeconds);
+      handle.update(elapsedSeconds, deltaSeconds, simElapsed);
     }
 
     const harvestersInSystem = this.simAdapter.simulation.getHarvestersInSystem(

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { PLANET_CLASSES } from '../../shared/config/index.ts';
 import type { PlanetNode } from '../../shared/sim/galaxy.ts';
-import type { PlanetRuntimeState } from '../../shared/sim/gameSimulation.ts';
+import {
+  ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC,
+  type PlanetRuntimeState,
+} from '../../shared/sim/gameSimulation.ts';
 import {
   ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
   DRIFTING_CLOUDS_FRAGMENT_SHADER,
@@ -47,7 +50,7 @@ export interface AnimatedPlanetHandle {
   isHabited(): boolean;
   setHabited(habited: boolean): void;
   syncStructures(planetState: PlanetRuntimeState): void;
-  update(elapsedSeconds: number, deltaSeconds: number): void;
+  update(elapsedSeconds: number, deltaSeconds: number, simElapsedSeconds?: number): void;
   dispose(): void;
 }
 
@@ -328,6 +331,9 @@ export function createLivingPlanetGroup(
           isComplete: true,
           shields: 3000,
           hull: 8000,
+          targetResource: 'auto',
+          activeDockingHarvesterIds: [],
+          queuedDockingHarvesterIds: [],
         },
       ],
     });
@@ -344,13 +350,18 @@ export function createLivingPlanetGroup(
       isHabitedUniform.value = habited ? 1.0 : 0.0;
     },
     syncStructures,
-    update(elapsedSeconds: number, deltaSeconds: number): void {
+    update(
+      elapsedSeconds: number,
+      deltaSeconds: number,
+      simElapsedSeconds = elapsedSeconds,
+    ): void {
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;
       }
-      // Slow planetary axial rotation + gentle orbital ring rotation
+      // Slow planetary axial rotation + deterministic orbital ring rotation synced with simulation
       surfaceMesh.rotation.y += deltaSeconds * 0.045;
-      orbitalGroup.rotation.y += deltaSeconds * 0.025;
+      orbitalGroup.rotation.y =
+        simElapsedSeconds * ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC;
     },
     dispose(): void {
       for (const item of disposables) {

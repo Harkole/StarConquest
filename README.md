@@ -58,6 +58,10 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
   * **Outward vs. Laden Speed**: Harvesters travel at `41.3 u/s` when empty (`-25%` from base cruise) and slow to `27.6 u/s` when full (`-50%` from base cruise), making laden Harvesters prime targets for raiders.
   * **12.5-Second Single-Rock Extraction**: Each Harvester holds `40` Ore or Crystals per mining session and takes `12.5 seconds` (`10–15s` window) to fill its bay. During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
   * **Selection & Camera Pin**: Clicking any Harvester (or Planet) in 3D space or the HUD pins the camera to follow it and displays its target resource and live cargo progress (`x / 40`); panning manually with the mouse or `WASD` breaks the camera pin.
+  * **Home Platform & Unload Rates**: Every Harvester docks directly at its originating **Refinery** (`10` units/sec unload) or **Command & Control** (`4` units/sec unload) orbital platform.
+  * **Refinery Docking Capacity (Queueing)**: A **Refinery** can only unload **`2` Harvester frigates simultaneously**; additional arriving Harvesters wait in a holding queue until a docking pad clears. This makes building multiple Refineries a key logistics investment to accelerate player income.
+  * **Platform Mining Focus**: Players can set each Refinery or C&C platform's mining target to **`Auto`**, **`Ore Only`**, or **`Crystal Only`**, directing all Harvesters assigned to that platform to focus on the needed resource.
+  * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
 * **The Central Super-Earth Advantage**:
   * Mining in the Central Neutral System without a local base forces Harvesters to transit back through wormholes to their home system—making them slow and vulnerable to enemy raids.
   * Capturing the central **Super-Earth** (or a neutral secondary planet) and constructing a local **Refinery** allows Harvesters to process resources locally in the central hub, massively accelerating income.
@@ -282,16 +286,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ---
 
 ## 12. Future Work & Known Bug Fixes
-
-### Harvester Drop-Off & Refinery Logistics Overhaul
-* **Known Issue**: Harvesters currently return to any point on the host planet's orbital ring (`44` units from planet center) and deposit cargo instantaneously instead of flying to and docking with a specific **Command & Control** or **Orbital Refinery** platform.
-* **Planned Behavior**:
-  * **Home Platform Assignment**: Every Harvester must track the specific **Refinery** or **Command & Control** platform it was built/spawned from as its `"home"` platform and fly directly to that platform's orbital docking position to unload.
-  * **Differential Unload Rates**:
-    * **Orbital Refinery**: Unloads cargo at **`10` units/second** (4 seconds for a full `40`-unit load).
-    * **Command & Control (C&C)**: Unloads cargo at **`4` units/second** (10 seconds for a full `40`-unit load).
-  * **Refinery Docking Capacity (Queueing)**: A **Refinery** can only unload **`2` Harvester frigates simultaneously**; additional arriving Harvesters must wait in a holding queue until a docking pad clears. This makes building multiple Refineries a key logistics investment to accelerate player income.
-  * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
 
 ### Orbital Ring Slot Marker Visibility
 * **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.

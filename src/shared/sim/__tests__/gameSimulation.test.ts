@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CNC_UNLOAD_RATE_PER_SECOND,
   GameSimulation,
   HARVESTER_CARGO_CAPACITY,
   HARVESTER_EMPTY_SPEED,
   HARVESTER_FULL_SPEED,
   HARVESTER_MINING_DURATION_SECONDS,
+  REFINERY_MAX_CONCURRENT_DOCKS,
+  REFINERY_UNLOAD_RATE_PER_SECOND,
 } from '../gameSimulation.ts';
 
 describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => {
@@ -19,13 +22,15 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     const homeworldState = sim.getPlanetState('system_starter_1_homeworld');
     expect(homeworldState.ownerId).toBe('player_1');
     expect(homeworldState.structures).toHaveLength(1);
-    expect(homeworldState.structures[0]?.structureId).toBe('command_and_control');
-    expect(homeworldState.structures[0]?.occupiedSlots).toEqual([0, 1]);
+    const cnc = homeworldState.structures[0];
+    expect(cnc?.structureId).toBe('command_and_control');
+    expect(cnc?.occupiedSlots).toEqual([0, 1]);
 
     const p1Harvesters = sim
       .getAllHarvesters()
       .filter((h) => h.ownerId === 'player_1');
     expect(p1Harvesters).toHaveLength(1);
+    expect(p1Harvesters[0]?.homeStructureId).toBe(cnc?.id);
   });
 
   it('enforces the Planetary Outpost rule on unclaimed secondary planets and Super-Earth', () => {
@@ -61,7 +66,7 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(refineryRes.ok).toBe(true);
   });
 
-  it('enforces 2-slot occupancy, spawns a free Harvester when a Refinery completes, and allows paid Harvesters', () => {
+  it('enforces 2-slot occupancy, spawns a free Harvester assigned to its Refinery, and allows paid Harvesters', () => {
     const sim = new GameSimulation('blitz_skirmish');
     const homeworldId = 'system_starter_1_homeworld';
 
@@ -85,15 +90,20 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
 
     sim.stepTick(25);
 
+    const homeworld = sim.getPlanetState(homeworldId);
+    const refinery = homeworld.structures.find((s) => s.structureId === 'refinery');
+    expect(refinery).toBeDefined();
+
     const p1HarvestersAfterRefinery = sim
       .getAllHarvesters()
       .filter((h) => h.ownerId === 'player_1');
     expect(p1HarvestersAfterRefinery).toHaveLength(2);
+    expect(p1HarvestersAfterRefinery[1]?.homeStructureId).toBe(refinery?.id);
 
     const queueRes = sim.submitCommand({
       type: 'QUEUE_SHIP',
       playerId: 'player_1',
-      dockyardOrRefineryId: homeworldId,
+      dockyardOrRefineryId: refinery?.id ?? homeworldId,
       shipClassId: 'harvester',
       autoRepeat: false,
     });
@@ -103,14 +113,17 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       .getAllHarvesters()
       .filter((h) => h.ownerId === 'player_1');
     expect(p1HarvestersAfterQueue).toHaveLength(3);
+    expect(p1HarvestersAfterQueue[2]?.homeStructureId).toBe(refinery?.id);
   });
 
-  it('enforces Harvester empty vs full speed, 10–15s mining duration for 40 cargo, and single-rock tracking', () => {
+  it('enforces Harvester empty vs full speed, 12.5s mining, and C&C 4/s vs Refinery 10/s unload rates', () => {
     expect(HARVESTER_CARGO_CAPACITY).toBe(40);
     expect(HARVESTER_MINING_DURATION_SECONDS).toBeGreaterThanOrEqual(10);
     expect(HARVESTER_MINING_DURATION_SECONDS).toBeLessThanOrEqual(15);
     expect(HARVESTER_EMPTY_SPEED).toBeCloseTo(41.325, 2);
     expect(HARVESTER_FULL_SPEED).toBeCloseTo(27.55, 2);
+    expect(CNC_UNLOAD_RATE_PER_SECOND).toBe(4);
+    expect(REFINERY_UNLOAD_RATE_PER_SECOND).toBe(10);
 
     const sim = new GameSimulation('standard_tactical');
     const p1 = sim.getPlayerState('player_1');
@@ -121,8 +134,9 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
 
     let observedMiningState = false;
     let observedReturnFullSpeed = false;
+    let observedUnloadingState = false;
 
-    for (let i = 0; i < 65; i++) {
+    for (let i = 0; i < 85; i++) {
       sim.stepTick(1.0);
       if (h?.state === 'mining') {
         observedMiningState = true;
@@ -132,10 +146,104 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
         observedReturnFullSpeed = true;
         expect(h.currentSpeed).toBeCloseTo(HARVESTER_FULL_SPEED, 2);
       }
+      if (h?.state === 'unloading') {
+        observedUnloadingState = true;
+      }
     }
 
     expect(observedMiningState).toBe(true);
     expect(observedReturnFullSpeed).toBe(true);
+    expect(observedUnloadingState).toBe(true);
     expect(p1.ore + p1.crystal).toBeGreaterThan(initialTotalResources);
+  });
+
+  it('limits a Refinery to 2 simultaneous unloading Harvesters (queueing the 3rd), supports resource focus, and reassigns on platform loss', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const homeworldId = 'system_starter_1_homeworld';
+    const homeworld = sim.getPlanetState(homeworldId);
+    const cnc = homeworld.structures.find(
+      (s) => s.structureId === 'command_and_control',
+    );
+    expect(cnc).toBeDefined();
+
+    // Build a Refinery on slot 2 (spawns 1st refinery harvester)
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworldId,
+        slotIndex: 2,
+        structureId: 'refinery',
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(25);
+
+    const refinery = homeworld.structures.find((s) => s.structureId === 'refinery');
+    expect(refinery).toBeDefined();
+    if (!refinery || !cnc) {
+      return;
+    }
+
+    // Queue 2 more Harvesters from that Refinery -> 3 Harvesters share this Refinery home
+    for (let i = 0; i < 2; i++) {
+      expect(
+        sim.submitCommand({
+          type: 'QUEUE_SHIP',
+          playerId: 'player_1',
+          dockyardOrRefineryId: refinery.id,
+          shipClassId: 'harvester',
+          autoRepeat: false,
+        }).ok,
+      ).toBe(true);
+    }
+
+    // Set Refinery target focus to Crystal Only
+    expect(
+      sim.submitCommand({
+        type: 'SET_REFINERY_TARGET',
+        playerId: 'player_1',
+        structureId: refinery.id,
+        targetResource: 'crystal',
+      }).ok,
+    ).toBe(true);
+
+    const refHarvesters = sim
+      .getAllHarvesters()
+      .filter((h) => h.homeStructureId === refinery.id);
+    expect(refHarvesters).toHaveLength(3);
+    for (const h of refHarvesters) {
+      expect(h.cargoType).toBe('crystal');
+    }
+
+    // Place all 3 Harvesters right next to the Refinery with full 40-unit loads
+    const refPos = sim.getStructureWorldPosition(homeworld, refinery);
+    for (const h of refHarvesters) {
+      h.position = { x: refPos.x, z: refPos.z };
+      h.cargoAmount = 40;
+      h.state = 'returning_to_dropoff';
+    }
+
+    sim.stepTick(0.5);
+
+    // Exactly 2 Harvesters should be unloading, and the 3rd must wait in the queue!
+    expect(REFINERY_MAX_CONCURRENT_DOCKS).toBe(2);
+    expect(refinery.activeDockingHarvesterIds).toHaveLength(2);
+    expect(refinery.queuedDockingHarvesterIds).toHaveLength(1);
+    const waitingHarvester = refHarvesters.find(
+      (h) => h.state === 'waiting_to_unload',
+    );
+    expect(waitingHarvester).toBeDefined();
+
+    // Advance 4 seconds (at 10 u/s, the first 2 finish unloading 40 units and the 3rd enters dock)
+    for (let i = 0; i < 8; i++) {
+      sim.stepTick(0.5);
+    }
+    expect(waitingHarvester?.state).toBe('unloading');
+
+    // Destroy the Refinery -> all 3 Harvesters automatically fall back to the closest friendly platform (C&C)
+    expect(sim.destroyOrbitalStructure(refinery.id)).toBe(true);
+    for (const h of refHarvesters) {
+      expect(h.homeStructureId).toBe(cnc.id);
+    }
   });
 });

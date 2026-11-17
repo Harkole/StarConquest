@@ -4,8 +4,14 @@ import {
   SHIP_CLASSES,
   type OrbitalStructureId,
 } from '../../shared/config/index.ts';
+import type { ResourceTargetFocus } from '../../shared/protocol/commands.ts';
 import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
-import type { HarvesterActivityState } from '../../shared/sim/gameSimulation.ts';
+import {
+  CNC_UNLOAD_RATE_PER_SECOND,
+  type HarvesterActivityState,
+  REFINERY_MAX_CONCURRENT_DOCKS,
+  REFINERY_UNLOAD_RATE_PER_SECOND,
+} from '../../shared/sim/gameSimulation.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
 
@@ -29,6 +35,10 @@ function formatHarvesterState(
       return `Mining ${resName} (Laser Locked)`;
     case 'returning_to_dropoff':
       return `Returning Laden (${cargoType.toUpperCase()})`;
+    case 'waiting_to_unload':
+      return 'Waiting for Refinery Dock (Queue)';
+    case 'unloading':
+      return `Unloading ${cargoType.toUpperCase()} at Platform`;
     case 'transiting_to_hub':
       return 'Transiting Wormhole → Central Hub';
     case 'transiting_to_home':
@@ -145,6 +155,11 @@ export function mountSystemHud(
           ? 'Ore Deposit (Silicate/Iron Boulder)'
           : 'Crystal Deposit (Pale Ice-Blue Cluster)';
 
+      const homeLookup = sim.getStructureById(selectedHarvester.homeStructureId);
+      const homeLabel = homeLookup
+        ? `${ORBITAL_STRUCTURES[homeLookup.structure.structureId].displayName} (${homeLookup.planetState.planet.name})`
+        : 'Reassigning...';
+
       detailCardHtml = `
         <div class="harvester-telemetry-card">
           <div class="telemetry-row">
@@ -160,7 +175,8 @@ export function mountSystemHud(
             </div>
           </div>
           <div class="telemetry-meta">
-            <span><strong>Target Resource:</strong> ${targetResourceLabel}</span>
+            <span><strong>Target:</strong> ${targetResourceLabel}</span>
+            <span><strong>Home:</strong> ${homeLabel}</span>
             <span><strong>Speed:</strong> ${selectedHarvester.currentSpeed.toFixed(1)} u/s</span>
           </div>
           <div class="telemetry-progress-wrap">
@@ -294,26 +310,55 @@ export function mountSystemHud(
 
     if (selectedStruct) {
       const cfg = ORBITAL_STRUCTURES[selectedStruct.structureId];
-      const canQueueHarvester =
+      const isDropoffPlatform =
         selectedStruct.isComplete &&
         selectedStruct.ownerId === playerId &&
         (selectedStruct.structureId === 'refinery' ||
           selectedStruct.structureId === 'command_and_control');
       const hCost = SHIP_CLASSES.harvester.cost;
+      const unloadRate =
+        selectedStruct.structureId === 'refinery'
+          ? REFINERY_UNLOAD_RATE_PER_SECOND
+          : CNC_UNLOAD_RATE_PER_SECOND;
+      const dockStatusText =
+        selectedStruct.structureId === 'refinery'
+          ? `Unload: ${unloadRate}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${REFINERY_MAX_CONCURRENT_DOCKS} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`
+          : `Unload: ${unloadRate}/s • Active Unloading: ${selectedStruct.activeDockingHarvesterIds.length}`;
+
+      const focusControlsHtml = isDropoffPlatform
+        ? `<div class="hud-btn-row" style="margin-top: 6px;">
+            <span class="econ-label" style="margin-right: 4px;">MINING FOCUS:</span>
+            ${(['auto', 'ore', 'crystal'] as const)
+              .map((focus) => {
+                const isActive = selectedStruct.targetResource === focus;
+                const label =
+                  focus === 'auto'
+                    ? 'Auto (Balanced)'
+                    : focus === 'ore'
+                      ? 'Ore Only'
+                      : 'Crystal Only';
+                return `<button class="hud-btn ${isActive ? 'active' : ''}" data-set-focus="${focus}" data-focus-struct="${selectedStruct.id}">${label}</button>`;
+              })
+              .join('')}
+          </div>`
+        : '';
 
       slotActionsHtml = `
-        <div class="slot-detail-box">
-          <div>
-            <strong>${cfg.displayName}</strong> (${cfg.slotCost} Slot${cfg.slotCost > 1 ? 's' : ''})
-            — ${selectedStruct.isComplete ? 'Operational' : `Constructing (${Math.ceil(selectedStruct.totalBuildTimeSeconds - selectedStruct.buildProgressSeconds)}s left)`}
+        <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <div>
+              <strong>${cfg.displayName}</strong> (${cfg.slotCost} Slot${cfg.slotCost > 1 ? 's' : ''})
+              — ${selectedStruct.isComplete ? (isDropoffPlatform ? dockStatusText : 'Operational') : `Constructing (${Math.ceil(selectedStruct.totalBuildTimeSeconds - selectedStruct.buildProgressSeconds)}s left)`}
+            </div>
+            ${
+              isDropoffPlatform
+                ? `<button class="hud-btn active" data-action="spawn-harvester" data-struct-id="${selectedStruct.id}">
+                    + Queue Harvester (${hCost.ore} Ore / ${hCost.crystal} Crystal)
+                  </button>`
+                : ''
+            }
           </div>
-          ${
-            canQueueHarvester
-              ? `<button class="hud-btn active" data-action="spawn-harvester" data-struct-id="${selectedStruct.id}">
-                  + Queue Harvester (${hCost.ore} Ore / ${hCost.crystal} Crystal)
-                </button>`
-              : ''
-          }
+          ${focusControlsHtml}
         </div>
       `;
     } else {
@@ -482,6 +527,28 @@ export function mountSystemHud(
         renderEconomyBar();
         renderHarvesterInspector();
         renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-set-focus]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const focus = btn.dataset.setFocus as ResourceTargetFocus | undefined;
+          const structId = btn.dataset.focusStruct;
+          if (!focus || !structId) {
+            return;
+          }
+          const res = simAdapter.submitPlayerCommand({
+            type: 'SET_REFINERY_TARGET',
+            playerId,
+            structureId: structId,
+            targetResource: focus,
+          });
+          statusBannerMessage = res.ok
+            ? `Platform mining focus set to ${focus.toUpperCase()}`
+            : `Cannot set focus: ${res.reason}`;
+          renderMainPanel();
+        });
       });
 
     mainBodyEl
