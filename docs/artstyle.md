@@ -91,9 +91,10 @@ Each ship and orbital platform is designed and locked in one at a time.
 * **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
 
 #### Anatomical Breakdown & Orbital Clearance Rules
-1. **Planetary Clearance Constraint (Never Clip Planet or Atmosphere)**:
+1. **Triple-Tower 2-Slot Silhouette & Planetary Clearance**:
    * On a Large Homeworld (`radius = 28`, atmosphere `31.5`), the orbital ring sits at `42.56` units (`11.06` units clear of the atmosphere).
-   * The "Prometheus" C&C is sized so its horizontal radial docking arms extend at most `7.2` units from the station center—leaving a clean `3.8+` unit deep-space gap from the planet's outer atmosphere halo, while its vertical upper spire (`+Y`) and lower conical ballast hull (`-Y`) rise and descend perpendicular to the orbital plane.
+   * **Central Citadel (`1.5x` Scale)**: Anchored at the midpoint between the two occupied slots; its horizontal radial docking arms reach `~9.4` units inward (`-X`), staying clear of the planet's outer atmosphere halo while its upper spire (`+Y`) and lower conical ballast hull (`-Y`) tower vertically.
+   * **Flanking Left & Right Wing Towers (`0.68x` Scale)**: Positioned at `±12.8` units along the curved orbital arc and joined to the central citadel by **armored skybridge causeways** with dark structural trusses and glowing cyan transit conduits—filling the full 2-slot orbital section.
 2. **Central Command Core & Upper Observation Deck**:
    * Multi-tiered stepped octagonal/cylindrical central hub in Gunmetal Slate (`#3e4652`) bound by Dark Charcoal (`#1e232a`) structural collars.
    * **Upper Observation Deck**: Panoramic wrap-around angled bridge ring with glowing cyan-white/warm-amber observation windows (`#38bdf8` / `#fbbf24`) segmented by dark structural mullions, topped by communications dishes and a red-tipped sensor mast.

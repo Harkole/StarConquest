@@ -189,20 +189,17 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     renderer.dispose();
   });
 
-  it('constructs the Prometheus Command & Control station with planetary atmosphere clearance', () => {
+  it('constructs the triple-tower Prometheus Command & Control station with planetary atmosphere clearance', () => {
     const library = new StationModelLibrary();
-    const cncGroup = library.buildStationMesh('command_and_control', true);
-    expect(cncGroup.children.length).toBeGreaterThan(10);
+    const cncGroup = library.buildStationMesh('command_and_control', true, 42.56);
+    expect(cncGroup.children.length).toBeGreaterThanOrEqual(5); // 1 center + 2 wing towers + 2 skybridges
 
     const bbox = new THREE.Box3().setFromObject(cncGroup);
-    const maxHorizontalReach = Math.max(
-      Math.abs(bbox.min.x),
-      Math.abs(bbox.max.x),
-      Math.abs(bbox.min.z),
-      Math.abs(bbox.max.z),
-    );
-    // Homeworld radius = 28, atmosphere = 31.5, orbitalRingRadius = 42.56 -> clearance = 11.06
-    expect(maxHorizontalReach).toBeLessThan(8.0);
+    // Inward (-X) radial reach must stay strictly inside the 11.06u Homeworld atmosphere clearance
+    const inwardRadialReach = Math.abs(bbox.min.x);
+    expect(inwardRadialReach).toBeLessThan(10.5);
+    // Tangent Z span fills the 2-slot orbital section (~34u across)
+    expect(bbox.max.z - bbox.min.z).toBeGreaterThan(25);
 
     library.dispose();
   });

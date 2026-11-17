@@ -206,6 +206,15 @@ export class StationModelLibrary {
   private readonly cncBeaconTipGeom = this.registerGeom(
     new THREE.SphereGeometry(0.09, 8, 8),
   );
+  private readonly cncBridgeDeckGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.55, 0.42, 7.6),
+  );
+  private readonly cncBridgeTrussGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.85, 0.65, 0.35),
+  );
+  private readonly cncBridgeConduitGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.32, 0.24, 7.6),
+  );
 
   public buildStationMesh(
     structureId: OrbitalStructureId,
@@ -213,7 +222,7 @@ export class StationModelLibrary {
     orbitalRingRadius = 42.56,
   ): THREE.Group {
     if (structureId === 'command_and_control') {
-      return this.buildPrometheusCommandAndControl(isComplete);
+      return this.buildPrometheusCommandAndControl(isComplete, orbitalRingRadius);
     }
     if (structureId === 'refinery') {
       return this.buildHephaesRefinery(isComplete, orbitalRingRadius);
@@ -269,10 +278,68 @@ export class StationModelLibrary {
 
   /**
    * Builds the "Prometheus" Star-Station Command & Control (docs/artstyle.md #02).
-   * Sized so radial arms reach ~6.8u from center—leaving >4u clearance from the Homeworld's
-   * outer atmosphere halo while keeping its vertical upper/lower spires imposing.
+   * Features a 1.5x scale central citadel flanked by left and right wing citadel towers
+   * joined via armored skybridges along the host planet's orbital arc to fill its 2-slot footprint.
    */
-  private buildPrometheusCommandAndControl(isComplete: boolean): THREE.Group {
+  private buildPrometheusCommandAndControl(
+    isComplete: boolean,
+    orbitalRingRadius: number,
+  ): THREE.Group {
+    const complexRoot = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+
+    // 1. Central Citadel Tower (1.5x scale)
+    const centerTower = this.buildPrometheusTowerUnit(isComplete);
+    centerTower.scale.setScalar(1.5);
+    complexRoot.add(centerTower);
+
+    // 2. Left & Right Flanking Citadel Towers + Armored Skybridges along the orbital arc
+    const ringR = Math.max(24, orbitalRingRadius);
+    const wingArcOffset = 12.8;
+    const bridgeMidArc = 6.9;
+
+    for (const side of [-1, 1]) {
+      const wingTheta = (side * wingArcOffset) / ringR;
+      const wingTower = this.buildPrometheusTowerUnit(isComplete);
+      wingTower.scale.setScalar(0.68);
+      wingTower.position.set(
+        ringR * Math.cos(wingTheta) - ringR,
+        0,
+        ringR * Math.sin(wingTheta),
+      );
+      wingTower.rotation.y = -wingTheta;
+      complexRoot.add(wingTower);
+
+      // Joined Armored Skybridge Causeway connecting center citadel to flanking tower
+      const bridgeTheta = (side * bridgeMidArc) / ringR;
+      const bridgeGroup = new THREE.Group();
+      bridgeGroup.position.set(
+        ringR * Math.cos(bridgeTheta) - ringR,
+        -0.12,
+        ringR * Math.sin(bridgeTheta),
+      );
+      bridgeGroup.rotation.y = -bridgeTheta;
+
+      bridgeGroup.add(new THREE.Mesh(this.cncBridgeDeckGeom, hullMat));
+      const conduit = new THREE.Mesh(this.cncBridgeConduitGeom, obsMat);
+      conduit.position.set(0, 0.22, 0);
+      bridgeGroup.add(conduit);
+
+      for (const tz of [-2.4, 0, 2.4]) {
+        const truss = new THREE.Mesh(this.cncBridgeTrussGeom, frameMat);
+        truss.position.set(0, 0, tz);
+        bridgeGroup.add(truss);
+      }
+
+      complexRoot.add(bridgeGroup);
+    }
+
+    return complexRoot;
+  }
+
+  private buildPrometheusTowerUnit(isComplete: boolean): THREE.Group {
     const root = new THREE.Group();
     const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
     const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
