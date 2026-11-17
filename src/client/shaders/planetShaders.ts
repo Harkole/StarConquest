@@ -197,10 +197,10 @@ void main() {
   float cloudShadow = sampleCloudDensity(shadowSampleDir, uTime);
   float shadowFactor = 1.0 - cloudShadow * 0.52;
 
-  // Diffuse lighting + soft terminator wrap
+  // Diffuse lighting + crisp terminator transition into deep night
   float ndotl = dot(bumpedNormal, sunDir);
-  float diffuse = smoothstep(-0.12, 0.85, ndotl) * shadowFactor;
-  float ambient = 0.07;
+  float diffuse = smoothstep(-0.04, 0.82, ndotl) * shadowFactor;
+  float ambient = 0.012;
 
   // Specular sun reflection across ocean water (masked by land & clouds)
   vec3 halfVec = normalize(sunDir + viewDir);
@@ -209,13 +209,13 @@ void main() {
   vec3 specColor = vec3(1.0, 0.93, 0.78) * oceanSpec * 0.95;
 
   // Night-side planetary city lights on land for Terran & Super-Earth worlds
-  float nightMask = smoothstep(0.1, -0.25, ndotl) * isLand * (1.0 - polarIce);
+  float nightMask = smoothstep(0.05, -0.22, ndotl) * isLand * (1.0 - polarIce);
   float cityCluster = smoothstep(0.64, 0.78, detail) * smoothstep(0.45, 0.05, landHeight);
   vec3 cityGlow = vec3(1.0, 0.72, 0.32) * nightMask * cityCluster * (0.65 + 0.55 * uIsSuperEarth);
 
-  // Subtle atmospheric Fresnel scatter on surface horizon
+  // Subtle atmospheric Fresnel scatter on sunlit surface horizon only
   float fresnel = pow(1.0 - max(0.0, dot(nWorld, viewDir)), 3.2);
-  vec3 horizonScatter = uAtmosphereColor * fresnel * smoothstep(-0.2, 0.6, ndotl) * 0.45;
+  vec3 horizonScatter = uAtmosphereColor * fresnel * smoothstep(-0.08, 0.55, ndotl) * 0.42;
 
   vec3 finalColor = baseAlbedo * (ambient + diffuse * 1.1) + specColor + cityGlow + horizonScatter;
   gl_FragColor = vec4(finalColor, 1.0);
@@ -258,15 +258,16 @@ void main() {
   float cloudAlpha = smoothstep(threshold - 0.08, threshold + 0.24, rawCloud);
 
   float ndotl = dot(nWorld, sunDir);
-  float dayLight = smoothstep(-0.18, 0.65, ndotl);
+  float dayLight = smoothstep(-0.08, 0.62, ndotl);
   // Warm golden sunset scattering along the terminator band
-  float terminator = exp(-pow((ndotl - 0.02) * 5.0, 2.0));
-  vec3 sunsetTint = vec3(1.0, 0.55, 0.28) * terminator * 0.55;
+  float terminator = exp(-pow((ndotl - 0.02) * 5.5, 2.0));
+  vec3 sunsetTint = vec3(1.0, 0.55, 0.28) * terminator * 0.52;
 
-  vec3 cloudColor = mix(vec3(0.06, 0.1, 0.18), vec3(0.96, 0.98, 1.0), dayLight) + sunsetTint;
-  cloudColor = mix(cloudColor, uAtmosphereColor, 0.12);
+  // Keep night-side clouds very dark and only tint sunlit clouds with atmosphere color
+  vec3 cloudColor = mix(vec3(0.008, 0.012, 0.022), vec3(0.95, 0.98, 1.0), dayLight) + sunsetTint;
+  cloudColor = mix(cloudColor, uAtmosphereColor, 0.12 * dayLight);
 
-  gl_FragColor = vec4(cloudColor, cloudAlpha * 0.88);
+  gl_FragColor = vec4(cloudColor, cloudAlpha * (0.45 + 0.43 * dayLight));
 }
 `;
 
@@ -285,13 +286,13 @@ void main() {
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 sunDir = normalize(uSunDirection);
 
-  // BackSide outer shell rim glow
+  // BackSide outer shell rim glow — strong on sunlit crescent, near-black on night side
   float viewDot = abs(dot(nWorld, viewDir));
-  float rim = pow(clamp(1.0 - viewDot, 0.0, 1.0), 2.4);
-  float sunLight = smoothstep(-0.35, 0.55, dot(-nWorld, sunDir));
-  float alpha = rim * (0.28 + 0.72 * sunLight) * uAtmosphereIntensity;
+  float rim = pow(clamp(1.0 - viewDot, 0.0, 1.0), 2.5);
+  float sunLight = smoothstep(-0.15, 0.52, dot(-nWorld, sunDir));
+  float alpha = rim * (0.03 + 0.97 * sunLight) * uAtmosphereIntensity;
 
-  gl_FragColor = vec4(uAtmosphereColor * (1.1 + 0.5 * sunLight), clamp(alpha, 0.0, 0.92));
+  gl_FragColor = vec4(uAtmosphereColor * (0.25 + 1.25 * sunLight), clamp(alpha, 0.0, 0.92));
 }
 `;
 
@@ -333,7 +334,7 @@ void main() {
   vec3 albedo = mix(darkBasalt, highRock, smoothstep(0.25, 0.78, rockBase * 0.7 + craters * 0.3));
 
   float ndotl = max(0.0, dot(bumpedNormal, sunDir));
-  vec3 litRock = albedo * (0.1 + ndotl * 0.95);
+  vec3 litRock = albedo * (0.015 + ndotl * 0.98);
 
   // Animated flowing magma fissures & glowing caldera pools (HDR bloom trigger)
   vec3 flowOffset = vec3(uTime * 0.06, -uTime * 0.045, uTime * 0.05);
@@ -347,12 +348,13 @@ void main() {
   vec3 magmaCore = mix(vec3(1.0, 0.18, 0.02), vec3(1.4, 0.82, 0.18), smoothstep(0.3, 0.95, totalLava));
   vec3 lavaEmission = magmaCore * totalLava * uLavaEmissionStrength * pulse;
 
-  // Crystalline / metallic ore glints on Barren Rock worlds
+  // Crystalline / metallic ore glints on sunlit Barren Rock worlds
+  float sunMask = smoothstep(-0.1, 0.55, dot(nWorld, sunDir));
   float crystalVein = smoothstep(0.84, 0.92, craters) * (1.0 - uIsVolcanicLava) * (1.0 - ridge);
-  vec3 oreGlint = vec3(0.25, 0.75, 1.0) * crystalVein * 0.65;
+  vec3 oreGlint = vec3(0.25, 0.75, 1.0) * crystalVein * (0.12 + 0.55 * sunMask);
 
   float fresnel = pow(1.0 - max(0.0, dot(nWorld, viewDir)), 3.0);
-  vec3 rimHaze = uAtmosphereColor * fresnel * 0.38;
+  vec3 rimHaze = uAtmosphereColor * fresnel * (0.04 + 0.36 * sunMask);
 
   vec3 finalColor = mix(litRock + oreGlint, lavaEmission, totalLava * 0.85) + lavaEmission * 0.45 + rimHaze;
   gl_FragColor = vec4(finalColor, 1.0);

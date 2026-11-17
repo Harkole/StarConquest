@@ -217,7 +217,7 @@ void main() {
   float ndotl = max(0.0, dot(nWorld, sunDir));
   // Oren-Nayar style rough diffuse wrap + dark crater ambient occlusion
   float roughDiffuse = pow(ndotl, 0.85) * (0.55 + 0.45 * crevices);
-  float ambient = 0.09 * (0.5 + 0.5 * crevices);
+  float ambient = 0.025 * (0.5 + 0.5 * crevices);
 
   vec3 finalColor = rockColor * (ambient + roughDiffuse * 1.15);
   gl_FragColor = vec4(finalColor, 1.0);

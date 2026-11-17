@@ -72,7 +72,7 @@ export function createStarSystemEnvironment(
 
   const ambientLight = new THREE.AmbientLight(
     new THREE.Color(...palette.primaryNebula),
-    0.38,
+    0.12,
   );
   rootGroup.add(ambientLight);
 
