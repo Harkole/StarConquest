@@ -9,7 +9,6 @@ import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
 import {
   CNC_UNLOAD_RATE_PER_SECOND,
   type HarvesterActivityState,
-  REFINERY_MAX_CONCURRENT_DOCKS,
   REFINERY_UNLOAD_RATE_PER_SECOND,
 } from '../../shared/sim/gameSimulation.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
@@ -320,10 +319,8 @@ export function mountSystemHud(
         selectedStruct.structureId === 'refinery'
           ? REFINERY_UNLOAD_RATE_PER_SECOND
           : CNC_UNLOAD_RATE_PER_SECOND;
-      const dockStatusText =
-        selectedStruct.structureId === 'refinery'
-          ? `Unload: ${unloadRate}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${REFINERY_MAX_CONCURRENT_DOCKS} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`
-          : `Unload: ${unloadRate}/s • Active Unloading: ${selectedStruct.activeDockingHarvesterIds.length}`;
+      const maxDocks = sim.getMaxConcurrentDocks(selectedStruct);
+      const dockStatusText = `Unload: ${unloadRate}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${maxDocks} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`;
 
       const focusControlsHtml = isDropoffPlatform
         ? `<div class="hud-btn-row" style="margin-top: 6px;">

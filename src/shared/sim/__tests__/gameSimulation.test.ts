@@ -246,4 +246,72 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       expect(h.homeStructureId).toBe(cnc.id);
     }
   });
+
+  it('caps Command & Control concurrent Harvester docks at 1 in Standard/Grand and 2 in Blitz Skirmish', () => {
+    // 1. Standard Tactical -> C&C cap = 1
+    const stdSim = new GameSimulation('standard_tactical');
+    const stdHome = stdSim.getPlanetState('system_starter_1_homeworld');
+    const stdCnc = stdHome.structures[0];
+    expect(stdCnc).toBeDefined();
+    if (!stdCnc) {
+      return;
+    }
+    expect(stdSim.getMaxConcurrentDocks(stdCnc)).toBe(1);
+
+    stdSim.submitCommand({
+      type: 'QUEUE_SHIP',
+      playerId: 'player_1',
+      dockyardOrRefineryId: stdCnc.id,
+      shipClassId: 'harvester',
+      autoRepeat: false,
+    });
+
+    const stdPos = stdSim.getStructureWorldPosition(stdHome, stdCnc);
+    const stdHarvesters = stdSim
+      .getAllHarvesters()
+      .filter((h) => h.ownerId === 'player_1');
+    expect(stdHarvesters).toHaveLength(2);
+    for (const h of stdHarvesters) {
+      h.position = { x: stdPos.x, z: stdPos.z };
+      h.cargoAmount = 40;
+      h.state = 'returning_to_dropoff';
+    }
+    stdSim.stepTick(0.5);
+    expect(stdCnc.activeDockingHarvesterIds).toHaveLength(1);
+    expect(stdCnc.queuedDockingHarvesterIds).toHaveLength(1);
+
+    // 2. Blitz Skirmish -> C&C cap = 2
+    const blitzSim = new GameSimulation('blitz_skirmish');
+    const blitzHome = blitzSim.getPlanetState('system_starter_1_homeworld');
+    const blitzCnc = blitzHome.structures[0];
+    expect(blitzCnc).toBeDefined();
+    if (!blitzCnc) {
+      return;
+    }
+    expect(blitzSim.getMaxConcurrentDocks(blitzCnc)).toBe(2);
+
+    for (let i = 0; i < 2; i++) {
+      blitzSim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: blitzCnc.id,
+        shipClassId: 'harvester',
+        autoRepeat: false,
+      });
+    }
+
+    const blitzPos = blitzSim.getStructureWorldPosition(blitzHome, blitzCnc);
+    const blitzHarvesters = blitzSim
+      .getAllHarvesters()
+      .filter((h) => h.ownerId === 'player_1');
+    expect(blitzHarvesters).toHaveLength(3);
+    for (const h of blitzHarvesters) {
+      h.position = { x: blitzPos.x, z: blitzPos.z };
+      h.cargoAmount = 40;
+      h.state = 'returning_to_dropoff';
+    }
+    blitzSim.stepTick(0.5);
+    expect(blitzCnc.activeDockingHarvesterIds).toHaveLength(2);
+    expect(blitzCnc.queuedDockingHarvesterIds).toHaveLength(1);
+  });
 });

@@ -929,8 +929,7 @@ export class GameSimulation {
       };
       this.movePositionTowards(harvester, holdPos, speed * deltaSeconds, 1.5);
 
-      const maxDocks =
-        struct.structureId === 'refinery' ? REFINERY_MAX_CONCURRENT_DOCKS : Infinity;
+      const maxDocks = this.getMaxConcurrentDocks(struct);
       const isFirstInQueue = struct.queuedDockingHarvesterIds[0] === harvester.id;
       if (struct.activeDockingHarvesterIds.length < maxDocks && isFirstInQueue) {
         struct.queuedDockingHarvesterIds.shift();
@@ -997,12 +996,21 @@ export class GameSimulation {
     }
   }
 
+  public getMaxConcurrentDocks(structure: OrbitalStructureInstance): number {
+    if (structure.structureId === 'refinery') {
+      return REFINERY_MAX_CONCURRENT_DOCKS;
+    }
+    if (structure.structureId === 'command_and_control') {
+      return MATCH_PRESETS[this.presetId].cncMaxConcurrentDocks;
+    }
+    return 0;
+  }
+
   private enterPlatformDockOrQueue(
     harvester: HarvesterUnitState,
     structure: OrbitalStructureInstance,
   ): void {
-    const maxDocks =
-      structure.structureId === 'refinery' ? REFINERY_MAX_CONCURRENT_DOCKS : Infinity;
+    const maxDocks = this.getMaxConcurrentDocks(structure);
 
     if (structure.activeDockingHarvesterIds.includes(harvester.id)) {
       harvester.state = 'unloading';

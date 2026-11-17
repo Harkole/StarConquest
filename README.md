@@ -59,7 +59,7 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
   * **12.5-Second Single-Rock Extraction**: Each Harvester holds `40` Ore or Crystals per mining session and takes `12.5 seconds` (`10–15s` window) to fill its bay. During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
   * **Selection & Camera Pin**: Clicking any Harvester (or Planet) in 3D space or the HUD pins the camera to follow it and displays its target resource and live cargo progress (`x / 40`); panning manually with the mouse or `WASD` breaks the camera pin.
   * **Home Platform & Unload Rates**: Every Harvester docks directly at its originating **Refinery** (`10` units/sec unload) or **Command & Control** (`4` units/sec unload) orbital platform.
-  * **Refinery Docking Capacity (Queueing)**: A **Refinery** can only unload **`2` Harvester frigates simultaneously**; additional arriving Harvesters wait in a holding queue until a docking pad clears. This makes building multiple Refineries a key logistics investment to accelerate player income.
+  * **Platform Docking Capacity (Queueing)**: A **Refinery** can unload **`2` Harvester frigates simultaneously** (`20/s` max), while a **Command & Control** is capped at **`1` concurrent Harvester dock** in Standard Tactical / Grand Conquest (`2` in **Blitz Skirmish**). Additional arriving Harvesters wait in a holding queue until a docking pad clears, making Refineries essential for scaling income.
   * **Platform Mining Focus**: Players can set each Refinery or C&C platform's mining target to **`Auto`**, **`Ore Only`**, or **`Crystal Only`**, directing all Harvesters assigned to that platform to focus on the needed resource.
   * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
 * **The Central Super-Earth Advantage**:
@@ -294,10 +294,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Orbital Ring Slot Marker Visibility
 * **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.
 * **Planned Fix**: Hide the orbital build slot dot/halo meshes whenever a slot is occupied by a constructed (or under-construction) platform, leaving only genuinely empty slots visible on the orbital ring.
-
-### Command & Control Docking Cap
-* **Known Issue**: While **Refineries** are capped at `2` concurrent Harvester docks (`10/s` each = `20/s` max), **Command & Control** currently allows unlimited simultaneous Harvester docks (`4/s` each), which lets C&C Harvester spam outscale a Refinery's throughput.
-* **Planned Fix**: Cap Command & Control at `1` or `2` concurrent Harvester docks (`4/s`–`8/s` max) so Refineries remain strictly required to scale mid-game income.
 
 ### Blitz Skirmish Economy Multiplier Scaling
 * **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
