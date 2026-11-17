@@ -15,12 +15,25 @@ import {
 } from '../shaders/nebulaShaders.ts';
 import {
   WORMHOLE_FRAGMENT_SHADER,
+  WORMHOLE_PROXIMITY_RADIUS,
   WORMHOLE_VERTEX_SHADER,
 } from '../shaders/wormholeShader.ts';
+
+export interface WormholeInstanceHandle {
+  readonly wormholeId: string;
+  readonly destinationSystemId: string;
+  readonly position: { readonly x: number; readonly z: number };
+  isOpen(): boolean;
+  getOpenProgress(): number;
+  setManualOpen(open: boolean): void;
+  toggleManualOpen(): boolean;
+  updateShipProximity(shipPositions: readonly { readonly x: number; readonly z: number }[]): void;
+}
 
 export interface SpaceEnvironmentHandle {
   readonly rootGroup: THREE.Group;
   readonly sunDirection: THREE.Vector3;
+  readonly wormholes: readonly WormholeInstanceHandle[];
   update(elapsedSeconds: number, deltaSeconds: number): void;
   dispose(): void;
 }
@@ -267,15 +280,31 @@ export function createStarSystemEnvironment(
   beltsGroup.add(oreInstanced, crystalInstanced);
   rootGroup.add(beltsGroup);
 
-  // 5. Swirling Wormhole Vortex Choke Points (Perimeter Gateways)
-  const wormholeDiskGeom = new THREE.PlaneGeometry(78, 78);
+  // 5. DS9-Style Proximity Wormhole Gateways (Compact Dormant Marker -> Dramatic 3D Funnel Vortex)
+  const wormholeDiskGeom = new THREE.PlaneGeometry(115, 115, 64, 64);
   wormholeDiskGeom.rotateX(-Math.PI / 2);
-  const wormholeRingGeom = new THREE.TorusGeometry(34, 0.7, 12, 64);
-  wormholeRingGeom.rotateX(Math.PI / 2);
-  disposables.push(wormholeDiskGeom, wormholeRingGeom);
+  const dormantMarkerRingGeom = new THREE.TorusGeometry(8.5, 0.32, 10, 48);
+  dormantMarkerRingGeom.rotateX(Math.PI / 2);
+  const beaconPylonGeom = new THREE.OctahedronGeometry(1.3, 0);
+  disposables.push(wormholeDiskGeom, dormantMarkerRingGeom, beaconPylonGeom);
+
+  interface InternalWormholeState {
+    readonly handle: WormholeInstanceHandle;
+    readonly markerGroup: THREE.Group;
+    readonly openProgressUniform: { value: number };
+    readonly flashBurstUniform: { value: number };
+    targetOpen: boolean;
+    manualOverride: boolean | null;
+    openProgress: number;
+    flashBurst: number;
+  }
+
+  const wormholeStates: InternalWormholeState[] = [];
 
   for (const item of wormholesInSystem) {
     const whTimeUniform = { value: 0 };
+    const openProgressUniform = { value: 0 };
+    const flashBurstUniform = { value: 0 };
     timeUniforms.push(whTimeUniform);
 
     const whMat = new THREE.ShaderMaterial({
@@ -287,18 +316,21 @@ export function createStarSystemEnvironment(
       blending: THREE.AdditiveBlending,
       uniforms: {
         uTime: whTimeUniform,
+        uOpenProgress: openProgressUniform,
+        uFlashBurst: flashBurstUniform,
         uOuterColor: { value: new THREE.Color(...palette.primaryNebula) },
         uInnerColor: {
           value: new THREE.Color(...palette.accentGlow).multiplyScalar(1.6),
         },
       },
     });
-    const ringMat = new THREE.MeshBasicMaterial({
+
+    const markerMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(...palette.accentGlow),
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.65,
     });
-    disposables.push(whMat, ringMat);
+    disposables.push(whMat, markerMat);
 
     const whGroup = new THREE.Group();
     whGroup.position.set(item.localPosition.x, 0.5, item.localPosition.z);
@@ -307,19 +339,96 @@ export function createStarSystemEnvironment(
       destinationSystemId: item.destinationSystemId,
     };
 
+    // Compact dormant marker ring + 4 subspace navigation beacons
+    const markerGroup = new THREE.Group();
+    markerGroup.add(new THREE.Mesh(dormantMarkerRingGeom, markerMat));
+    for (let b = 0; b < 4; b++) {
+      const a = (b * Math.PI) / 2;
+      const pylon = new THREE.Mesh(beaconPylonGeom, markerMat);
+      pylon.position.set(Math.cos(a) * 8.5, 0, Math.sin(a) * 8.5);
+      markerGroup.add(pylon);
+    }
+
+    whGroup.add(markerGroup);
     whGroup.add(new THREE.Mesh(wormholeDiskGeom, whMat));
-    whGroup.add(new THREE.Mesh(wormholeRingGeom, ringMat));
     rootGroup.add(whGroup);
+
+    const state: InternalWormholeState = {
+      markerGroup,
+      openProgressUniform,
+      flashBurstUniform,
+      targetOpen: false,
+      manualOverride: null,
+      openProgress: 0,
+      flashBurst: 0,
+      handle: {
+        wormholeId: item.wormhole.id,
+        destinationSystemId: item.destinationSystemId,
+        position: item.localPosition,
+        isOpen(): boolean {
+          return state.targetOpen;
+        },
+        getOpenProgress(): number {
+          return state.openProgress;
+        },
+        setManualOpen(open: boolean): void {
+          if (state.targetOpen !== open) {
+            state.flashBurst = 1.0; // Trigger DS9 subspace flash burst on state change
+          }
+          state.manualOverride = open;
+          state.targetOpen = open;
+        },
+        toggleManualOpen(): boolean {
+          const next = !state.targetOpen;
+          state.handle.setManualOpen(next);
+          return next;
+        },
+        updateShipProximity(
+          shipPositions: readonly { readonly x: number; readonly z: number }[],
+        ): void {
+          const anyShipNear = shipPositions.some(
+            (pos) =>
+              Math.hypot(
+                pos.x - item.localPosition.x,
+                pos.z - item.localPosition.z,
+              ) <= WORMHOLE_PROXIMITY_RADIUS,
+          );
+          const desired = state.manualOverride ?? anyShipNear;
+          if (desired !== state.targetOpen) {
+            state.targetOpen = desired;
+            state.flashBurst = 1.0; // Erupt with DS9 flash burst as wormhole opens/closes
+          }
+        },
+      },
+    };
+
+    wormholeStates.push(state);
   }
 
   return {
     rootGroup,
     sunDirection,
+    wormholes: wormholeStates.map((s) => s.handle),
     update(elapsedSeconds: number, deltaSeconds: number): void {
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;
       }
       beltsGroup.rotation.y += deltaSeconds * 0.004;
+
+      for (const wh of wormholeStates) {
+        const targetVal = wh.targetOpen ? 1.0 : 0.0;
+        const speed = wh.targetOpen ? 0.85 : 1.15;
+        if (wh.openProgress < targetVal) {
+          wh.openProgress = Math.min(targetVal, wh.openProgress + deltaSeconds * speed);
+        } else if (wh.openProgress > targetVal) {
+          wh.openProgress = Math.max(targetVal, wh.openProgress - deltaSeconds * speed);
+        }
+        wh.flashBurst = Math.max(0, wh.flashBurst - deltaSeconds * 1.35);
+
+        wh.openProgressUniform.value = wh.openProgress;
+        wh.flashBurstUniform.value = wh.flashBurst;
+        wh.markerGroup.rotation.y += deltaSeconds * (0.4 + wh.openProgress * 1.8);
+      }
     },
     dispose(): void {
       for (const item of disposables) {

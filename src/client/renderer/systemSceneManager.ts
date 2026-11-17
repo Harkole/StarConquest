@@ -12,6 +12,7 @@ import {
 import {
   createStarSystemEnvironment,
   type SpaceEnvironmentHandle,
+  type WormholeInstanceHandle,
 } from './spaceEnvironmentFactory.ts';
 
 export class SystemSceneManager {
@@ -45,6 +46,10 @@ export class SystemSceneManager {
 
   public getActivePlanets(): readonly PlanetNode[] {
     return this.activeSystem.planets;
+  }
+
+  public getActiveWormholes(): readonly WormholeInstanceHandle[] {
+    return this.environmentHandle?.wormholes ?? [];
   }
 
   public loadSystem(systemId: string): StarSystemNode {
@@ -112,6 +117,17 @@ export class SystemSceneManager {
             ? 78
             : 60;
     this.cameraController.focusOn(planet.position.x, planet.position.z, zoomDistance);
+  }
+
+  public focusAndToggleWormhole(wormholeId: string): boolean {
+    const wh = this.environmentHandle?.wormholes.find(
+      (item) => item.wormholeId === wormholeId,
+    );
+    if (!wh) {
+      return false;
+    }
+    this.cameraController.focusOn(wh.position.x, wh.position.z, 92);
+    return wh.toggleManualOpen();
   }
 
   public focusSystemOverview(): void {

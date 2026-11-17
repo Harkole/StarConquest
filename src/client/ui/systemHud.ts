@@ -34,6 +34,19 @@ export function mountSystemHud(
       })
       .join('');
 
+    const wormholesHtml = sceneManager
+      .getActiveWormholes()
+      .map((wh) => {
+        const destSys = galaxy.systems.find((s) => s.id === wh.destinationSystemId);
+        const destName = destSys?.name ?? wh.destinationSystemId;
+        const isOpen = wh.isOpen();
+        return `<button class="hud-btn ${isOpen ? 'active' : ''}" data-wormhole-id="${wh.wormholeId}">
+          Gateway → ${destName}
+          <span class="hud-badge">${isOpen ? 'OPEN VORTEX' : 'DORMANT (CLICK TO OPEN)'}</span>
+        </button>`;
+      })
+      .join('');
+
     container.innerHTML = `
       <div class="hud-header">
         <div>
@@ -51,6 +64,11 @@ export function mountSystemHud(
       <div class="hud-section">
         <div class="hud-label">Planetary Orbital Rings (Click to Focus Camera)</div>
         <div class="hud-planet-row">${planetButtonsHtml}</div>
+      </div>
+
+      <div class="hud-section">
+        <div class="hud-label">Wormhole Gateways (Dormant Until Ship Approaches — Click to Focus & Trigger Opening)</div>
+        <div class="hud-btn-row">${wormholesHtml}</div>
       </div>
 
       <div class="hud-controls-hint">
@@ -75,6 +93,16 @@ export function mountSystemHud(
         const planetId = btn.dataset.planetId;
         if (planetId) {
           sceneManager.focusPlanet(planetId);
+        }
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-wormhole-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const wormholeId = btn.dataset.wormholeId;
+        if (wormholeId) {
+          sceneManager.focusAndToggleWormhole(wormholeId);
+          renderHud();
         }
       });
     });

@@ -186,7 +186,7 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
      * **Scorched Atmosphere**: Warm orange/ember Fresnel rim haze.
 3. **Orbital Rings, Wormholes & Combat VFX**:
    * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit (including the 2-slot Command & Control flagship station on starter Homeworlds).
-   * **Wormholes**: Swirling gravitational lensing / accretion vortex shaders (`src/client/shaders/wormholeShader.ts`) with particle inflow to visually highlight spatial choke points.
+   * **Wormholes (DS9-Style Proximity Opening Event)**: Wormholes (`src/client/shaders/wormholeShader.ts` & `src/client/renderer/spaceEnvironmentFactory.ts`) rest as a compact, shimmering subspace anomaly marker when idle. When a ship approaches within proximity (`240` units—or when triggered from the HUD for inspection), the wormhole erupts with a Deep Space 9-inspired gravimetric cross-flare and shockwave ring before unfurling into a 3D depth-displaced swirling cloud funnel and luminous tunnel throat.
    * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`), Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
 4. **Orbital Camera & Sector Navigation (`src/client/renderer/orbitalCamera.ts` & `src/client/ui/systemHud.ts`)**:
    * **Pan**: Left-drag, middle-drag, or `WASD` / Arrow keys across the star system plane.

@@ -5,6 +5,7 @@ import {
   computeOrbitalSlotPositions,
   createLivingPlanetGroup,
 } from '../../renderer/planetFactory.ts';
+import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import {
   ASTEROID_ROCK_FRAGMENT_SHADER,
   createCraggyAsteroidGeometry,
@@ -21,7 +22,10 @@ import {
   TERRAN_SURFACE_FRAGMENT_SHADER,
   VOLCANIC_ROCK_SURFACE_FRAGMENT_SHADER,
 } from '../planetShaders.ts';
-import { WORMHOLE_FRAGMENT_SHADER } from '../wormholeShader.ts';
+import {
+  WORMHOLE_FRAGMENT_SHADER,
+  WORMHOLE_PROXIMITY_RADIUS,
+} from '../wormholeShader.ts';
 
 describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
   it('defines distinct procedural FBM nebula palettes for all 5 galaxy systems', () => {
@@ -103,5 +107,51 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     rockGeom.dispose();
     crystalGeom.dispose();
+  });
+
+  it('keeps wormholes dormant until a ship enters proximity or manual opening is triggered', () => {
+    const galaxy = createFiveSystemGalaxy();
+    const starterSystem = galaxy.systems[0];
+    const wh = galaxy.wormholes[0];
+    expect(starterSystem).toBeDefined();
+    expect(wh).toBeDefined();
+
+    if (starterSystem && wh) {
+      const env = createStarSystemEnvironment(starterSystem, [
+        {
+          wormhole: wh,
+          localPosition: wh.fromPosition,
+          destinationSystemId: wh.toSystemId,
+        },
+      ]);
+
+      const whHandle = env.wormholes[0];
+      expect(whHandle).toBeDefined();
+      if (whHandle) {
+        // Initially dormant
+        expect(whHandle.isOpen()).toBe(false);
+        expect(whHandle.getOpenProgress()).toBe(0);
+
+        // Ship far away -> remains dormant
+        whHandle.updateShipProximity([{ x: 0, z: 0 }]);
+        expect(whHandle.isOpen()).toBe(false);
+
+        // Ship within WORMHOLE_PROXIMITY_RADIUS -> triggers DS9 opening sequence
+        whHandle.updateShipProximity([
+          {
+            x: wh.fromPosition.x - WORMHOLE_PROXIMITY_RADIUS * 0.5,
+            z: wh.fromPosition.z,
+          },
+        ]);
+        expect(whHandle.isOpen()).toBe(true);
+        env.update(1.0, 0.5);
+        expect(whHandle.getOpenProgress()).toBeGreaterThan(0);
+
+        // Ship leaves proximity -> closes back to dormant marker
+        whHandle.updateShipProximity([]);
+        expect(whHandle.isOpen()).toBe(false);
+      }
+      env.dispose();
+    }
   });
 });
