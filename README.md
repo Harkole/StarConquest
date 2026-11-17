@@ -53,7 +53,7 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
 * **Crystals**: The high-tech resource. Required for advanced capital ships (Cruisers, Carriers, Dreadnoughts), shield systems, heavy weaponry, and specialization modules.
 
 ### Refineries & Harvesters
-* **Automated Harvesting**: Constructing a **Refinery** (or using the starting Command & Control's built-in drop-off) automatically provides **1 free Harvester**, with the option to queue additional Harvesters at the Refinery.
+* **Automated Harvesting**: Constructing a **Refinery** (or using the starting Command & Control's built-in drop-off) automatically provides **1 free Harvester**, with the option to queue additional Harvesters (`9s` build time, sequential 1-at-a-time queue capped at `5` orders; resources deducted upfront and refunded immediately if cancelled).
 * **Mining Loop, Speeds & Single-Rock Lock**:
   * **Outward vs. Laden Speed**: Harvesters travel at `41.3 u/s` when empty (`-25%` from base cruise) and slow to `27.6 u/s` when full (`-50%` from base cruise), making laden Harvesters prime targets for raiders.
   * **12.5-Second Single-Rock Extraction**: Each Harvester holds `40` Ore or Crystals per mining session and takes `12.5 seconds` (`10–15s` window) to fill its bay. During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
@@ -255,7 +255,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 | **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
 | **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
 | **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.18` tracking) |
-| **Resource Harvester** | 100 / 20 | 10s *(planned: 9s)* | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine) |
+| **Resource Harvester** | 100 / 20 | 9s | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine), max queue `5` |
 
 ### Deep-Space Structures (`src/shared/config/structures.ts`)
 
@@ -286,10 +286,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ---
 
 ## 12. Future Work & Known Bug Fixes
-
-### Ship build speed
-* **Known Issue**: Harvester are built instantly when ordered.
-* **Planned Fix**: Harvesters are considered frigate class ships, so should build faster than Destroyers but slower than fighers, test 9 seconds per build for initial pass. Consider that the platform can only build one ship at a time but can queue multiple requests.
 
 ### Orbital Ring Slot Marker Visibility
 * **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.

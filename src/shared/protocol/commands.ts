@@ -66,10 +66,18 @@ export interface SetRefineryTargetCommand {
   readonly targetResource: ResourceTargetFocus;
 }
 
+export interface CancelQueuedShipCommand {
+  readonly type: 'CANCEL_QUEUED_SHIP';
+  readonly playerId: PlayerSlotId;
+  readonly structureId: string;
+  readonly queueItemId: string;
+}
+
 export type GameCommand =
   | BuildOrbitalStructureCommand
   | BuildDeepSpaceStructureCommand
   | QueueShipCommand
   | SetRallyPointCommand
   | SetPatrolRouteCommand
-  | SetRefineryTargetCommand;
+  | SetRefineryTargetCommand
+  | CancelQueuedShipCommand;

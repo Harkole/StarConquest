@@ -6,6 +6,7 @@ import {
   HARVESTER_EMPTY_SPEED,
   HARVESTER_FULL_SPEED,
   HARVESTER_MINING_DURATION_SECONDS,
+  MAX_SHIP_PRODUCTION_QUEUE_SIZE,
   REFINERY_MAX_CONCURRENT_DOCKS,
   REFINERY_UNLOAD_RATE_PER_SECOND,
 } from '../gameSimulation.ts';
@@ -109,6 +110,9 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     });
     expect(queueRes.ok).toBe(true);
 
+    // Build takes 9s per Harvester (not instant)
+    sim.stepTick(9);
+
     const p1HarvestersAfterQueue = sim
       .getAllHarvesters()
       .filter((h) => h.ownerId === 'player_1');
@@ -184,7 +188,17 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       return;
     }
 
-    // Queue 2 more Harvesters from that Refinery -> 3 Harvesters share this Refinery home
+    // Set Refinery target focus to Crystal Only before queuing additional Harvesters
+    expect(
+      sim.submitCommand({
+        type: 'SET_REFINERY_TARGET',
+        playerId: 'player_1',
+        structureId: refinery.id,
+        targetResource: 'crystal',
+      }).ok,
+    ).toBe(true);
+
+    // Queue 2 more Harvesters from that Refinery (9s each sequentially -> 18s)
     for (let i = 0; i < 2; i++) {
       expect(
         sim.submitCommand({
@@ -196,16 +210,8 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
         }).ok,
       ).toBe(true);
     }
-
-    // Set Refinery target focus to Crystal Only
-    expect(
-      sim.submitCommand({
-        type: 'SET_REFINERY_TARGET',
-        playerId: 'player_1',
-        structureId: refinery.id,
-        targetResource: 'crystal',
-      }).ok,
-    ).toBe(true);
+    sim.stepTick(9);
+    sim.stepTick(9);
 
     const refHarvesters = sim
       .getAllHarvesters()
@@ -265,6 +271,7 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       shipClassId: 'harvester',
       autoRepeat: false,
     });
+    stdSim.stepTick(9);
 
     const stdPos = stdSim.getStructureWorldPosition(stdHome, stdCnc);
     const stdHarvesters = stdSim
@@ -299,6 +306,8 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
         autoRepeat: false,
       });
     }
+    blitzSim.stepTick(9);
+    blitzSim.stepTick(9);
 
     const blitzPos = blitzSim.getStructureWorldPosition(blitzHome, blitzCnc);
     const blitzHarvesters = blitzSim
@@ -313,5 +322,77 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     blitzSim.stepTick(0.5);
     expect(blitzCnc.activeDockingHarvesterIds).toHaveLength(2);
     expect(blitzCnc.queuedDockingHarvesterIds).toHaveLength(1);
+  });
+
+  it('enforces 9s sequential Harvester build queue (max 5), upfront resource deduction, and immediate refund on cancel', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+    const cnc = homeworld.structures[0];
+    expect(cnc).toBeDefined();
+    if (!cnc) {
+      return;
+    }
+
+    const p1 = sim.getPlayerState('player_1');
+    const startingOre = p1.ore; // 800
+    const startingCrystal = p1.crystal; // 400
+
+    // Queue 5 Harvesters (max queue size = 5)
+    expect(MAX_SHIP_PRODUCTION_QUEUE_SIZE).toBe(5);
+    for (let i = 0; i < 5; i++) {
+      const res = sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: cnc.id,
+        shipClassId: 'harvester',
+        autoRepeat: false,
+      });
+      expect(res.ok).toBe(true);
+    }
+
+    // Resources taken immediately upon ordering (5 * 100 Ore, 5 * 20 Crystal)
+    expect(p1.ore).toBe(startingOre - 500);
+    expect(p1.crystal).toBe(startingCrystal - 100);
+    expect(cnc.productionQueue).toHaveLength(5);
+
+    // 6th order must be rejected because queue is capped at 5
+    const overflowRes = sim.submitCommand({
+      type: 'QUEUE_SHIP',
+      playerId: 'player_1',
+      dockyardOrRefineryId: cnc.id,
+      shipClassId: 'harvester',
+      autoRepeat: false,
+    });
+    expect(overflowRes.ok).toBe(false);
+
+    // Cancel the 5th queued item -> resources immediately refunded!
+    const lastItem = cnc.productionQueue[4];
+    expect(lastItem).toBeDefined();
+    if (lastItem) {
+      const cancelRes = sim.submitCommand({
+        type: 'CANCEL_QUEUED_SHIP',
+        playerId: 'player_1',
+        structureId: cnc.id,
+        queueItemId: lastItem.id,
+      });
+      expect(cancelRes.ok).toBe(true);
+      expect(cnc.productionQueue).toHaveLength(4);
+      expect(p1.ore).toBe(startingOre - 400);
+      expect(p1.crystal).toBe(startingCrystal - 80);
+    }
+
+    // After 5 seconds, first Harvester is still building (only 1 built at a time)
+    sim.stepTick(5);
+    expect(cnc.productionQueue).toHaveLength(4);
+    expect(
+      sim.getAllHarvesters().filter((h) => h.ownerId === 'player_1'),
+    ).toHaveLength(1);
+
+    // After 4 more seconds (total 9s), first Harvester finishes and spawns
+    sim.stepTick(4);
+    expect(cnc.productionQueue).toHaveLength(3);
+    expect(
+      sim.getAllHarvesters().filter((h) => h.ownerId === 'player_1'),
+    ).toHaveLength(2);
   });
 });

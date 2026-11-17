@@ -5,6 +5,7 @@ import {
   SHIP_CLASSES,
   type MatchPresetId,
   type OrbitalStructureId,
+  type ShipClassId,
 } from '../config/index.ts';
 import type {
   GameCommand,
@@ -46,6 +47,14 @@ export const HARVESTER_MINING_RATE_PER_SECOND =
 export const REFINERY_UNLOAD_RATE_PER_SECOND = 10;
 export const CNC_UNLOAD_RATE_PER_SECOND = 4;
 export const REFINERY_MAX_CONCURRENT_DOCKS = 2;
+export const MAX_SHIP_PRODUCTION_QUEUE_SIZE = 5;
+
+export interface ShipQueueItem {
+  readonly id: string;
+  readonly shipClassId: ShipClassId;
+  readonly buildTimeSeconds: number;
+  progressSeconds: number;
+}
 
 export interface OrbitalStructureInstance {
   readonly id: string;
@@ -62,6 +71,7 @@ export interface OrbitalStructureInstance {
   targetResource: ResourceTargetFocus;
   readonly activeDockingHarvesterIds: string[];
   readonly queuedDockingHarvesterIds: string[];
+  readonly productionQueue: ShipQueueItem[];
 }
 
 export interface PlanetRuntimeState {
@@ -299,6 +309,12 @@ export class GameSimulation {
           command.structureId,
           command.targetResource,
         );
+      case 'CANCEL_QUEUED_SHIP':
+        return this.handleCancelQueuedShip(
+          command.playerId,
+          command.structureId,
+          command.queueItemId,
+        );
       default:
         return { ok: true };
     }
@@ -315,7 +331,7 @@ export class GameSimulation {
       beltNode.worldY = worldPos.y;
     }
 
-    // 2. Advance orbital structure construction timers
+    // 2. Advance orbital structure construction timers & per-platform ship build queues (1 at a time)
     for (const planetState of this.planets.values()) {
       for (const structure of planetState.structures) {
         if (!structure.isComplete) {
@@ -324,6 +340,21 @@ export class GameSimulation {
             structure.buildProgressSeconds = structure.totalBuildTimeSeconds;
             structure.isComplete = true;
             this.onOrbitalStructureCompleted(planetState, structure);
+          }
+        } else if (structure.productionQueue.length > 0) {
+          const activeOrder = structure.productionQueue[0];
+          if (activeOrder) {
+            activeOrder.progressSeconds += deltaSeconds;
+            if (activeOrder.progressSeconds >= activeOrder.buildTimeSeconds) {
+              structure.productionQueue.shift();
+              if (activeOrder.shipClassId === 'harvester') {
+                this.spawnHarvesterAtStructure(
+                  structure.ownerId,
+                  planetState,
+                  structure,
+                );
+              }
+            }
           }
         }
       }
@@ -397,6 +428,7 @@ export class GameSimulation {
             targetResource: 'auto',
             activeDockingHarvesterIds: [],
             queuedDockingHarvesterIds: [],
+            productionQueue: [],
           };
           runtimePlanet.structures.push(cncInstance);
           this.onOrbitalStructureCompleted(runtimePlanet, cncInstance);
@@ -484,6 +516,7 @@ export class GameSimulation {
       targetResource: 'auto',
       activeDockingHarvesterIds: [],
       queuedDockingHarvesterIds: [],
+      productionQueue: [],
     };
 
     planetState.structures.push(instance);
@@ -540,14 +573,59 @@ export class GameSimulation {
       };
     }
 
-    const cost = SHIP_CLASSES.harvester.cost;
-    if (player.ore < cost.ore || player.crystal < cost.crystal) {
+    if (targetStructure.productionQueue.length >= MAX_SHIP_PRODUCTION_QUEUE_SIZE) {
+      return {
+        ok: false,
+        reason: `Production queue is full (max ${MAX_SHIP_PRODUCTION_QUEUE_SIZE})`,
+      };
+    }
+
+    const harvesterCfg = SHIP_CLASSES.harvester;
+    if (
+      player.ore < harvesterCfg.cost.ore ||
+      player.crystal < harvesterCfg.cost.crystal
+    ) {
       return { ok: false, reason: 'Insufficient Ore or Crystals for Harvester' };
     }
 
-    player.ore -= cost.ore;
-    player.crystal -= cost.crystal;
-    this.spawnHarvesterAtStructure(playerId, targetPlanet, targetStructure);
+    // Resources are taken immediately when the build order is placed
+    player.ore -= harvesterCfg.cost.ore;
+    player.crystal -= harvesterCfg.cost.crystal;
+    targetStructure.productionQueue.push({
+      id: `queue_${this.nextEntityCounter++}`,
+      shipClassId: 'harvester',
+      buildTimeSeconds: harvesterCfg.buildTimeSeconds,
+      progressSeconds: 0,
+    });
+
+    return { ok: true };
+  }
+
+  private handleCancelQueuedShip(
+    playerId: PlayerSlotId,
+    structureId: string,
+    queueItemId: string,
+  ): CommandResult {
+    const player = this.players.get(playerId);
+    const found = this.getStructureById(structureId);
+    if (!player || !found || found.structure.ownerId !== playerId) {
+      return { ok: false, reason: 'Structure not found or not owned by player' };
+    }
+
+    const queueIdx = found.structure.productionQueue.findIndex(
+      (item) => item.id === queueItemId,
+    );
+    if (queueIdx === -1) {
+      return { ok: false, reason: 'Queued ship order not found' };
+    }
+
+    const [removed] = found.structure.productionQueue.splice(queueIdx, 1);
+    if (removed) {
+      // Refund resources back into player stores immediately
+      const shipCfg = SHIP_CLASSES[removed.shipClassId];
+      player.ore += shipCfg.cost.ore;
+      player.crystal += shipCfg.cost.crystal;
+    }
 
     return { ok: true };
   }

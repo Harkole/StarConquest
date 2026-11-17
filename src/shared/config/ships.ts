@@ -207,7 +207,7 @@ export const SHIP_CLASSES: Readonly<Record<ShipClassId, ShipClassConfig>> = {
     id: 'harvester',
     displayName: 'Resource Harvester',
     cost: { ore: 100, crystal: 20 },
-    buildTimeSeconds: 10,
+    buildTimeSeconds: 9,
     supplyCost: 0,
     hasShields: false,
     maxShields: 0,

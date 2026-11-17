@@ -9,6 +9,7 @@ import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
 import {
   CNC_UNLOAD_RATE_PER_SECOND,
   type HarvesterActivityState,
+  MAX_SHIP_PRODUCTION_QUEUE_SIZE,
   REFINERY_UNLOAD_RATE_PER_SECOND,
 } from '../../shared/sim/gameSimulation.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
@@ -340,6 +341,28 @@ export function mountSystemHud(
           </div>`
         : '';
 
+      const queueCount = selectedStruct.productionQueue.length;
+      const isQueueFull = queueCount >= MAX_SHIP_PRODUCTION_QUEUE_SIZE;
+      const queueItemsHtml =
+        isDropoffPlatform && queueCount > 0
+          ? `<div class="hud-btn-row" style="margin-top: 6px;">
+              <span class="econ-label" style="margin-right: 4px;">BUILD QUEUE (${queueCount}/${MAX_SHIP_PRODUCTION_QUEUE_SIZE}):</span>
+              ${selectedStruct.productionQueue
+                .map((item, idx) => {
+                  const rem = Math.max(
+                    0,
+                    Math.ceil(item.buildTimeSeconds - item.progressSeconds),
+                  );
+                  const label =
+                    idx === 0 ? `Harvester (${rem}s)` : `Harvester #${idx + 1}`;
+                  return `<button class="hud-btn" data-cancel-queue="${item.id}" data-cancel-struct="${selectedStruct.id}" title="Click to cancel and refund ${hCost.ore} Ore / ${hCost.crystal} Crystal">
+                    ${label} ✕
+                  </button>`;
+                })
+                .join('')}
+            </div>`
+          : '';
+
       slotActionsHtml = `
         <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
@@ -349,13 +372,14 @@ export function mountSystemHud(
             </div>
             ${
               isDropoffPlatform
-                ? `<button class="hud-btn active" data-action="spawn-harvester" data-struct-id="${selectedStruct.id}">
-                    + Queue Harvester (${hCost.ore} Ore / ${hCost.crystal} Crystal)
+                ? `<button class="hud-btn active" data-action="spawn-harvester" data-struct-id="${selectedStruct.id}" ${isQueueFull ? 'disabled' : ''}>
+                    ${isQueueFull ? `Queue Full (${queueCount}/${MAX_SHIP_PRODUCTION_QUEUE_SIZE})` : `+ Queue Harvester (${hCost.ore} Ore / ${hCost.crystal} Crystal • ${SHIP_CLASSES.harvester.buildTimeSeconds}s)`}
                   </button>`
                 : ''
             }
           </div>
           ${focusControlsHtml}
+          ${queueItemsHtml}
         </div>
       `;
     } else {
@@ -549,6 +573,29 @@ export function mountSystemHud(
       });
 
     mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-cancel-queue]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const queueItemId = btn.dataset.cancelQueue;
+          const structId = btn.dataset.cancelStruct;
+          if (!queueItemId || !structId) {
+            return;
+          }
+          const res = simAdapter.submitPlayerCommand({
+            type: 'CANCEL_QUEUED_SHIP',
+            playerId,
+            structureId: structId,
+            queueItemId,
+          });
+          statusBannerMessage = res.ok
+            ? 'Cancelled Harvester order — resources refunded.'
+            : `Cannot cancel: ${res.reason}`;
+          renderEconomyBar();
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="overview"]')
       ?.addEventListener('click', () => {
         sceneManager.focusSystemOverview();
@@ -568,10 +615,10 @@ export function mountSystemHud(
     renderEconomyBar();
     renderHarvesterInspector();
     const activePlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
-    const anyUnderConstruction = activePlanetState.structures.some(
-      (s) => !s.isComplete,
+    const anyActiveTimers = activePlanetState.structures.some(
+      (s) => !s.isComplete || s.productionQueue.length > 0,
     );
-    if (anyUnderConstruction) {
+    if (anyActiveTimers) {
       renderMainPanel();
     }
   }, 250);

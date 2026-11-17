@@ -334,6 +334,7 @@ export function createLivingPlanetGroup(
           targetResource: 'auto',
           activeDockingHarvesterIds: [],
           queuedDockingHarvesterIds: [],
+          productionQueue: [],
         },
       ],
     });
