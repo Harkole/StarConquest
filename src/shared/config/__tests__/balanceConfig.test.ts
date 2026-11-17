@@ -94,6 +94,15 @@ describe('StarConquest Blueprint & Balance Config Invariants', () => {
     const superEarth = centralHub?.planets.find((p) => p.planetClass === 'super_earth');
     expect(superEarth).toBeDefined();
     expect(superEarth?.orbitalSlots).toBe(12);
+
+    // Ensure systems are spread out so wormholes and planets are far beyond sensor/weapon range
+    const maxSensorRange = ORBITAL_STRUCTURES.command_and_control.sensorRange;
+    for (const wh of galaxy.wormholes) {
+      const starterWormholeDist = Math.hypot(wh.fromPosition.x, wh.fromPosition.z);
+      const hubWormholeDist = Math.hypot(wh.toPosition.x, wh.toPosition.z);
+      expect(starterWormholeDist).toBeGreaterThan(maxSensorRange * 5);
+      expect(hubWormholeDist).toBeGreaterThan(maxSensorRange * 5);
+    }
   });
 
   it('defines all three lobby match presets', () => {

@@ -52,7 +52,7 @@ export function createStarSystemEnvironment(
   const timeUniforms: { value: number }[] = [];
 
   // 1. Lighting: Distant System Star + Ambient Fill
-  const sunPosition = new THREE.Vector3(650, 320, -480);
+  const sunPosition = new THREE.Vector3(3400, 1450, -2600);
   const sunDirection = sunPosition.clone().normalize();
 
   const starLight = new THREE.DirectionalLight(
@@ -69,7 +69,7 @@ export function createStarSystemEnvironment(
   rootGroup.add(ambientLight);
 
   // Visible distant system sun sphere (triggers HDR bloom)
-  const sunGeom = new THREE.SphereGeometry(22, 32, 32);
+  const sunGeom = new THREE.SphereGeometry(75, 32, 32);
   const sunMat = new THREE.MeshBasicMaterial({
     color: new THREE.Color(...palette.starlightColor).multiplyScalar(2.2),
   });
@@ -79,7 +79,7 @@ export function createStarSystemEnvironment(
   rootGroup.add(sunMesh);
 
   // 2. Procedural FBM Deep-Space Nebula Sky Dome (Predominantly Black Space + Stars)
-  const skyGeom = new THREE.SphereGeometry(2200, 48, 48);
+  const skyGeom = new THREE.SphereGeometry(9500, 48, 48);
   const skyTimeUniform = { value: 0 };
   timeUniforms.push(skyTimeUniform);
 
@@ -100,12 +100,12 @@ export function createStarSystemEnvironment(
   rootGroup.add(new THREE.Mesh(skyGeom, skyMat));
 
   // 3. Multi-Depth Parallax 3D Starfield (Uniform Spherical Distribution — No Spiral Artifacts)
-  const starCount = 2800;
+  const starCount = 3600;
   const starPositions = new Float32Array(starCount * 3);
   const starColors = new Float32Array(starCount * 3);
 
   for (let i = 0; i < starCount; i++) {
-    const r = 520 + rng() * 1350;
+    const r = 2600 + rng() * 5200;
     const theta = rng() * Math.PI * 2;
     const u = rng() * 2 - 1;
     const sinPhi = Math.sqrt(Math.max(0, 1 - u * u));
@@ -114,7 +114,6 @@ export function createStarSystemEnvironment(
     starPositions[i * 3 + 1] = r * u * 0.85;
     starPositions[i * 3 + 2] = r * sinPhi * Math.sin(theta);
 
-    // Natural stellar color distribution (warm white, pure white, soft blue-white)
     const warmth = rng();
     const brightness = 0.55 + rng() * 0.45;
     starColors[i * 3] = brightness * (0.9 + warmth * 0.1);
@@ -126,7 +125,7 @@ export function createStarSystemEnvironment(
   starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
   starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
   const starPointsMat = new THREE.PointsMaterial({
-    size: 1.85,
+    size: 3.2,
     vertexColors: true,
     transparent: true,
     opacity: 0.9,
@@ -135,24 +134,27 @@ export function createStarSystemEnvironment(
   disposables.push(starGeometry, starPointsMat);
   rootGroup.add(new THREE.Points(starGeometry, starPointsMat));
 
-  // 4. Dense InstancedMesh Asteroid Belts (Main Belt + Outer Resource Clusters)
+  // 4. Dense InstancedMesh Asteroid Belts Across Expanded System Scale
+  // - Inner Belt (r ~ 420): Early-game mining ring with generous space around the Homeworld/Super-Earth
+  // - Mid-System Belt (r ~ 1120): Contested belt spanning the secondary planet orbits
+  // - Outer Stealth Clusters (r ~ 1620): Off-axis deep-space resource pockets where Harvesters can sneak
   const oreRatio =
     system.resourceSkew === 'ore_heavy'
       ? 0.78
       : system.resourceSkew === 'crystal_heavy'
         ? 0.42
         : 0.6;
-  const totalAsteroids = system.isCentralHub ? 2200 : 1500;
+  const totalAsteroids = system.isCentralHub ? 3600 : 2600;
   const oreCount = Math.floor(totalAsteroids * oreRatio);
   const crystalCount = totalAsteroids - oreCount;
 
-  const oreGeometry = new THREE.DodecahedronGeometry(1.85, 1);
+  const oreGeometry = new THREE.DodecahedronGeometry(2.4, 1);
   const oreMaterial = new THREE.MeshStandardMaterial({
     color: 0x786452,
     roughness: 0.88,
     metalness: 0.35,
   });
-  const crystalGeometry = new THREE.OctahedronGeometry(1.65, 0);
+  const crystalGeometry = new THREE.OctahedronGeometry(2.15, 0);
   const crystalMaterial = new THREE.MeshStandardMaterial({
     color: 0x5eead4,
     emissive: 0x0d9488,
@@ -177,36 +179,51 @@ export function createStarSystemEnvironment(
     index: number,
     isCrystal: boolean,
   ): void {
-    // 65% in dense inner main belt (r = 100..150), 35% in outer belt & rich pocket clusters (r = 215..275)
-    const inOuterBelt = rng() < 0.35;
-    const baseRadius = inOuterBelt ? 242 : 124;
-    const bandWidth = inOuterBelt ? 46 : 38;
+    const zoneRoll = rng();
+    let x = 0;
+    let z = 0;
 
-    // Clump some asteroids into rich mining pockets while keeping a continuous dense ring
-    const angle = rng() * Math.PI * 2;
-    const radialSpread = (rng() + rng() - 1.0) * bandWidth;
-    const radius = baseRadius + radialSpread;
-    const heightSpread = (rng() + rng() - 1.0) * 9.5;
+    if (zoneRoll < 0.44) {
+      // Inner Belt (r = 365 .. 475)
+      const angle = rng() * Math.PI * 2;
+      const radialSpread = (rng() + rng() - 1.0) * 55;
+      const radius = 420 + radialSpread;
+      x = Math.cos(angle) * radius;
+      z = Math.sin(angle) * radius;
+    } else if (zoneRoll < 0.78) {
+      // Mid-System Belt (r = 1040 .. 1200)
+      const angle = rng() * Math.PI * 2;
+      const radialSpread = (rng() + rng() - 1.0) * 80;
+      const radius = 1120 + radialSpread;
+      x = Math.cos(angle) * radius;
+      z = Math.sin(angle) * radius;
+    } else {
+      // Outer Deep-Space Stealth Pockets (4 diagonal clusters at r ~ 1620, off the wormhole axes)
+      const pocketIndex = Math.floor(rng() * 4);
+      const pocketAngle = (pocketIndex * Math.PI) / 2 + Math.PI / 4;
+      const centerX = Math.cos(pocketAngle) * 1620;
+      const centerZ = Math.sin(pocketAngle) * 1620;
+      const clusterRadius = (rng() + rng()) * 115;
+      const localAngle = rng() * Math.PI * 2;
+      x = centerX + Math.cos(localAngle) * clusterRadius;
+      z = centerZ + Math.sin(localAngle) * clusterRadius;
+    }
 
-    dummy.position.set(
-      Math.cos(angle) * radius,
-      heightSpread,
-      Math.sin(angle) * radius,
-    );
+    const heightSpread = (rng() + rng() - 1.0) * 14.0;
+    dummy.position.set(x, heightSpread, z);
     dummy.rotation.set(
       rng() * Math.PI * 2,
       rng() * Math.PI * 2,
       rng() * Math.PI * 2,
     );
 
-    // Power-law size distribution: many small/medium rocks + occasional massive boulders
     const sizeRoll = rng();
     const baseScale =
       sizeRoll > 0.92
-        ? 1.65 + rng() * 1.15
-        : sizeRoll > 0.55
-          ? 0.85 + rng() * 0.7
-          : 0.38 + rng() * 0.45;
+        ? 1.85 + rng() * 1.35
+        : sizeRoll > 0.52
+          ? 0.95 + rng() * 0.75
+          : 0.45 + rng() * 0.48;
 
     if (isCrystal) {
       dummy.scale.set(
@@ -240,10 +257,10 @@ export function createStarSystemEnvironment(
   beltsGroup.add(oreInstanced, crystalInstanced);
   rootGroup.add(beltsGroup);
 
-  // 5. Swirling Wormhole Vortex Choke Points
-  const wormholeDiskGeom = new THREE.PlaneGeometry(54, 54);
+  // 5. Swirling Wormhole Vortex Choke Points (Perimeter Gateways)
+  const wormholeDiskGeom = new THREE.PlaneGeometry(78, 78);
   wormholeDiskGeom.rotateX(-Math.PI / 2);
-  const wormholeRingGeom = new THREE.TorusGeometry(24, 0.5, 12, 64);
+  const wormholeRingGeom = new THREE.TorusGeometry(34, 0.7, 12, 64);
   wormholeRingGeom.rotateX(Math.PI / 2);
   disposables.push(wormholeDiskGeom, wormholeRingGeom);
 
@@ -292,7 +309,7 @@ export function createStarSystemEnvironment(
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;
       }
-      beltsGroup.rotation.y += deltaSeconds * 0.008;
+      beltsGroup.rotation.y += deltaSeconds * 0.004;
     },
     dispose(): void {
       for (const item of disposables) {

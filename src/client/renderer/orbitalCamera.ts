@@ -7,8 +7,8 @@ export class OrbitalCameraController {
   private readonly target = new THREE.Vector3(0, 0, 0);
   private readonly desiredTarget = new THREE.Vector3(0, 0, 0);
 
-  private distance = 125;
-  private desiredDistance = 125;
+  private distance = 140;
+  private desiredDistance = 140;
   private azimuthAngle = 0.45;
   private desiredAzimuth = 0.45;
   private polarAngle = 0.92; // Radians from +Y axis (2.5D/3D angled orbital view)
@@ -27,13 +27,13 @@ export class OrbitalCameraController {
     this.syncCameraTransform();
   }
 
-  public focusOn(x: number, z: number, distance = 105): void {
+  public focusOn(x: number, z: number, distance = 120): void {
     this.desiredTarget.set(x, 0, z);
-    this.desiredDistance = THREE.MathUtils.clamp(distance, 48, 720);
+    this.desiredDistance = THREE.MathUtils.clamp(distance, 45, 3200);
   }
 
   public update(deltaSeconds: number): void {
-    const panSpeed = this.distance * 0.85 * deltaSeconds;
+    const panSpeed = this.distance * 0.95 * deltaSeconds;
     const forwardX = -Math.sin(this.azimuthAngle);
     const forwardZ = -Math.cos(this.azimuthAngle);
     const rightX = Math.cos(this.azimuthAngle);
@@ -56,8 +56,8 @@ export class OrbitalCameraController {
       this.desiredTarget.z -= rightZ * panSpeed;
     }
 
-    this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -550, 550);
-    this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -550, 550);
+    this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -2600, 2600);
+    this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -2600, 2600);
 
     const smoothing = 1 - Math.exp(-10 * deltaSeconds);
     this.target.lerp(this.desiredTarget, smoothing);
@@ -140,8 +140,8 @@ export class OrbitalCameraController {
         const zoomFactor = e.deltaY > 0 ? 1.12 : 0.89;
         this.desiredDistance = THREE.MathUtils.clamp(
           this.desiredDistance * zoomFactor,
-          48,
-          720,
+          45,
+          3200,
         );
       },
       { passive: false },

@@ -87,7 +87,7 @@ export class SystemSceneManager {
     const primaryPlanet = targetSystem.planets[0];
     if (primaryPlanet) {
       const defaultDist =
-        primaryPlanet.planetClass === 'super_earth' ? 128 : 102;
+        primaryPlanet.planetClass === 'super_earth' ? 140 : 112;
       this.cameraController.focusOn(
         primaryPlanet.position.x,
         primaryPlanet.position.z,
@@ -105,17 +105,17 @@ export class SystemSceneManager {
     }
     const zoomDistance =
       planet.planetClass === 'super_earth'
-        ? 122
+        ? 128
         : planet.planetClass === 'large'
-          ? 96
+          ? 102
           : planet.planetClass === 'medium'
-            ? 74
-            : 58;
+            ? 78
+            : 60;
     this.cameraController.focusOn(planet.position.x, planet.position.z, zoomDistance);
   }
 
   public focusSystemOverview(): void {
-    this.cameraController.focusOn(0, 0, 520);
+    this.cameraController.focusOn(0, 0, 2350);
   }
 
   public update(elapsedSeconds: number, deltaSeconds: number): void {

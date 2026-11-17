@@ -25,13 +25,13 @@ function bootstrapClient(): void {
   renderer.toneMappingExposure = 1.1;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x04060d);
+  scene.background = new THREE.Color(0x010206);
 
   const camera = new THREE.PerspectiveCamera(
     50,
     window.innerWidth / window.innerHeight,
     0.5,
-    5000,
+    22000,
   );
 
   const cameraController = new OrbitalCameraController(camera, canvas);

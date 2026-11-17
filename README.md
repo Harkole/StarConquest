@@ -38,9 +38,10 @@ flowchart TD
 * **Central Neutral System (x1)**:
   * A resource-rich contested hub anchored by a single **Super-Earth** (12 orbital slots) alongside randomized Small/Medium planets and dense asteroid belts.
   * Always generates **4 wormholes**—one leading to each of the 4 player starter systems, even in matches with fewer than 4 human/AI players (allowing flanking or expansion into empty starter systems).
-* **Wormholes**:
-  * Wormholes are **open spatial choke points**—fleets and Harvesters fly directly through them without loading screens or activation locks.
-  * Because any unit can transit freely, wormhole mouths are the primary flashpoints for **Logistics Hubs** and **Defence Towers**.
+* **Wormholes & System Scale**:
+  * Wormholes are **open spatial choke points** located on the outer perimeter of each star system (`1,850–2,050` units from the central planet), while secondary planets orbit `850–1,250+` units away in separate quadrants.
+  * This wide spatial separation (`> 5x` structure sensor and weapon ranges) prevents instant firefights upon wormhole transit, gives fleets room to maneuver, and creates dark outer-rim corridors where **Harvesters and raiders can sneak past enemy sensor bubbles** to mine off-axis outer asteroid pockets without being detected.
+  * Because any unit can transit freely, wormhole mouths are the primary flashpoints for forward **Logistics Hubs** and **Defence Towers**.
 
 ---
 

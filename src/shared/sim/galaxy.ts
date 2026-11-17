@@ -57,9 +57,12 @@ const STARTER_NEBULA_PALETTES = [
 
 /**
  * Generates the canonical 5-system hub-and-spoke galaxy defined in README.md:
+ * - Vast spatial layout (~4,400 x 4,400 units per system) so planets, asteroid belts, and wormholes
+ *   have wide deep-space travel corridors between them (preventing instant wormhole firefights and
+ *   providing stealth corridors for Harvesters and raiding fleets outside sensor ranges).
  * - 4 outer Starter Systems (each with 1 guaranteed Large 10-slot Homeworld + secondary Small/Medium planets,
  *   and an alternating Ore-heavy / Crystal-heavy resource skew).
- * - 1 Central Neutral System (anchored by 1 Super-Earth 12-slot planet + 4 permanent open wormholes).
+ * - 1 Central Neutral System (anchored by 1 Super-Earth 12-slot planet + secondary worlds + 4 permanent open wormholes).
  */
 export function createFiveSystemGalaxy(): GalaxyTopology {
   const systems: StarSystemNode[] = [];
@@ -81,6 +84,7 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
       ownerId: slotId,
     };
 
+    // Secondary planets placed 850–1,250 units away in distinct quadrants
     const secondarySmall: PlanetNode = {
       id: `${systemId}_planet_2`,
       systemId,
@@ -88,7 +92,7 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
       planetClass: 'small',
       orbitalSlots: PLANET_CLASSES.small.orbitalSlots,
       visualTheme: 'volcanic_lava',
-      position: { x: 180, z: -120 },
+      position: { x: 820, z: -560 },
       ownerId: null,
     };
 
@@ -99,7 +103,7 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
       planetClass: 'medium',
       orbitalSlots: PLANET_CLASSES.medium.orbitalSlots,
       visualTheme: 'barren_rock',
-      position: { x: -160, z: 140 },
+      position: { x: -780, z: 680 },
       ownerId: null,
     };
 
@@ -113,13 +117,14 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
       planets: [homeworld, secondarySmall, secondaryMedium],
     });
 
+    // Wormholes placed far out on the system perimeter (1,850–2,050 units from center)
     const angle = (index * Math.PI) / 2;
     wormholes.push({
       id: `wormhole_${index + 1}_to_hub`,
       fromSystemId: systemId,
       toSystemId: 'system_central_hub',
-      fromPosition: { x: Math.cos(angle) * 320, z: Math.sin(angle) * 320 },
-      toPosition: { x: Math.cos(angle) * 360, z: Math.sin(angle) * 360 },
+      fromPosition: { x: Math.cos(angle) * 1850, z: Math.sin(angle) * 1850 },
+      toPosition: { x: Math.cos(angle) * 2050, z: Math.sin(angle) * 2050 },
     });
   });
 
@@ -148,7 +153,17 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
         planetClass: 'small',
         orbitalSlots: PLANET_CLASSES.small.orbitalSlots,
         visualTheme: 'volcanic_lava',
-        position: { x: 220, z: 180 },
+        position: { x: 960, z: 840 },
+        ownerId: null,
+      },
+      {
+        id: 'system_central_hub_rock_2',
+        systemId: 'system_central_hub',
+        name: 'Aegis Rim',
+        planetClass: 'medium',
+        orbitalSlots: PLANET_CLASSES.medium.orbitalSlots,
+        visualTheme: 'barren_rock',
+        position: { x: -940, z: -860 },
         ownerId: null,
       },
     ],
