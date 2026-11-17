@@ -255,7 +255,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 | **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
 | **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
 | **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.18` tracking) |
-| **Resource Harvester** | 100 / 20 | 10s | 0 | 0 *(Hull Only)* | 300 | 38 | 0.20 | 1 spawned free with C&C and each Refinery; queues at Refineries |
+| **Resource Harvester** | 100 / 20 | 10s *(planned: 9s)* | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine) |
 
 ### Deep-Space Structures (`src/shared/config/structures.ts`)
 
@@ -294,3 +294,11 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Orbital Ring Slot Marker Visibility
 * **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.
 * **Planned Fix**: Hide the orbital build slot dot/halo meshes whenever a slot is occupied by a constructed (or under-construction) platform, leaving only genuinely empty slots visible on the orbital ring.
+
+### Command & Control Docking Cap
+* **Known Issue**: While **Refineries** are capped at `2` concurrent Harvester docks (`10/s` each = `20/s` max), **Command & Control** currently allows unlimited simultaneous Harvester docks (`4/s` each), which lets C&C Harvester spam outscale a Refinery's throughput.
+* **Planned Fix**: Cap Command & Control at `1` or `2` concurrent Harvester docks (`4/s`–`8/s` max) so Refineries remain strictly required to scale mid-game income.
+
+### Blitz Skirmish Economy Multiplier Scaling
+* **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
+* **Planned Fix**: Apply `harvestRateMultiplier` to platform unload rates (and optionally Harvester transit speed or cargo capacity) in **Blitz Skirmish** so the overall economy scales closer to `1.5x–1.6x`.
