@@ -468,8 +468,9 @@ export class StationModelLibrary {
     const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
 
     const ringR = Math.max(18, orbitalRingRadius);
+    const refineryScale = 1.5;
     const segmentCount = 7;
-    const segmentArcSpacing = 2.02; // ~14.1u total arc length (fits inside 1 orbital slot)
+    const segmentArcSpacing = 2.02 * refineryScale; // ~21.2u total arc length (1.5x scale, fits inside 1 orbital slot)
     const halfSpan = ((segmentCount - 1) * segmentArcSpacing) * 0.5;
 
     for (let i = 0; i < segmentCount; i++) {
@@ -484,6 +485,7 @@ export class StationModelLibrary {
         ringR * Math.sin(theta),
       );
       segPivot.rotation.y = -theta;
+      segPivot.scale.setScalar(refineryScale);
 
       // 1. Main Curved Platform Deck & Ventral Material Transport Elevator Keel
       segPivot.add(new THREE.Mesh(this.refDeckSegGeom, hullMat));

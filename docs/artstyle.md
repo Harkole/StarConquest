@@ -115,7 +115,7 @@ Each ship and orbital platform is designed and locked in one at a time.
 
 #### Anatomical Breakdown & Orbital Arc Curvature
 1. **Orbital Ring Arc Curvature (1-Slot Footprint)**:
-   * Rather than a rigid flat rectangle, the "Hephaes" platform (`~14.5u` arc length × `~6.8u` radial width) is segmented and **bent along the host planet's exact `orbitalRingRadius`** so its spine, deck aprons, and heat-sink rows follow the orbital ring track seamlessly without overlapping adjacent slots.
+   * Rather than a rigid flat rectangle, the "Hephaes" platform (`1.5x` scale: `~21.2u` arc length × `~10.2u` radial width) is segmented and **bent along the host planet's exact `orbitalRingRadius`** so its spine, deck aprons, and heat-sink rows follow the orbital ring track seamlessly without overlapping adjacent slots.
 2. **Central Linear Forge Spine & Ventral Material Transport Elevators**:
    * Stepped Gunmetal Slate (`#3e4652`) central spine running along the curved arc, crowned by a central refinery control tower and underpinned by a tapered ventral cargo/elevator keel (`-Y`).
 3. **Parallel Glowing Heat-Sink Banks (Iron/Silicate Smelters)**:
