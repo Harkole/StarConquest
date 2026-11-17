@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  BELT_ROTATION_SPEED_RAD_PER_SEC,
+  createSeededRng,
+  getSystemAsteroidLayout,
+} from '../../shared/sim/asteroidBeltLayout.ts';
 import type { StarSystemNode, WormholeLink } from '../../shared/sim/galaxy.ts';
 import {
   ASTEROID_ROCK_FRAGMENT_SHADER,
@@ -34,26 +39,8 @@ export interface SpaceEnvironmentHandle {
   readonly rootGroup: THREE.Group;
   readonly sunDirection: THREE.Vector3;
   readonly wormholes: readonly WormholeInstanceHandle[];
-  update(elapsedSeconds: number, deltaSeconds: number): void;
+  update(elapsedSeconds: number, deltaSeconds: number, simElapsedSeconds?: number): void;
   dispose(): void;
-}
-
-/**
- * Deterministic Mulberry32 PRNG so stars and asteroids have organic, non-spiral distributions.
- */
-function createSeededRng(seedStr: string): () => number {
-  let state = 2166136261;
-  for (let i = 0; i < seedStr.length; i++) {
-    state ^= seedStr.charCodeAt(i);
-    state = Math.imul(state, 16777619);
-  }
-  return () => {
-    state |= 0;
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 export function createStarSystemEnvironment(
@@ -155,19 +142,10 @@ export function createStarSystemEnvironment(
   disposables.push(starGeometry, starPointsMat);
   rootGroup.add(new THREE.Points(starGeometry, starPointsMat));
 
-  // 4. Dense InstancedMesh Asteroid Belts Across Expanded System Scale
-  // - Inner Belt (r ~ 420): Early-game mining ring with generous space around the Homeworld/Super-Earth
-  // - Mid-System Belt (r ~ 1120): Contested belt spanning the secondary planet orbits
-  // - Outer Stealth Clusters (r ~ 1620): Off-axis deep-space resource pockets where Harvesters can sneak
-  const oreRatio =
-    system.resourceSkew === 'ore_heavy'
-      ? 0.78
-      : system.resourceSkew === 'crystal_heavy'
-        ? 0.42
-        : 0.6;
-  const totalAsteroids = system.isCentralHub ? 3600 : 2600;
-  const oreCount = Math.floor(totalAsteroids * oreRatio);
-  const crystalCount = totalAsteroids - oreCount;
+  // 4. Dense InstancedMesh Asteroid Belts Shared Deterministically With Simulation
+  const beltLayout = getSystemAsteroidLayout(system);
+  const oreCount = beltLayout.oreRocks.length;
+  const crystalCount = beltLayout.crystalRocks.length;
 
   const oreGeometry = createCraggyAsteroidGeometry(2.5);
   const oreMaterial = new THREE.ShaderMaterial({
@@ -197,83 +175,22 @@ export function createStarSystemEnvironment(
 
   const dummy = new THREE.Object3D();
 
-  function placeAsteroidInstance(
-    mesh: THREE.InstancedMesh,
-    index: number,
-    isCrystal: boolean,
-  ): void {
-    const zoneRoll = rng();
-    let x = 0;
-    let z = 0;
-
-    if (zoneRoll < 0.44) {
-      // Inner Belt (r = 365 .. 475)
-      const angle = rng() * Math.PI * 2;
-      const radialSpread = (rng() + rng() - 1.0) * 55;
-      const radius = 420 + radialSpread;
-      x = Math.cos(angle) * radius;
-      z = Math.sin(angle) * radius;
-    } else if (zoneRoll < 0.78) {
-      // Mid-System Belt (r = 1040 .. 1200)
-      const angle = rng() * Math.PI * 2;
-      const radialSpread = (rng() + rng() - 1.0) * 80;
-      const radius = 1120 + radialSpread;
-      x = Math.cos(angle) * radius;
-      z = Math.sin(angle) * radius;
-    } else {
-      // Outer Deep-Space Stealth Pockets (4 diagonal clusters at r ~ 1620, off the wormhole axes)
-      const pocketIndex = Math.floor(rng() * 4);
-      const pocketAngle = (pocketIndex * Math.PI) / 2 + Math.PI / 4;
-      const centerX = Math.cos(pocketAngle) * 1620;
-      const centerZ = Math.sin(pocketAngle) * 1620;
-      const clusterRadius = (rng() + rng()) * 115;
-      const localAngle = rng() * Math.PI * 2;
-      x = centerX + Math.cos(localAngle) * clusterRadius;
-      z = centerZ + Math.sin(localAngle) * clusterRadius;
-    }
-
-    const heightSpread = (rng() + rng() - 1.0) * 14.0;
-    dummy.position.set(x, heightSpread, z);
-    dummy.rotation.set(
-      rng() * Math.PI * 2,
-      rng() * Math.PI * 2,
-      rng() * Math.PI * 2,
-    );
-
-    const sizeRoll = rng();
-    const baseScale =
-      sizeRoll > 0.92
-        ? 1.85 + rng() * 1.35
-        : sizeRoll > 0.52
-          ? 0.95 + rng() * 0.75
-          : 0.45 + rng() * 0.48;
-
-    if (isCrystal) {
-      dummy.scale.set(
-        baseScale * (0.75 + rng() * 0.4),
-        baseScale * (1.1 + rng() * 0.55),
-        baseScale * (0.75 + rng() * 0.4),
-      );
-    } else {
-      dummy.scale.set(
-        baseScale * (0.8 + rng() * 0.6),
-        baseScale * (0.65 + rng() * 0.5),
-        baseScale * (0.8 + rng() * 0.6),
-      );
-    }
-
+  beltLayout.oreRocks.forEach((rock, index) => {
+    dummy.position.set(rock.localX, rock.localY, rock.localZ);
+    dummy.rotation.set(rock.rotX, rock.rotY, rock.rotZ);
+    dummy.scale.set(rock.scaleX, rock.scaleY, rock.scaleZ);
     dummy.updateMatrix();
-    mesh.setMatrixAt(index, dummy.matrix);
-  }
-
-  for (let i = 0; i < oreCount; i++) {
-    placeAsteroidInstance(oreInstanced, i, false);
-  }
+    oreInstanced.setMatrixAt(index, dummy.matrix);
+  });
   oreInstanced.instanceMatrix.needsUpdate = true;
 
-  for (let i = 0; i < crystalCount; i++) {
-    placeAsteroidInstance(crystalInstanced, i, true);
-  }
+  beltLayout.crystalRocks.forEach((rock, index) => {
+    dummy.position.set(rock.localX, rock.localY, rock.localZ);
+    dummy.rotation.set(rock.rotX, rock.rotY, rock.rotZ);
+    dummy.scale.set(rock.scaleX, rock.scaleY, rock.scaleZ);
+    dummy.updateMatrix();
+    crystalInstanced.setMatrixAt(index, dummy.matrix);
+  });
   crystalInstanced.instanceMatrix.needsUpdate = true;
 
   const beltsGroup = new THREE.Group();
@@ -429,11 +346,15 @@ export function createStarSystemEnvironment(
     rootGroup,
     sunDirection,
     wormholes: wormholeStates.map((s) => s.handle),
-    update(elapsedSeconds: number, deltaSeconds: number): void {
+    update(
+      elapsedSeconds: number,
+      deltaSeconds: number,
+      simElapsedSeconds = elapsedSeconds,
+    ): void {
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;
       }
-      beltsGroup.rotation.y += deltaSeconds * 0.004;
+      beltsGroup.rotation.y = simElapsedSeconds * BELT_ROTATION_SPEED_RAD_PER_SEC;
 
       for (const wh of wormholeStates) {
         const targetVal = wh.targetOpen ? 1.0 : 0.0;

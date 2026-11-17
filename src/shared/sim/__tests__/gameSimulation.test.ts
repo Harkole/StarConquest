@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { GameSimulation } from '../gameSimulation.ts';
+import {
+  GameSimulation,
+  HARVESTER_CARGO_CAPACITY,
+  HARVESTER_EMPTY_SPEED,
+  HARVESTER_FULL_SPEED,
+  HARVESTER_MINING_DURATION_SECONDS,
+} from '../gameSimulation.ts';
 
 describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => {
   it('initializes each player with Homeworld C&C on slots 0 & 1 and 1 free starting Harvester', () => {
@@ -26,7 +32,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     const sim = new GameSimulation('blitz_skirmish');
     const superEarthId = 'system_central_hub_super_earth';
 
-    // Cannot build a Refinery on an unclaimed planet before claiming it with an Outpost
     const blockedRes = sim.submitCommand({
       type: 'BUILD_ORBITAL_STRUCTURE',
       playerId: 'player_1',
@@ -36,7 +41,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     });
     expect(blockedRes.ok).toBe(false);
 
-    // Building a 1-slot Planetary Outpost claims the Super-Earth
     const claimRes = sim.submitCommand({
       type: 'BUILD_ORBITAL_STRUCTURE',
       playerId: 'player_1',
@@ -47,7 +51,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(claimRes.ok).toBe(true);
     expect(sim.getPlanetState(superEarthId).ownerId).toBe('player_1');
 
-    // Now building a Refinery on slot 1 succeeds
     const refineryRes = sim.submitCommand({
       type: 'BUILD_ORBITAL_STRUCTURE',
       playerId: 'player_1',
@@ -62,7 +65,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     const sim = new GameSimulation('blitz_skirmish');
     const homeworldId = 'system_starter_1_homeworld';
 
-    // Slot 1 is occupied by C&C (0, 1), so building a 2-slot Dockyard on slot 1 must fail
     const overlapRes = sim.submitCommand({
       type: 'BUILD_ORBITAL_STRUCTURE',
       playerId: 'player_1',
@@ -72,7 +74,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     });
     expect(overlapRes.ok).toBe(false);
 
-    // Build a 1-slot Refinery on slot 2
     const refRes = sim.submitCommand({
       type: 'BUILD_ORBITAL_STRUCTURE',
       playerId: 'player_1',
@@ -82,7 +83,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     });
     expect(refRes.ok).toBe(true);
 
-    // Advance 25 seconds to complete the Refinery (20s build time)
     sim.stepTick(25);
 
     const p1HarvestersAfterRefinery = sim
@@ -90,7 +90,6 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       .filter((h) => h.ownerId === 'player_1');
     expect(p1HarvestersAfterRefinery).toHaveLength(2);
 
-    // Queue an extra paid Harvester at the Homeworld
     const queueRes = sim.submitCommand({
       type: 'QUEUE_SHIP',
       playerId: 'player_1',
@@ -106,17 +105,37 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(p1HarvestersAfterQueue).toHaveLength(3);
   });
 
-  it('runs the automated Harvester mining loop and deposits Ore and Crystals', () => {
-    const sim = new GameSimulation('blitz_skirmish');
+  it('enforces Harvester empty vs full speed, 10–15s mining duration for 40 cargo, and single-rock tracking', () => {
+    expect(HARVESTER_CARGO_CAPACITY).toBe(40);
+    expect(HARVESTER_MINING_DURATION_SECONDS).toBeGreaterThanOrEqual(10);
+    expect(HARVESTER_MINING_DURATION_SECONDS).toBeLessThanOrEqual(15);
+    expect(HARVESTER_EMPTY_SPEED).toBeCloseTo(41.325, 2);
+    expect(HARVESTER_FULL_SPEED).toBeCloseTo(27.55, 2);
+
+    const sim = new GameSimulation('standard_tactical');
     const p1 = sim.getPlayerState('player_1');
     const initialTotalResources = p1.ore + p1.crystal;
+    const h = sim.getAllHarvesters().find((u) => u.ownerId === 'player_1');
+    expect(h).toBeDefined();
+    expect(h?.currentSpeed).toBeCloseTo(HARVESTER_EMPTY_SPEED, 2);
 
-    // Simulate 60 seconds in 1-second ticks so the Harvester flies to belt, mines, and returns
-    for (let i = 0; i < 60; i++) {
+    let observedMiningState = false;
+    let observedReturnFullSpeed = false;
+
+    for (let i = 0; i < 65; i++) {
       sim.stepTick(1.0);
+      if (h?.state === 'mining') {
+        observedMiningState = true;
+        expect(h.targetRockWorldPos).not.toBeNull();
+      }
+      if (h?.state === 'returning_to_dropoff' && h.cargoAmount >= 40) {
+        observedReturnFullSpeed = true;
+        expect(h.currentSpeed).toBeCloseTo(HARVESTER_FULL_SPEED, 2);
+      }
     }
 
-    const updatedTotalResources = p1.ore + p1.crystal;
-    expect(updatedTotalResources).toBeGreaterThan(initialTotalResources);
+    expect(observedMiningState).toBe(true);
+    expect(observedReturnFullSpeed).toBe(true);
+    expect(p1.ore + p1.crystal).toBeGreaterThan(initialTotalResources);
   });
 });

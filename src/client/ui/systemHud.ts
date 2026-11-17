@@ -5,6 +5,7 @@ import {
   type OrbitalStructureId,
 } from '../../shared/config/index.ts';
 import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
+import type { HarvesterActivityState } from '../../shared/sim/gameSimulation.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
 
@@ -16,6 +17,25 @@ const BUILDABLE_STRUCTURE_IDS: readonly OrbitalStructureId[] = [
   'heavy_defense_platform',
 ];
 
+function formatHarvesterState(
+  state: HarvesterActivityState,
+  cargoType: 'ore' | 'crystal',
+): string {
+  const resName = cargoType === 'ore' ? 'Ore Asteroid' : 'Crystal Cluster';
+  switch (state) {
+    case 'flying_to_belt':
+      return `Outbound → ${resName}`;
+    case 'mining':
+      return `Mining ${resName} (Laser Locked)`;
+    case 'returning_to_dropoff':
+      return `Returning Laden (${cargoType.toUpperCase()})`;
+    case 'transiting_to_hub':
+      return 'Transiting Wormhole → Central Hub';
+    case 'transiting_to_home':
+      return 'Transiting Wormhole → Home System';
+  }
+}
+
 export function mountSystemHud(
   container: HTMLElement,
   galaxy: GalaxyTopology,
@@ -25,7 +45,7 @@ export function mountSystemHud(
   const sim = simAdapter.simulation;
   const playerId = simAdapter.localPlayerId;
 
-  let selectedSlotIndex = 2; // Default to first free slot after Homeworld C&C (0, 1)
+  let selectedSlotIndex = 2;
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
 
@@ -33,8 +53,10 @@ export function mountSystemHud(
   topBarEl.className = 'hud-econ-bar';
   const mainBodyEl = document.createElement('div');
   mainBodyEl.className = 'hud-main-body';
+  const harvesterInspectorEl = document.createElement('div');
+  harvesterInspectorEl.className = 'hud-harvester-inspector';
   container.innerHTML = '';
-  container.append(topBarEl, mainBodyEl);
+  container.append(topBarEl, harvesterInspectorEl, mainBodyEl);
 
   function renderEconomyBar(): void {
     const pState = sim.getPlayerState(playerId);
@@ -88,6 +110,105 @@ export function mountSystemHud(
     });
   }
 
+  function renderHarvesterInspector(): void {
+    const playerHarvesters = sim
+      .getAllHarvesters()
+      .filter((h) => h.ownerId === playerId);
+    const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
+    const selectedHarvester = selectedHarvesterId
+      ? sim.getHarvesterById(selectedHarvesterId)
+      : undefined;
+
+    const harvesterButtonsHtml = playerHarvesters
+      .map((h, idx) => {
+        const isSel = h.id === selectedHarvesterId;
+        const pct = Math.round((h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100);
+        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-harvester="${h.id}">
+          Harvester #${idx + 1}
+          <span class="hud-badge">${h.cargoType.toUpperCase()} ${pct}%</span>
+        </button>`;
+      })
+      .join('');
+
+    let detailCardHtml = '';
+    if (selectedHarvester) {
+      const pct = Math.min(
+        100,
+        Math.round(
+          (selectedHarvester.cargoAmount / Math.max(1, selectedHarvester.cargoCapacity)) *
+            100,
+        ),
+      );
+      const isCameraPinned = sceneManager.cameraController.isPinned();
+      const targetResourceLabel =
+        selectedHarvester.cargoType === 'ore'
+          ? 'Ore Deposit (Silicate/Iron Boulder)'
+          : 'Crystal Deposit (Pale Ice-Blue Cluster)';
+
+      detailCardHtml = `
+        <div class="harvester-telemetry-card">
+          <div class="telemetry-row">
+            <div>
+              <strong>Selected: ${selectedHarvester.id.replace('_', ' #')}</strong>
+              <span class="hud-badge">${formatHarvesterState(selectedHarvester.state, selectedHarvester.cargoType)}</span>
+            </div>
+            <div class="telemetry-actions">
+              <button class="hud-btn ${isCameraPinned ? 'active' : ''}" data-action="repin-harvester">
+                ${isCameraPinned ? 'Camera Pinned (Pan to Break)' : 'Pin Camera to Follow'}
+              </button>
+              <button class="hud-btn" data-action="deselect-harvester">Close</button>
+            </div>
+          </div>
+          <div class="telemetry-meta">
+            <span><strong>Target Resource:</strong> ${targetResourceLabel}</span>
+            <span><strong>Speed:</strong> ${selectedHarvester.currentSpeed.toFixed(1)} u/s</span>
+          </div>
+          <div class="telemetry-progress-wrap">
+            <div class="telemetry-progress-label">
+              <span>Mined Cargo (${selectedHarvester.cargoType.toUpperCase()})</span>
+              <strong>${selectedHarvester.cargoAmount.toFixed(1)} / ${selectedHarvester.cargoCapacity} (${pct}%)</strong>
+            </div>
+            <div class="telemetry-progress-bar">
+              <div class="telemetry-progress-fill ${selectedHarvester.cargoType}" style="width: ${pct}%;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    harvesterInspectorEl.innerHTML = `
+      <div class="hud-label">Harvester Fleet (Click in 3D Space or Below to Inspect & Pin Camera)</div>
+      <div class="hud-btn-row">${harvesterButtonsHtml}</div>
+      ${detailCardHtml}
+    `;
+
+    harvesterInspectorEl
+      .querySelectorAll<HTMLButtonElement>('[data-select-harvester]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const hId = btn.dataset.selectHarvester ?? null;
+          sceneManager.selectAndPinHarvester(hId);
+          renderHarvesterInspector();
+        });
+      });
+
+    harvesterInspectorEl
+      .querySelector<HTMLButtonElement>('[data-action="repin-harvester"]')
+      ?.addEventListener('click', () => {
+        if (selectedHarvesterId) {
+          sceneManager.selectAndPinHarvester(selectedHarvesterId);
+          renderHarvesterInspector();
+        }
+      });
+
+    harvesterInspectorEl
+      .querySelector<HTMLButtonElement>('[data-action="deselect-harvester"]')
+      ?.addEventListener('click', () => {
+        sceneManager.selectAndPinHarvester(null);
+        renderHarvesterInspector();
+      });
+  }
+
   function renderMainPanel(): void {
     const activeSystem = sceneManager.getActiveSystem();
     const paletteInfo = NEBULA_PALETTES[activeSystem.nebulaPalette];
@@ -113,7 +234,9 @@ export function mountSystemHud(
       .map((planet) => {
         const pState = sim.getPlanetState(planet.id);
         const pClass = PLANET_CLASSES[planet.planetClass];
-        const isSelected = planet.id === selectedPlanetId;
+        const isSelected =
+          planet.id === selectedPlanetId &&
+          sceneManager.getSelectedHarvesterId() === null;
         const usedSlots = pState.structures.reduce(
           (acc, s) => acc + s.occupiedSlots.length,
           0,
@@ -144,7 +267,6 @@ export function mountSystemHud(
       })
       .join('');
 
-    // Build orbital slot ring pills (0 .. totalSlots - 1)
     const slotButtonsHtml = Array.from({ length: totalSlots }, (_, idx) => {
       const occupyingStruct = selectedPlanetState.structures.find((s) =>
         s.occupiedSlots.includes(idx),
@@ -165,7 +287,6 @@ export function mountSystemHud(
       </button>`;
     }).join('');
 
-    // Determine actions for currently selected slot
     const selectedStruct = selectedPlanetState.structures.find((s) =>
       s.occupiedSlots.includes(selectedSlotIndex),
     );
@@ -261,8 +382,9 @@ export function mountSystemHud(
       </div>
 
       <div class="hud-controls-hint">
-        <span><strong>Left-Drag / WASD:</strong> Pan</span>
-        <span><strong>Right-Drag:</strong> Orbit / Tilt</span>
+        <span><strong>Click Harvester/Planet:</strong> Inspect & Follow</span>
+        <span><strong>Left-Drag / WASD:</strong> Pan (Breaks Follow)</span>
+        <span><strong>Right-Drag:</strong> Orbit</span>
         <span><strong>Scroll:</strong> Zoom</span>
       </div>
     `;
@@ -290,6 +412,7 @@ export function mountSystemHud(
             statusBannerMessage = '';
             sceneManager.focusPlanet(planetId);
             selectedSlotIndex = 0;
+            renderHarvesterInspector();
             renderMainPanel();
           }
         });
@@ -302,6 +425,7 @@ export function mountSystemHud(
           const wormholeId = btn.dataset.wormholeId;
           if (wormholeId) {
             sceneManager.focusAndToggleWormhole(wormholeId);
+            renderHarvesterInspector();
             renderMainPanel();
           }
         });
@@ -356,6 +480,7 @@ export function mountSystemHud(
           ? 'Deployed new Resource Harvester!'
           : `Cannot deploy Harvester: ${res.reason}`;
         renderEconomyBar();
+        renderHarvesterInspector();
         renderMainPanel();
       });
 
@@ -366,12 +491,18 @@ export function mountSystemHud(
       });
   }
 
+  sceneManager.onSelectionChange(() => {
+    renderHarvesterInspector();
+    renderMainPanel();
+  });
+
   renderEconomyBar();
+  renderHarvesterInspector();
   renderMainPanel();
 
-  // Refresh live economy counters & build progress every 400ms
   window.setInterval(() => {
     renderEconomyBar();
+    renderHarvesterInspector();
     const activePlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
     const anyUnderConstruction = activePlanetState.structures.some(
       (s) => !s.isComplete,
@@ -379,5 +510,5 @@ export function mountSystemHud(
     if (anyUnderConstruction) {
       renderMainPanel();
     }
-  }, 400);
+  }, 250);
 }

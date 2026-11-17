@@ -41,6 +41,7 @@ function bootstrapClient(): void {
     galaxy,
     cameraController,
     simAdapter,
+    canvas,
   );
   mountSystemHud(hudContainer, galaxy, sceneManager);
 

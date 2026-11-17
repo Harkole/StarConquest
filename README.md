@@ -54,7 +54,10 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
 
 ### Refineries & Harvesters
 * **Automated Harvesting**: Constructing a **Refinery** (or using the starting Command & Control's built-in drop-off) automatically provides **1 free Harvester**, with the option to queue additional Harvesters at the Refinery.
-* **Mining Loop**: Harvesters automatically fly to the nearest safe asteroid belt, extract Ore or Crystals, and return them to the nearest friendly Refinery or Command & Control.
+* **Mining Loop, Speeds & Single-Rock Lock**:
+  * **Outward vs. Laden Speed**: Harvesters travel at `41.3 u/s` when empty (`-25%` from base cruise) and slow to `27.6 u/s` when full (`-50%` from base cruise), making laden Harvesters prime targets for raiders.
+  * **12.5-Second Single-Rock Extraction**: Each Harvester holds `40` Ore or Crystals per mining session and takes `12.5 seconds` (`10–15s` window) to fill its bay. During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
+  * **Selection & Camera Pin**: Clicking any Harvester (or Planet) in 3D space or the HUD pins the camera to follow it and displays its target resource and live cargo progress (`x / 40`); panning manually with the mouse or `WASD` breaks the camera pin.
 * **The Central Super-Earth Advantage**:
   * Mining in the Central Neutral System without a local base forces Harvesters to transit back through wormholes to their home system—making them slow and vulnerable to enemy raids.
   * Capturing the central **Super-Earth** (or a neutral secondary planet) and constructing a local **Refinery** allows Harvesters to process resources locally in the central hub, massively accelerating income.

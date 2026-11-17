@@ -7,10 +7,29 @@ import {
 } from '../config/index.ts';
 import type { GameCommand, PlayerSlotId, Vector2D } from '../protocol/commands.ts';
 import {
+  type AsteroidBeltRockInstance,
+  getAsteroidWorldPosition,
+  getSystemAsteroidLayout,
+} from './asteroidBeltLayout.ts';
+import {
   createFiveSystemGalaxy,
   type GalaxyTopology,
   type PlanetNode,
 } from './galaxy.ts';
+
+/**
+ * Harvester Phase 1 Speed & Mining Constants:
+ * - Previous speed was 55.1 u/s (38 * 1.45).
+ * - Empty outward speed slowed by 25% -> 41.325 u/s.
+ * - Full return speed slowed by 50% -> 27.55 u/s.
+ * - Mining 40 units takes 12.5 seconds (within the 10–15s window) -> 3.2 units/sec.
+ */
+export const HARVESTER_EMPTY_SPEED = 41.325;
+export const HARVESTER_FULL_SPEED = 27.55;
+export const HARVESTER_CARGO_CAPACITY = 40;
+export const HARVESTER_MINING_DURATION_SECONDS = 12.5;
+export const HARVESTER_MINING_RATE_PER_SECOND =
+  HARVESTER_CARGO_CAPACITY / HARVESTER_MINING_DURATION_SECONDS;
 
 export interface OrbitalStructureInstance {
   readonly id: string;
@@ -36,7 +55,9 @@ export interface AsteroidMiningBeltNode {
   readonly id: string;
   readonly systemId: string;
   readonly resourceType: 'ore' | 'crystal';
-  readonly position: Vector2D;
+  readonly rock: AsteroidBeltRockInstance;
+  position: Vector2D;
+  worldY: number;
   remainingReserves: number;
 }
 
@@ -55,8 +76,11 @@ export interface HarvesterUnitState {
   currentSystemId: string;
   position: Vector2D;
   headingRadians: number;
+  currentSpeed: number;
   state: HarvesterActivityState;
   targetBeltId: string | null;
+  targetRockWorldPos: { readonly x: number; readonly y: number; readonly z: number } | null;
+  miningStandoffAngle: number;
   cargoType: 'ore' | 'crystal';
   cargoAmount: number;
   readonly cargoCapacity: number;
@@ -125,6 +149,10 @@ export class GameSimulation {
     return this.harvesters.filter((h) => h.currentSystemId === systemId);
   }
 
+  public getHarvesterById(harvesterId: string): HarvesterUnitState | undefined {
+    return this.harvesters.find((h) => h.id === harvesterId);
+  }
+
   public getAllHarvesters(): readonly HarvesterUnitState[] {
     return this.harvesters;
   }
@@ -170,7 +198,14 @@ export class GameSimulation {
     this.currentTick += 1;
     this.elapsedSeconds += deltaSeconds;
 
-    // 1. Advance orbital structure construction timers
+    // 1. Update rotating world positions of targetable asteroid/crystal rocks
+    for (const beltNode of this.miningBelts) {
+      const worldPos = getAsteroidWorldPosition(beltNode.rock, this.elapsedSeconds);
+      beltNode.position = { x: worldPos.x, z: worldPos.z };
+      beltNode.worldY = worldPos.y;
+    }
+
+    // 2. Advance orbital structure construction timers
     for (const planetState of this.planets.values()) {
       for (const structure of planetState.structures) {
         if (!structure.isComplete) {
@@ -184,7 +219,7 @@ export class GameSimulation {
       }
     }
 
-    // 2. Update automated Harvester mining & movement
+    // 3. Update automated Harvester mining & movement
     for (const harvester of this.harvesters) {
       this.updateHarvester(harvester, deltaSeconds);
     }
@@ -211,42 +246,22 @@ export class GameSimulation {
     }
 
     for (const system of this.galaxy.systems) {
-      // Populate asteroid belt mining nodes in each system
-      const reserveBase = Math.round(4000 * preset.asteroidReserveMultiplier);
-      const isOreHeavy = system.resourceSkew === 'ore_heavy';
-      const isCrystalHeavy = system.resourceSkew === 'crystal_heavy';
+      // Populate targetable individual asteroid & crystal rocks from shared belt layout
+      const reserveBase = Math.round(1200 * preset.asteroidReserveMultiplier);
+      const layout = getSystemAsteroidLayout(system);
 
-      const beltAngles = [0.3, 1.35, 2.4, 3.65, 4.7, 5.5];
-      beltAngles.forEach((angle, idx) => {
-        const radius = idx < 3 ? 420 : idx < 5 ? 1120 : 1620;
-        const resourceType: 'ore' | 'crystal' =
-          system.isCentralHub
-            ? idx % 2 === 0
-              ? 'ore'
-              : 'crystal'
-            : isOreHeavy
-              ? idx === 1
-                ? 'crystal'
-                : 'ore'
-              : isCrystalHeavy
-                ? idx === 0
-                  ? 'ore'
-                  : 'crystal'
-                : idx % 2 === 0
-                  ? 'ore'
-                  : 'crystal';
-
+      for (const rock of layout.miningCandidates) {
+        const initPos = getAsteroidWorldPosition(rock, 0);
         this.miningBelts.push({
-          id: `${system.id}_belt_${idx + 1}`,
+          id: rock.id,
           systemId: system.id,
-          resourceType,
-          position: {
-            x: Math.cos(angle) * radius,
-            z: Math.sin(angle) * radius,
-          },
+          resourceType: rock.resourceType,
+          rock,
+          position: { x: initPos.x, z: initPos.z },
+          worldY: initPos.y,
           remainingReserves: reserveBase,
         });
-      });
+      }
 
       // Initialize planets & starting Homeworld Command & Control (2 slots)
       for (const planet of system.planets) {
@@ -316,7 +331,6 @@ export class GameSimulation {
       return { ok: false, reason: 'Planet is owned by another player' };
     }
 
-    // Determine 1-slot vs 2-slot occupancy
     const requiredSlots =
       config.slotCost === 2
         ? [slotIndex, (slotIndex + 1) % totalSlots]
@@ -376,7 +390,6 @@ export class GameSimulation {
       return { ok: false, reason: 'Invalid player' };
     }
 
-    // Find the target planet with a completed Refinery or C&C owned by this player
     let targetPlanet: PlanetRuntimeState | undefined;
     for (const p of this.planets.values()) {
       if (p.planet.id === structureOrPlanetId && p.ownerId === playerId) {
@@ -465,11 +478,14 @@ export class GameSimulation {
       currentSystemId: planetState.planet.systemId,
       position: spawnPos,
       headingRadians: angle,
+      currentSpeed: HARVESTER_EMPTY_SPEED,
       state: 'flying_to_belt',
       targetBeltId: null,
+      targetRockWorldPos: null,
+      miningStandoffAngle: angle,
       cargoType: preferredResource,
       cargoAmount: 0,
-      cargoCapacity: 40,
+      cargoCapacity: HARVESTER_CARGO_CAPACITY,
       mineCrossSystemHub: false,
     };
 
@@ -477,9 +493,20 @@ export class GameSimulation {
     return harvester;
   }
 
+  private computeHarvesterSpeed(harvester: HarvesterUnitState): number {
+    const fillRatio = Math.min(
+      1,
+      Math.max(0, harvester.cargoAmount / Math.max(1, harvester.cargoCapacity)),
+    );
+    return (
+      HARVESTER_EMPTY_SPEED +
+      (HARVESTER_FULL_SPEED - HARVESTER_EMPTY_SPEED) * fillRatio
+    );
+  }
+
   private updateHarvester(harvester: HarvesterUnitState, deltaSeconds: number): void {
-    const speed = SHIP_CLASSES.harvester.speed * 1.45;
-    const preset = MATCH_PRESETS[this.presetId];
+    const speed = this.computeHarvesterSpeed(harvester);
+    harvester.currentSpeed = speed;
 
     // If assigned to cross-system Central Hub mining and currently in starter system with empty cargo:
     if (
@@ -488,6 +515,7 @@ export class GameSimulation {
       harvester.cargoAmount === 0
     ) {
       harvester.state = 'transiting_to_hub';
+      harvester.targetRockWorldPos = null;
       const wormhole = this.galaxy.wormholes.find(
         (wh) => wh.fromSystemId === harvester.currentSystemId,
       );
@@ -520,15 +548,35 @@ export class GameSimulation {
       if (!belt) {
         belt = this.selectBestBeltInSystem(harvester);
         harvester.targetBeltId = belt?.id ?? null;
+        if (belt) {
+          harvester.cargoType = belt.resourceType;
+          harvester.miningStandoffAngle = Math.atan2(
+            harvester.position.z - belt.position.z,
+            harvester.position.x - belt.position.x,
+          );
+        }
       }
       if (!belt) {
         return;
       }
 
+      harvester.targetRockWorldPos = {
+        x: belt.position.x,
+        y: belt.worldY,
+        z: belt.position.z,
+      };
+
+      const standoffRadius = 11.5;
+      const standoffPos: Vector2D = {
+        x: belt.position.x + Math.cos(harvester.miningStandoffAngle) * standoffRadius,
+        z: belt.position.z + Math.sin(harvester.miningStandoffAngle) * standoffRadius,
+      };
+
       const arrived = this.movePositionTowards(
         harvester,
-        belt.position,
+        standoffPos,
         speed * deltaSeconds,
+        1.5,
       );
       if (arrived) {
         harvester.state = 'mining';
@@ -539,17 +587,42 @@ export class GameSimulation {
 
     if (harvester.state === 'mining') {
       const belt = this.miningBelts.find((b) => b.id === harvester.targetBeltId);
-      const extractAmount = 14 * preset.harvestRateMultiplier * deltaSeconds;
+      if (!belt || belt.remainingReserves <= 0) {
+        harvester.targetBeltId = null;
+        harvester.state =
+          harvester.cargoAmount >= harvester.cargoCapacity * 0.5
+            ? 'returning_to_dropoff'
+            : 'flying_to_belt';
+        return;
+      }
+
+      // Lock position & heading to follow the exact rotating asteroid/crystal rock!
+      const standoffRadius = 11.5;
+      harvester.position = {
+        x: belt.position.x + Math.cos(harvester.miningStandoffAngle) * standoffRadius,
+        z: belt.position.z + Math.sin(harvester.miningStandoffAngle) * standoffRadius,
+      };
+      harvester.targetRockWorldPos = {
+        x: belt.position.x,
+        y: belt.worldY,
+        z: belt.position.z,
+      };
+      harvester.headingRadians = Math.atan2(
+        belt.position.x - harvester.position.x,
+        belt.position.z - harvester.position.z,
+      );
+
+      // Extract 40 units over 12.5 seconds (3.2 units/sec)
+      const extractAmount = HARVESTER_MINING_RATE_PER_SECOND * deltaSeconds;
       harvester.cargoAmount = Math.min(
         harvester.cargoCapacity,
         harvester.cargoAmount + extractAmount,
       );
-      if (belt) {
-        belt.remainingReserves = Math.max(0, belt.remainingReserves - extractAmount);
-      }
-      harvester.headingRadians += deltaSeconds * 0.6;
+      belt.remainingReserves = Math.max(0, belt.remainingReserves - extractAmount);
+      harvester.currentSpeed = this.computeHarvesterSpeed(harvester);
 
       if (harvester.cargoAmount >= harvester.cargoCapacity) {
+        harvester.targetRockWorldPos = null;
         harvester.state = 'returning_to_dropoff';
       }
       return;
@@ -559,7 +632,7 @@ export class GameSimulation {
       harvester.state === 'returning_to_dropoff' ||
       harvester.state === 'transiting_to_home'
     ) {
-      // Check if player owns a local completed Refinery or C&C in the current system!
+      harvester.targetRockWorldPos = null;
       const localDropoffPlanet = this.findNearestFriendlyDropoffPlanet(
         harvester.ownerId,
         harvester.currentSystemId,
@@ -583,7 +656,6 @@ export class GameSimulation {
             }
           }
           harvester.cargoAmount = 0;
-          // Alternate resource preference dynamically based on player's lower stockpile
           if (player) {
             harvester.cargoType =
               player.crystal * 1.4 < player.ore ? 'crystal' : 'ore';
@@ -592,7 +664,6 @@ export class GameSimulation {
           harvester.state = 'flying_to_belt';
         }
       } else if (harvester.currentSystemId === 'system_central_hub') {
-        // No local Refinery in the Central Nexus! Must transit back through the wormhole to home system
         harvester.state = 'transiting_to_home';
         const returnWormhole = this.galaxy.wormholes.find(
           (wh) => wh.fromSystemId === harvester.homeSystemId,
@@ -626,14 +697,25 @@ export class GameSimulation {
       return undefined;
     }
 
-    const matchingResource = candidates.filter(
-      (b) => b.resourceType === harvester.cargoType,
+    // Avoid picking the exact same rock another Harvester is already mining if possible
+    const occupiedBeltIds = new Set(
+      this.harvesters
+        .filter((h) => h.id !== harvester.id && h.targetBeltId !== null)
+        .map((h) => h.targetBeltId),
     );
-    const pool = matchingResource.length > 0 ? matchingResource : candidates;
 
-    let best = pool[0];
+    const matchingResource = candidates.filter(
+      (b) => b.resourceType === harvester.cargoType && !occupiedBeltIds.has(b.id),
+    );
+    const pool =
+      matchingResource.length > 0
+        ? matchingResource
+        : candidates.filter((b) => b.resourceType === harvester.cargoType);
+    const finalPool = pool.length > 0 ? pool : candidates;
+
+    let best = finalPool[0];
     let bestDist = Infinity;
-    for (const b of pool) {
+    for (const b of finalPool) {
       const d = Math.hypot(
         b.position.x - harvester.position.x,
         b.position.z - harvester.position.z,
@@ -681,15 +763,15 @@ export class GameSimulation {
     harvester: HarvesterUnitState,
     target: Vector2D,
     maxStep: number,
-    arrivalRadius = 18,
+    arrivalRadius = 2.0,
   ): boolean {
     const dx = target.x - harvester.position.x;
     const dz = target.z - harvester.position.z;
     const dist = Math.hypot(dx, dz);
     if (dist <= arrivalRadius + maxStep) {
       harvester.position = {
-        x: target.x - (dx / Math.max(1, dist)) * arrivalRadius,
-        z: target.z - (dz / Math.max(1, dist)) * arrivalRadius,
+        x: target.x - (dx / Math.max(0.001, dist)) * arrivalRadius,
+        z: target.z - (dz / Math.max(0.001, dist)) * arrivalRadius,
       };
       return true;
     }

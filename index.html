@@ -84,6 +84,65 @@
         color: #94a3b8;
         letter-spacing: 0.06em;
       }
+      .hud-harvester-inspector {
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+      }
+      .harvester-telemetry-card {
+        margin-top: 7px;
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(56, 189, 248, 0.45);
+        border-radius: 7px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .telemetry-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.76rem;
+      }
+      .telemetry-actions {
+        display: flex;
+        gap: 5px;
+      }
+      .telemetry-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.71rem;
+        color: #cbd5e1;
+      }
+      .telemetry-progress-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .telemetry-progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.7rem;
+        color: #94a3b8;
+      }
+      .telemetry-progress-bar {
+        width: 100%;
+        height: 8px;
+        background: rgba(30, 41, 59, 0.95);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .telemetry-progress-fill {
+        height: 100%;
+        transition: width 0.2s linear;
+      }
+      .telemetry-progress-fill.ore {
+        background: linear-gradient(90deg, #d97706, #f59e0b);
+      }
+      .telemetry-progress-fill.crystal {
+        background: linear-gradient(90deg, #0284c7, #7dd3fc);
+      }
       .hud-main-body {
         display: flex;
         flex-direction: column;
