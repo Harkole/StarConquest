@@ -131,11 +131,13 @@ uniform vec3 uAtmosphereColor;
 ${NOISE_GLSL_CHUNK}
 
 float sampleCloudDensity(vec3 sphereDir, float time) {
-  vec3 drifted = rotateY(sphereDir, time * uCloudDriftSpeed);
+  float zonalWave = (1.0 - abs(sphereDir.y)) * 0.16 * sin(time * 0.08 + uSeed);
+  vec3 drifted = rotateY(sphereDir, mod(time * uCloudDriftSpeed, 6.2831853) + zonalWave);
+  vec3 morphOffset = vec3(time * 0.006, -time * 0.004, time * 0.005);
   vec3 swirl = vec3(
-    fbm5(drifted * 2.8 + vec3(uSeed)),
-    fbm5(drifted * 2.8 + vec3(uSeed + 5.2)),
-    fbm5(drifted * 2.8 + vec3(uSeed + 9.7))
+    fbm5(drifted * 2.8 + vec3(uSeed) + morphOffset),
+    fbm5(drifted * 2.8 + vec3(uSeed + 5.2) - morphOffset),
+    fbm5(drifted * 2.8 + vec3(uSeed + 9.7) + morphOffset)
   );
   float raw = fbm5(drifted * 3.6 + swirl * 1.15);
   return smoothstep(0.47, 0.74, raw);
@@ -241,14 +243,15 @@ void main() {
   vec3 nWorld = normalize(vWorldNormal);
   vec3 sunDir = normalize(uSunDirection);
 
-  // Differential rotation + latitude zonal wind shear
-  float shear = (1.0 - abs(nObj.y) * 0.45);
-  vec3 drifted = rotateY(nObj, uTime * uCloudDriftSpeed * shear);
+  // Uniform planetary cloud drift + bounded latitude trade-wind wave (never winds into stripes)
+  float zonalWave = (1.0 - abs(nObj.y)) * 0.16 * sin(uTime * 0.08 + uSeed);
+  vec3 drifted = rotateY(nObj, mod(uTime * uCloudDriftSpeed, 6.2831853) + zonalWave);
+  vec3 morphOffset = vec3(uTime * 0.006, -uTime * 0.004, uTime * 0.005);
 
   vec3 swirl = vec3(
-    fbm5(drifted * 2.8 + vec3(uSeed)),
-    fbm5(drifted * 2.8 + vec3(uSeed + 5.2)),
-    fbm5(drifted * 2.8 + vec3(uSeed + 9.7))
+    fbm5(drifted * 2.8 + vec3(uSeed) + morphOffset),
+    fbm5(drifted * 2.8 + vec3(uSeed + 5.2) - morphOffset),
+    fbm5(drifted * 2.8 + vec3(uSeed + 9.7) + morphOffset)
   );
   float rawCloud = fbm5(drifted * 3.6 + swirl * 1.15);
   float threshold = 1.0 - uCloudCoverage;
