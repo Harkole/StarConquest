@@ -183,9 +183,13 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
      * **Animated Magma Fissures**: Emissive procedural lava cracks and caldera pools that slowly pulse and flow using UV/noise distortion, glowing brightly through the HDR bloom pass.
      * **Scorched Atmosphere**: Warm orange/ember Fresnel rim haze.
 3. **Orbital Rings, Wormholes & Combat VFX**:
-   * **Orbital Rings**: Sleek orbital ring tracks around every planet with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit.
-   * **Wormholes**: Swirling gravitational lensing / accretion vortex shaders with particle inflow to visually highlight spatial choke points.
-   * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts, Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
+   * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit (including the 2-slot Command & Control flagship station on starter Homeworlds).
+   * **Wormholes**: Swirling gravitational lensing / accretion vortex shaders (`src/client/shaders/wormholeShader.ts`) with particle inflow to visually highlight spatial choke points.
+   * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`), Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
+4. **Orbital Camera & Sector Navigation (`src/client/renderer/orbitalCamera.ts` & `src/client/ui/systemHud.ts`)**:
+   * **Pan**: Left-drag, middle-drag, or `WASD` / Arrow keys across the star system plane.
+   * **Orbit & Tilt**: Right-drag to rotate azimuth and polar viewing angles.
+   * **Zoom & Planet Focus**: Mouse wheel zooms smoothly from system-wide tactical overview down to close-up planetary surface/cloud inspection; clicking any planet or system in the HUD smoothly glides the camera to that target.
 
 ---
 
