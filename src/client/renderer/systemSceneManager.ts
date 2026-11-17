@@ -4,6 +4,8 @@ import type {
   PlanetNode,
   StarSystemNode,
 } from '../../shared/sim/galaxy.ts';
+import type { LocalSimAdapter } from '../net/localSimAdapter.ts';
+import { HarvesterFleetRenderer } from './harvesterFleetRenderer.ts';
 import type { OrbitalCameraController } from './orbitalCamera.ts';
 import {
   type AnimatedPlanetHandle,
@@ -19,24 +21,32 @@ export class SystemSceneManager {
   private readonly scene: THREE.Scene;
   private readonly galaxy: GalaxyTopology;
   private readonly cameraController: OrbitalCameraController;
+  public readonly simAdapter: LocalSimAdapter;
 
   private activeSystem: StarSystemNode;
+  private selectedPlanetId: string;
   private environmentHandle: SpaceEnvironmentHandle | null = null;
   private planetHandles: AnimatedPlanetHandle[] = [];
+  private readonly harvesterRenderer = new HarvesterFleetRenderer();
 
   constructor(
     scene: THREE.Scene,
     galaxy: GalaxyTopology,
     cameraController: OrbitalCameraController,
+    simAdapter: LocalSimAdapter,
   ) {
     this.scene = scene;
     this.galaxy = galaxy;
     this.cameraController = cameraController;
+    this.simAdapter = simAdapter;
+    this.scene.add(this.harvesterRenderer.rootGroup);
+
     const initialSystem = galaxy.systems[0];
     if (!initialSystem) {
       throw new Error('Galaxy contains no star systems');
     }
     this.activeSystem = initialSystem;
+    this.selectedPlanetId = initialSystem.planets[0]?.id ?? '';
     this.loadSystem(initialSystem.id);
   }
 
@@ -46,6 +56,10 @@ export class SystemSceneManager {
 
   public getActivePlanets(): readonly PlanetNode[] {
     return this.activeSystem.planets;
+  }
+
+  public getSelectedPlanetId(): string {
+    return this.selectedPlanetId;
   }
 
   public getActiveWormholes(): readonly WormholeInstanceHandle[] {
@@ -61,7 +75,6 @@ export class SystemSceneManager {
     this.clearCurrentSystem();
     this.activeSystem = targetSystem;
 
-    // Collect wormholes connected to this star system
     const wormholesInSystem = this.galaxy.wormholes
       .filter(
         (wh) => wh.fromSystemId === targetSystem.id || wh.toSystemId === targetSystem.id,
@@ -84,13 +97,15 @@ export class SystemSceneManager {
     const sunDir = this.environmentHandle.sunDirection;
     this.planetHandles = targetSystem.planets.map((planet) => {
       const handle = createLivingPlanetGroup(planet, sunDir);
+      const runtimeState = this.simAdapter.simulation.getPlanetState(planet.id);
+      handle.syncStructures(runtimeState);
       this.scene.add(handle.rootGroup);
       return handle;
     });
 
-    // Focus camera on primary planet (Homeworld or Central Super-Earth)
     const primaryPlanet = targetSystem.planets[0];
     if (primaryPlanet) {
+      this.selectedPlanetId = primaryPlanet.id;
       const defaultDist =
         primaryPlanet.planetClass === 'super_earth' ? 140 : 112;
       this.cameraController.focusOn(
@@ -108,6 +123,7 @@ export class SystemSceneManager {
     if (!planet) {
       return;
     }
+    this.selectedPlanetId = planet.id;
     const zoomDistance =
       planet.planetClass === 'super_earth'
         ? 128
@@ -135,9 +151,27 @@ export class SystemSceneManager {
   }
 
   public update(elapsedSeconds: number, deltaSeconds: number): void {
-    this.environmentHandle?.update(elapsedSeconds, deltaSeconds);
+    this.simAdapter.update(deltaSeconds);
+
+    // Sync orbital structures & habitation state for planets in the active system
     for (const handle of this.planetHandles) {
+      const runtimeState = this.simAdapter.simulation.getPlanetState(handle.planet.id);
+      handle.syncStructures(runtimeState);
       handle.update(elapsedSeconds, deltaSeconds);
+    }
+
+    // Sync Harvesters in the active system & update DS9 wormhole proximity triggers
+    const harvestersInSystem = this.simAdapter.simulation.getHarvestersInSystem(
+      this.activeSystem.id,
+    );
+    this.harvesterRenderer.syncHarvesters(harvestersInSystem);
+
+    const shipPositions = harvestersInSystem.map((h) => h.position);
+    if (this.environmentHandle) {
+      for (const wh of this.environmentHandle.wormholes) {
+        wh.updateShipProximity(shipPositions);
+      }
+      this.environmentHandle.update(elapsedSeconds, deltaSeconds);
     }
   }
 
@@ -152,5 +186,6 @@ export class SystemSceneManager {
       handle.dispose();
     }
     this.planetHandles = [];
+    this.harvesterRenderer.syncHarvesters([]);
   }
 }

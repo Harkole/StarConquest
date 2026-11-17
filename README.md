@@ -199,8 +199,8 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
 
 ### Tech Stack
 * **Language & Tooling**: **TypeScript (Strict Mode)** + **Vite** (HMR & GLSL shader bundling) + **Vitest** (unit & headless balance tests).
-* **Rendering**: **Three.js** + **`postprocessing`** with a decoupled HTML/CSS tactical HUD overlay.
-* **Simulation Core (`src/shared/`)**: A pure TypeScript, fixed-tick authoritative simulation engine and AI bot controller with zero rendering or DOM dependencies.
+* **Rendering**: **Three.js** + **`postprocessing`** with a decoupled HTML/CSS tactical HUD overlay (`src/client/ui/systemHud.ts`) and 3D Harvester fleet renderer (`src/client/renderer/harvesterFleetRenderer.ts`).
+* **Simulation Core (`src/shared/sim/gameSimulation.ts`)**: A pure TypeScript, fixed-tick authoritative simulation engine and AI bot controller (`src/shared/ai/aiController.ts`) with zero rendering or DOM dependencies, managing orbital ring slot construction (`1-slot` vs. `2-slot` occupancy, secondary planet `Planetary Outpost` claiming), Ore/Crystal stockpiles, Fleet Supply, and automated Harvester mining/wormhole transit loops.
 
 ### Hosting & Networking Model
 Because the simulation core is **transport-agnostic** and interacts with players and AI exclusively via serializable `GameCommand` actions and `StateSnapshot` updates, the game supports three execution modes from the same codebase:

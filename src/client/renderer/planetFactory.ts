@@ -1,6 +1,10 @@
 import * as THREE from 'three';
-import { PLANET_CLASSES } from '../../shared/config/index.ts';
+import {
+  PLANET_CLASSES,
+  type OrbitalStructureId,
+} from '../../shared/config/index.ts';
 import type { PlanetNode } from '../../shared/sim/galaxy.ts';
+import type { PlanetRuntimeState } from '../../shared/sim/gameSimulation.ts';
 import {
   ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
   DRIFTING_CLOUDS_FRAGMENT_SHADER,
@@ -44,6 +48,7 @@ export interface AnimatedPlanetHandle {
   readonly orbitalRingRadius: number;
   isHabited(): boolean;
   setHabited(habited: boolean): void;
+  syncStructures(planetState: PlanetRuntimeState): void;
   update(elapsedSeconds: number, deltaSeconds: number): void;
   dispose(): void;
 }
@@ -177,9 +182,12 @@ export function createLivingPlanetGroup(
   const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
   bodyGroup.add(atmosphereMesh);
 
-  // 4. Orbital Ring Track & Slot Nodes (6, 8, 10, or 12 slots)
+  // 4. Orbital Ring Track & Dynamic Slot Stations (6, 8, 10, or 12 slots)
   const orbitalGroup = new THREE.Group();
   rootGroup.add(orbitalGroup);
+
+  const stationDynamicGroup = new THREE.Group();
+  orbitalGroup.add(stationDynamicGroup);
 
   const ringColor =
     planet.ownerId !== null
@@ -209,66 +217,207 @@ export function createLivingPlanetGroup(
   const freeSlotMaterial = new THREE.MeshStandardMaterial({
     color: 0x1e293b,
     emissive: ringColor,
-    emissiveIntensity: 0.75,
+    emissiveIntensity: 0.55,
     metalness: 0.7,
     roughness: 0.3,
   });
   const occupiedSlotMaterial = new THREE.MeshStandardMaterial({
     color: 0x0ea5e9,
     emissive: 0x38bdf8,
-    emissiveIntensity: 1.6,
+    emissiveIntensity: 1.15,
     metalness: 0.8,
     roughness: 0.2,
   });
   disposables.push(freeSlotMaterial, occupiedSlotMaterial);
 
-  const hasStartingCommandAndControl =
-    planet.ownerId !== null && planet.planetClass === 'large';
+  const slotNodeMeshes: THREE.Mesh[] = [];
+  const slotHaloMeshes: THREE.Mesh[] = [];
 
   for (const slot of slotPoints) {
-    // Starting Command & Control occupies 2 orbital slots (slots 0 and 1) on Homeworld
-    const isOccupiedByCnC =
-      hasStartingCommandAndControl && (slot.slotIndex === 0 || slot.slotIndex === 1);
-    const nodeMat = isOccupiedByCnC ? occupiedSlotMaterial : freeSlotMaterial;
-
-    const nodeMesh = new THREE.Mesh(slotNodeGeometry, nodeMat);
+    const nodeMesh = new THREE.Mesh(slotNodeGeometry, freeSlotMaterial);
     nodeMesh.position.set(slot.x, 0, slot.z);
     orbitalGroup.add(nodeMesh);
+    slotNodeMeshes.push(nodeMesh);
 
-    const haloRing = new THREE.Mesh(slotRingGeometry, nodeMat);
+    const haloRing = new THREE.Mesh(slotRingGeometry, freeSlotMaterial);
     haloRing.position.set(slot.x, 0, slot.z);
     orbitalGroup.add(haloRing);
+    slotHaloMeshes.push(haloRing);
   }
 
-  // Render the 2-Slot Command & Control (C&C) Orbital Station on starter Homeworlds
-  if (hasStartingCommandAndControl && slotPoints[0] && slotPoints[1]) {
-    const midAngle = (slotPoints[0].angleRadians + slotPoints[1].angleRadians) * 0.5;
-    const cncGroup = new THREE.Group();
-    cncGroup.position.set(
-      Math.cos(midAngle) * orbitalRingRadius,
-      0,
-      Math.sin(midAngle) * orbitalRingRadius,
-    );
-    cncGroup.rotation.y = -midAngle;
+  // Reusable station building block geometries & materials
+  const cncCoreGeom = new THREE.OctahedronGeometry(4.2, 1);
+  const cncSpireGeom = new THREE.CylinderGeometry(1.1, 1.8, 11, 8);
+  const cncWingGeom = new THREE.BoxGeometry(3.2, 1.4, 14);
+  const outpostDishGeom = new THREE.ConeGeometry(2.8, 3.8, 12);
+  const refinerySiloGeom = new THREE.CylinderGeometry(1.8, 1.8, 6.2, 12);
+  const dockyardGantryGeom = new THREE.BoxGeometry(4.8, 2.6, 12.5);
+  const techCrystalGeom = new THREE.OctahedronGeometry(3.1, 0);
+  const defenseBastionGeom = new THREE.CylinderGeometry(3.8, 4.4, 4.2, 8);
 
-    const coreGeom = new THREE.OctahedronGeometry(4.2, 1);
-    const spireGeom = new THREE.CylinderGeometry(1.1, 1.8, 11, 8);
-    const bridgeWingGeom = new THREE.BoxGeometry(3.2, 1.4, 14);
-    disposables.push(coreGeom, spireGeom, bridgeWingGeom);
+  const stationMatComplete = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.65,
+    metalness: 0.82,
+    roughness: 0.25,
+  });
+  const stationMatBuilding = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.75,
+  });
+  const refineryMatComplete = new THREE.MeshStandardMaterial({
+    color: 0xd97706,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.55,
+    metalness: 0.75,
+    roughness: 0.35,
+  });
 
-    const cncMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      emissive: 0x38bdf8,
-      emissiveIntensity: 1.4,
-      metalness: 0.85,
-      roughness: 0.2,
+  disposables.push(
+    cncCoreGeom,
+    cncSpireGeom,
+    cncWingGeom,
+    outpostDishGeom,
+    refinerySiloGeom,
+    dockyardGantryGeom,
+    techCrystalGeom,
+    defenseBastionGeom,
+    stationMatComplete,
+    stationMatBuilding,
+    refineryMatComplete,
+  );
+
+  function buildStationMesh(
+    structureId: OrbitalStructureId,
+    isComplete: boolean,
+  ): THREE.Group {
+    const group = new THREE.Group();
+    const mat = !isComplete
+      ? stationMatBuilding
+      : structureId === 'refinery'
+        ? refineryMatComplete
+        : stationMatComplete;
+
+    switch (structureId) {
+      case 'command_and_control': {
+        group.add(new THREE.Mesh(cncCoreGeom, mat));
+        group.add(new THREE.Mesh(cncSpireGeom, mat));
+        group.add(new THREE.Mesh(cncWingGeom, mat));
+        break;
+      }
+      case 'planetary_outpost': {
+        group.add(new THREE.Mesh(outpostDishGeom, mat));
+        break;
+      }
+      case 'refinery': {
+        const s1 = new THREE.Mesh(refinerySiloGeom, mat);
+        s1.position.set(0, 0, -1.6);
+        const s2 = new THREE.Mesh(refinerySiloGeom, mat);
+        s2.position.set(0, 0, 1.6);
+        group.add(s1, s2);
+        break;
+      }
+      case 'orbital_dockyard': {
+        group.add(new THREE.Mesh(dockyardGantryGeom, mat));
+        break;
+      }
+      case 'tech_module': {
+        group.add(new THREE.Mesh(techCrystalGeom, mat));
+        break;
+      }
+      case 'heavy_defense_platform': {
+        group.add(new THREE.Mesh(defenseBastionGeom, mat));
+        group.add(new THREE.Mesh(cncWingGeom, mat));
+        break;
+      }
+    }
+    return group;
+  }
+
+  let lastSignature = '';
+
+  function syncStructures(planetState: PlanetRuntimeState): void {
+    isHabitedUniform.value = planetState.ownerId !== null ? 1.0 : 0.0;
+    if (planetState.ownerId !== null) {
+      trackMaterial.color.setHex(0x38bdf8);
+    }
+
+    const sig = planetState.structures
+      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}`)
+      .join('|');
+    if (sig === lastSignature) {
+      return;
+    }
+    lastSignature = sig;
+
+    stationDynamicGroup.clear();
+
+    const occupiedSet = new Set<number>();
+    for (const struct of planetState.structures) {
+      for (const slotIdx of struct.occupiedSlots) {
+        occupiedSet.add(slotIdx);
+      }
+
+      const p0 = slotPoints[struct.occupiedSlots[0] ?? 0];
+      if (!p0) {
+        continue;
+      }
+
+      let angle = p0.angleRadians;
+      if (struct.occupiedSlots.length === 2) {
+        const p1 = slotPoints[struct.occupiedSlots[1] ?? 0];
+        if (p1) {
+          // Handle wrap-around between last slot and slot 0
+          let a1 = p1.angleRadians;
+          if (a1 < angle) {
+            a1 += Math.PI * 2;
+          }
+          angle = (angle + a1) * 0.5;
+        }
+      }
+
+      const stationGroup = buildStationMesh(struct.structureId, struct.isComplete);
+      stationGroup.position.set(
+        Math.cos(angle) * orbitalRingRadius,
+        0,
+        Math.sin(angle) * orbitalRingRadius,
+      );
+      stationGroup.rotation.y = -angle;
+      stationDynamicGroup.add(stationGroup);
+    }
+
+    slotNodeMeshes.forEach((mesh, idx) => {
+      mesh.material = occupiedSet.has(idx) ? occupiedSlotMaterial : freeSlotMaterial;
     });
-    disposables.push(cncMat);
+    slotHaloMeshes.forEach((mesh, idx) => {
+      mesh.material = occupiedSet.has(idx) ? occupiedSlotMaterial : freeSlotMaterial;
+    });
+  }
 
-    cncGroup.add(new THREE.Mesh(coreGeom, cncMat));
-    cncGroup.add(new THREE.Mesh(spireGeom, cncMat));
-    cncGroup.add(new THREE.Mesh(bridgeWingGeom, cncMat));
-    orbitalGroup.add(cncGroup);
+  // Initialize default Homeworld C&C visual if owned at creation
+  if (planet.ownerId !== null && planet.planetClass === 'large') {
+    syncStructures({
+      planet,
+      ownerId: planet.ownerId,
+      structures: [
+        {
+          id: 'init_cnc',
+          structureId: 'command_and_control',
+          ownerId: planet.ownerId,
+          planetId: planet.id,
+          primarySlotIndex: 0,
+          occupiedSlots: [0, 1],
+          buildProgressSeconds: 0,
+          totalBuildTimeSeconds: 0,
+          isComplete: true,
+          shields: 3000,
+          hull: 8000,
+        },
+      ],
+    });
   }
 
   return {
@@ -281,6 +430,7 @@ export function createLivingPlanetGroup(
     setHabited(habited: boolean): void {
       isHabitedUniform.value = habited ? 1.0 : 0.0;
     },
+    syncStructures,
     update(elapsedSeconds: number, deltaSeconds: number): void {
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;

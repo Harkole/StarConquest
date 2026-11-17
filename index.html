@@ -29,15 +29,62 @@
       }
       #hud-overlay {
         position: fixed;
-        top: 16px;
-        left: 16px;
-        max-width: 680px;
-        padding: 14px 16px;
-        background: rgba(8, 13, 26, 0.82);
+        top: 14px;
+        left: 14px;
+        max-width: 720px;
+        max-height: calc(100vh - 28px);
+        overflow-y: auto;
+        padding: 12px 15px;
+        background: rgba(8, 13, 26, 0.84);
         border: 1px solid rgba(56, 189, 248, 0.35);
         border-radius: 10px;
         backdrop-filter: blur(10px);
         box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .hud-econ-bar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+      }
+      .econ-metrics,
+      .econ-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .econ-pill {
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(100, 116, 139, 0.4);
+        border-radius: 6px;
+        padding: 4px 9px;
+        font-size: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .econ-pill.ore strong {
+        color: #f59e0b;
+      }
+      .econ-pill.crystal strong {
+        color: #7dd3fc;
+      }
+      .econ-pill.supply strong {
+        color: #a7f3d0;
+      }
+      .econ-label {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        letter-spacing: 0.06em;
+      }
+      .hud-main-body {
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -49,18 +96,18 @@
         gap: 12px;
       }
       #hud-overlay h1 {
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: #38bdf8;
       }
       .hud-subtitle {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: #94a3b8;
         margin-top: 2px;
       }
       .hud-label {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: #64748b;
@@ -77,8 +124,8 @@
         color: #e2e8f0;
         border: 1px solid rgba(100, 116, 139, 0.45);
         border-radius: 6px;
-        padding: 6px 10px;
-        font-size: 0.76rem;
+        padding: 5px 9px;
+        font-size: 0.74rem;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
@@ -95,7 +142,7 @@
         color: #ffffff;
       }
       .hud-badge {
-        font-size: 0.65rem;
+        font-size: 0.62rem;
         padding: 1px 5px;
         border-radius: 4px;
         background: rgba(56, 189, 248, 0.16);
@@ -107,39 +154,123 @@
         color: #e2e8f0;
         border: 1px solid rgba(100, 116, 139, 0.4);
         border-radius: 6px;
-        padding: 7px 10px;
+        padding: 6px 10px;
         text-align: left;
         cursor: pointer;
         transition: all 0.15s ease;
       }
-      .hud-planet-card:hover {
+      .hud-planet-card:hover,
+      .hud-planet-card.selected {
         border-color: #38bdf8;
-        transform: translateY(-1px);
+        background: rgba(14, 165, 233, 0.16);
       }
       .planet-card-title {
-        font-size: 0.78rem;
+        font-size: 0.76rem;
         font-weight: 600;
         color: #f8fafc;
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
       .planet-card-meta {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         color: #94a3b8;
         margin-top: 2px;
       }
-      .planet-card-theme {
+      .slot-ring-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-bottom: 8px;
+      }
+      .slot-pill {
+        background: rgba(15, 23, 42, 0.85);
+        color: #cbd5e1;
+        border: 1px solid rgba(100, 116, 139, 0.4);
+        border-radius: 5px;
+        padding: 4px 8px;
+        font-size: 0.7rem;
+        cursor: pointer;
+      }
+      .slot-pill.occupied {
+        border-color: rgba(56, 189, 248, 0.65);
+        color: #7dd3fc;
+      }
+      .slot-pill.building {
+        border-color: rgba(245, 158, 11, 0.75);
+        color: #fcd34d;
+      }
+      .slot-pill.selected {
+        background: rgba(56, 189, 248, 0.25);
+        border-color: #38bdf8;
+        color: #ffffff;
+        font-weight: 600;
+      }
+      .build-options-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+        gap: 6px;
+      }
+      .build-card-btn {
+        background: rgba(15, 23, 42, 0.9);
+        color: #e2e8f0;
+        border: 1px solid rgba(100, 116, 139, 0.45);
+        border-radius: 6px;
+        padding: 6px 9px;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .build-card-btn:hover:not(:disabled) {
+        border-color: #38bdf8;
+        background: rgba(30, 41, 59, 0.95);
+      }
+      .build-card-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+      }
+      .build-card-name {
+        font-size: 0.74rem;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .build-card-cost {
         font-size: 0.68rem;
-        color: #38bdf8;
+        color: #f59e0b;
         margin-top: 2px;
-        text-transform: capitalize;
+      }
+      .build-card-note {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+      .slot-detail-box {
+        grid-column: 1 / -1;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 0.75rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .hud-status-msg {
+        margin-top: 6px;
+        font-size: 0.72rem;
+        color: #38bdf8;
       }
       .hud-controls-hint {
         display: flex;
         flex-wrap: wrap;
         gap: 14px;
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         color: #94a3b8;
         border-top: 1px solid rgba(51, 65, 85, 0.5);
-        padding-top: 8px;
+        padding-top: 7px;
       }
     </style>
   </head>
