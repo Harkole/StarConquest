@@ -38,9 +38,10 @@ flowchart TD
 * **Central Neutral System (x1)**:
   * A resource-rich contested hub anchored by a single **Super-Earth** (12 orbital slots) alongside randomized Small/Medium planets and dense asteroid belts.
   * Always generates **4 wormholes**—one leading to each of the 4 player starter systems, even in matches with fewer than 4 human/AI players (allowing flanking or expansion into empty starter systems).
-* **Wormholes**:
-  * Wormholes are **open spatial choke points**—fleets and Harvesters fly directly through them without loading screens or activation locks.
-  * Because any unit can transit freely, wormhole mouths are the primary flashpoints for **Logistics Hubs** and **Defence Towers**.
+* **Wormholes & System Scale**:
+  * Wormholes are **open spatial choke points** located on the outer perimeter of each star system (`1,850–2,050` units from the central planet), while secondary planets orbit `850–1,250+` units away in separate quadrants.
+  * This wide spatial separation (`> 5x` structure sensor and weapon ranges) prevents instant firefights upon wormhole transit, gives fleets room to maneuver, and creates dark outer-rim corridors where **Harvesters and raiders can sneak past enemy sensor bubbles** to mine off-axis outer asteroid pockets without being detected.
+  * Because any unit can transit freely, wormhole mouths are the primary flashpoints for forward **Logistics Hubs** and **Defence Towers**.
 
 ---
 
@@ -176,6 +177,7 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
 2. **Multi-Layered Living Planets**:
    * **Terran / Earth & Super-Earth Worlds**:
      * **Surface Layer**: Custom PBR/GLSL shader with distinct continents, relief/normal mapping, and specular ocean reflections that catch the system's star light.
+     * **Habitation & Cityscapes**: Inhabited worlds with orbital platforms (such as starter Homeworlds) render textured grey urban cityscapes on the sunlit side that transition seamlessly into glowing warm-amber city lights as they rotate onto the night side. Unclaimed worlds with no orbital platforms (such as the Central Nexus Super-Earth before a Planetary Outpost is built) remain uninhabited wilderness with no cities until claimed.
      * **Drifting Cloud Layer**: A secondary, slightly larger transparent sphere rotating at an independent speed with cloud coverage and subtle shadow projection onto the surface below.
      * **Atmospheric Halo**: An outer Fresnel rim-lighting shader shell giving the planet horizon a realistic atmospheric scatter (azure blue for Earth/Super-Earth worlds).
    * **Rock / Volcanic / Lava Worlds**:
@@ -183,9 +185,13 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
      * **Animated Magma Fissures**: Emissive procedural lava cracks and caldera pools that slowly pulse and flow using UV/noise distortion, glowing brightly through the HDR bloom pass.
      * **Scorched Atmosphere**: Warm orange/ember Fresnel rim haze.
 3. **Orbital Rings, Wormholes & Combat VFX**:
-   * **Orbital Rings**: Sleek orbital ring tracks around every planet with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit.
-   * **Wormholes**: Swirling gravitational lensing / accretion vortex shaders with particle inflow to visually highlight spatial choke points.
-   * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts, Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
+   * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit (including the 2-slot Command & Control flagship station on starter Homeworlds).
+   * **Wormholes (DS9-Style Proximity Opening Event)**: Wormholes (`src/client/shaders/wormholeShader.ts` & `src/client/renderer/spaceEnvironmentFactory.ts`) rest as a compact, shimmering subspace anomaly marker when idle. When a ship approaches within proximity (`240` units—or when triggered from the HUD for inspection), the wormhole erupts with a Deep Space 9-inspired gravimetric cross-flare and shockwave ring before unfurling into a 3D depth-displaced swirling cloud funnel and luminous tunnel throat.
+   * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`), Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
+4. **Orbital Camera & Sector Navigation (`src/client/renderer/orbitalCamera.ts` & `src/client/ui/systemHud.ts`)**:
+   * **Pan**: Left-drag, middle-drag, or `WASD` / Arrow keys across the star system plane.
+   * **Orbit & Tilt**: Right-drag to rotate azimuth and polar viewing angles.
+   * **Zoom & Planet Focus**: Mouse wheel zooms smoothly from system-wide tactical overview down to close-up planetary surface/cloud inspection; clicking any planet or system in the HUD smoothly glides the camera to that target.
 
 ---
 

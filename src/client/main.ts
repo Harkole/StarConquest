@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { createFiveSystemGalaxy } from '../shared/sim/galaxy.ts';
+import { OrbitalCameraController } from './renderer/orbitalCamera.ts';
+import { SystemSceneManager } from './renderer/systemSceneManager.ts';
+import { mountSystemHud } from './ui/systemHud.ts';
 
 function bootstrapClient(): void {
   const canvas = document.getElementById('app-canvas') as HTMLCanvasElement | null;
-  const statusEl = document.getElementById('hud-status');
-  if (!canvas) {
-    throw new Error('Missing #app-canvas element');
+  const hudContainer = document.getElementById('hud-overlay');
+  if (!canvas || !hudContainer) {
+    throw new Error('Missing #app-canvas or #hud-overlay element');
   }
 
   const galaxy = createFiveSystemGalaxy();
-  if (statusEl) {
-    statusEl.textContent = `Loaded ${galaxy.systems.length} Star Systems & ${galaxy.wormholes.length} Wormholes`;
-  }
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -21,24 +21,28 @@ function bootstrapClient(): void {
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x04060d);
+  scene.background = new THREE.Color(0x010206);
 
   const camera = new THREE.PerspectiveCamera(
     50,
     window.innerWidth / window.innerHeight,
-    0.1,
-    4000,
+    0.5,
+    22000,
   );
-  camera.position.set(0, 140, 220);
-  camera.lookAt(0, 0, 0);
+
+  const cameraController = new OrbitalCameraController(camera, canvas);
+  const sceneManager = new SystemSceneManager(scene, galaxy, cameraController);
+  mountSystemHud(hudContainer, galaxy, sceneManager);
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const bloomEffect = new BloomEffect({
-    intensity: 1.35,
-    luminanceThreshold: 0.6,
+    intensity: 1.4,
+    luminanceThreshold: 0.62,
     luminanceSmoothing: 0.25,
     mipmapBlur: true,
   });
@@ -51,8 +55,15 @@ function bootstrapClient(): void {
     composer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  const clock = new THREE.Clock();
+
   function animate(): void {
     requestAnimationFrame(animate);
+    const deltaSeconds = Math.min(clock.getDelta(), 0.1);
+    const elapsedSeconds = clock.getElapsedTime();
+
+    cameraController.update(deltaSeconds);
+    sceneManager.update(elapsedSeconds, deltaSeconds);
     composer.render();
   }
 
