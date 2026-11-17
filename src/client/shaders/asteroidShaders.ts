@@ -285,32 +285,28 @@ void main() {
   float internalFacet = noise3D(vLocalPos * 2.6 + vec3(vInstanceSeed * 11.0));
   float frostVeins = smoothstep(0.58, 0.82, noise3D(vLocalPos * 6.2 + vec3(vInstanceSeed * 23.0)));
 
-  // Pale Ice-Blue palette (#bfe6ff -> #e6f6ff -> #7cc4fa)
-  vec3 deepIceBlue = vec3(0.48, 0.74, 0.94);
-  vec3 paleIceBlue = vec3(0.78, 0.91, 1.0);
-  vec3 frostWhite = vec3(0.94, 0.98, 1.0);
+  // Pale Ice-Blue palette kept below the HDR bloom threshold (0.62) for crisp facet contrast
+  vec3 shadowIceBlue = vec3(0.18, 0.30, 0.42);
+  vec3 paleIceBlue = vec3(0.42, 0.58, 0.72);
+  vec3 frostHighlight = vec3(0.58, 0.74, 0.86);
 
-  vec3 baseIce = mix(deepIceBlue, paleIceBlue, smoothstep(0.2, 0.8, internalFacet));
-  baseIce = mix(baseIce, frostWhite, frostVeins * 0.55);
+  vec3 baseIce = mix(shadowIceBlue, paleIceBlue, smoothstep(0.2, 0.8, internalFacet));
+  baseIce = mix(baseIce, frostHighlight, frostVeins * 0.35);
 
-  // Faceted directional lighting + subsurface ice transmission
+  // Faceted directional lighting with distinct shadow & sunlit sides
   float ndotl = max(0.0, dot(nWorld, sunDir));
-  float subsurface = pow(max(0.0, dot(-viewDir, sunDir) * 0.5 + 0.5), 2.0) * 0.35;
+  float subsurface = pow(max(0.0, dot(-viewDir, sunDir) * 0.5 + 0.5), 2.5) * 0.12;
 
-  // Crisp Fresnel edge frost & sharp crystal specular reflection
-  float fresnel = pow(1.0 - max(0.0, dot(nWorld, viewDir)), 2.6);
+  // Subtle Fresnel rim & restrained specular glint (capped below bloom threshold)
+  float fresnel = pow(1.0 - max(0.0, dot(nWorld, viewDir)), 3.0);
   vec3 halfVec = normalize(sunDir + viewDir);
-  float specular = pow(max(0.0, dot(nWorld, halfVec)), 42.0) * 0.85;
-
-  // Soft pale ice-blue inner luminescence (controlled so only direct specular glints bloom)
-  vec3 innerGlow = paleIceBlue * 0.24;
+  float specular = pow(max(0.0, dot(nWorld, halfVec)), 48.0) * 0.22;
 
   vec3 finalColor =
-    baseIce * (0.28 + ndotl * 0.72 + subsurface) +
-    frostWhite * fresnel * 0.45 +
-    frostWhite * specular +
-    innerGlow;
+    baseIce * (0.24 + ndotl * 0.62 + subsurface) +
+    frostHighlight * fresnel * 0.14 +
+    frostHighlight * specular;
 
-  gl_FragColor = vec4(finalColor, 1.0);
+  gl_FragColor = vec4(clamp(finalColor, 0.0, 0.56), 1.0);
 }
 `;
