@@ -17,6 +17,24 @@ export interface SpaceEnvironmentHandle {
   dispose(): void;
 }
 
+/**
+ * Deterministic Mulberry32 PRNG so stars and asteroids have organic, non-spiral distributions.
+ */
+function createSeededRng(seedStr: string): () => number {
+  let state = 2166136261;
+  for (let i = 0; i < seedStr.length; i++) {
+    state ^= seedStr.charCodeAt(i);
+    state = Math.imul(state, 16777619);
+  }
+  return () => {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export function createStarSystemEnvironment(
   system: StarSystemNode,
   wormholesInSystem: readonly {
@@ -29,6 +47,7 @@ export function createStarSystemEnvironment(
   const rootGroup = new THREE.Group();
   rootGroup.name = `env_${system.id}`;
 
+  const rng = createSeededRng(system.id);
   const disposables: { dispose(): void }[] = [];
   const timeUniforms: { value: number }[] = [];
 
@@ -45,7 +64,7 @@ export function createStarSystemEnvironment(
 
   const ambientLight = new THREE.AmbientLight(
     new THREE.Color(...palette.primaryNebula),
-    0.45,
+    0.38,
   );
   rootGroup.add(ambientLight);
 
@@ -59,7 +78,7 @@ export function createStarSystemEnvironment(
   sunMesh.position.copy(sunPosition);
   rootGroup.add(sunMesh);
 
-  // 2. Procedural FBM Deep-Space Nebula Sky Dome
+  // 2. Procedural FBM Deep-Space Nebula Sky Dome (Predominantly Black Space + Stars)
   const skyGeom = new THREE.SphereGeometry(2200, 48, 48);
   const skyTimeUniform = { value: 0 };
   timeUniforms.push(skyTimeUniform);
@@ -80,62 +99,66 @@ export function createStarSystemEnvironment(
   disposables.push(skyGeom, skyMat);
   rootGroup.add(new THREE.Mesh(skyGeom, skyMat));
 
-  // 3. Multi-Depth Parallax 3D Starfield
-  const starCount = 1800;
+  // 3. Multi-Depth Parallax 3D Starfield (Uniform Spherical Distribution — No Spiral Artifacts)
+  const starCount = 2800;
   const starPositions = new Float32Array(starCount * 3);
   const starColors = new Float32Array(starCount * 3);
 
   for (let i = 0; i < starCount; i++) {
-    const r = 450 + ((i * 7919) % 1200);
-    const theta = ((i * 104729) % 3600) * (Math.PI / 1800);
-    const phi = Math.acos(1 - 2 * (((i * 3571) % 1000) / 1000));
-    starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    starPositions[i * 3 + 1] = r * Math.cos(phi) * 0.65;
-    starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    const r = 520 + rng() * 1350;
+    const theta = rng() * Math.PI * 2;
+    const u = rng() * 2 - 1;
+    const sinPhi = Math.sqrt(Math.max(0, 1 - u * u));
 
-    const tint = (i % 5) / 5;
-    starColors[i * 3] = 0.8 + tint * 0.2;
-    starColors[i * 3 + 1] = 0.85 + (1 - tint) * 0.15;
-    starColors[i * 3 + 2] = 1.0;
+    starPositions[i * 3] = r * sinPhi * Math.cos(theta);
+    starPositions[i * 3 + 1] = r * u * 0.85;
+    starPositions[i * 3 + 2] = r * sinPhi * Math.sin(theta);
+
+    // Natural stellar color distribution (warm white, pure white, soft blue-white)
+    const warmth = rng();
+    const brightness = 0.55 + rng() * 0.45;
+    starColors[i * 3] = brightness * (0.9 + warmth * 0.1);
+    starColors[i * 3 + 1] = brightness * (0.88 + (1 - Math.abs(warmth - 0.5)) * 0.12);
+    starColors[i * 3 + 2] = brightness * (0.82 + (1 - warmth) * 0.18);
   }
 
   const starGeometry = new THREE.BufferGeometry();
   starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
   starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
   const starPointsMat = new THREE.PointsMaterial({
-    size: 2.2,
+    size: 1.85,
     vertexColors: true,
     transparent: true,
-    opacity: 0.88,
+    opacity: 0.9,
     depthWrite: false,
   });
   disposables.push(starGeometry, starPointsMat);
   rootGroup.add(new THREE.Points(starGeometry, starPointsMat));
 
-  // 4. InstancedMesh Asteroid Belts (Ore & Crystal clusters)
+  // 4. Dense InstancedMesh Asteroid Belts (Main Belt + Outer Resource Clusters)
   const oreRatio =
     system.resourceSkew === 'ore_heavy'
-      ? 0.75
+      ? 0.78
       : system.resourceSkew === 'crystal_heavy'
-        ? 0.3
-        : 0.55;
-  const totalAsteroids = system.isCentralHub ? 240 : 160;
+        ? 0.42
+        : 0.6;
+  const totalAsteroids = system.isCentralHub ? 2200 : 1500;
   const oreCount = Math.floor(totalAsteroids * oreRatio);
   const crystalCount = totalAsteroids - oreCount;
 
-  const oreGeometry = new THREE.DodecahedronGeometry(2.1, 1);
+  const oreGeometry = new THREE.DodecahedronGeometry(1.85, 1);
   const oreMaterial = new THREE.MeshStandardMaterial({
-    color: 0x8c6239,
-    roughness: 0.82,
-    metalness: 0.45,
+    color: 0x786452,
+    roughness: 0.88,
+    metalness: 0.35,
   });
-  const crystalGeometry = new THREE.OctahedronGeometry(2.0, 0);
+  const crystalGeometry = new THREE.OctahedronGeometry(1.65, 0);
   const crystalMaterial = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
-    emissive: 0x0ea5e9,
-    emissiveIntensity: 1.5,
-    roughness: 0.15,
-    metalness: 0.85,
+    color: 0x5eead4,
+    emissive: 0x0d9488,
+    emissiveIntensity: 0.55,
+    roughness: 0.22,
+    metalness: 0.75,
   });
   disposables.push(oreGeometry, oreMaterial, crystalGeometry, crystalMaterial);
 
@@ -148,35 +171,68 @@ export function createStarSystemEnvironment(
   disposables.push(oreInstanced, crystalInstanced);
 
   const dummy = new THREE.Object3D();
-  for (let i = 0; i < oreCount; i++) {
-    const beltAngle = (i / oreCount) * Math.PI * 2;
-    const beltRadius = 115 + ((i * 37) % 30) - 15;
+
+  function placeAsteroidInstance(
+    mesh: THREE.InstancedMesh,
+    index: number,
+    isCrystal: boolean,
+  ): void {
+    // 65% in dense inner main belt (r = 100..150), 35% in outer belt & rich pocket clusters (r = 215..275)
+    const inOuterBelt = rng() < 0.35;
+    const baseRadius = inOuterBelt ? 242 : 124;
+    const bandWidth = inOuterBelt ? 46 : 38;
+
+    // Clump some asteroids into rich mining pockets while keeping a continuous dense ring
+    const angle = rng() * Math.PI * 2;
+    const radialSpread = (rng() + rng() - 1.0) * bandWidth;
+    const radius = baseRadius + radialSpread;
+    const heightSpread = (rng() + rng() - 1.0) * 9.5;
+
     dummy.position.set(
-      Math.cos(beltAngle) * beltRadius,
-      (((i * 19) % 14) - 7) * 0.6,
-      Math.sin(beltAngle) * beltRadius,
+      Math.cos(angle) * radius,
+      heightSpread,
+      Math.sin(angle) * radius,
     );
-    dummy.rotation.set(i * 0.7, i * 1.1, i * 0.4);
-    const scale = 0.55 + ((i * 23) % 100) / 90;
-    dummy.scale.set(scale * 1.2, scale * 0.85, scale);
+    dummy.rotation.set(
+      rng() * Math.PI * 2,
+      rng() * Math.PI * 2,
+      rng() * Math.PI * 2,
+    );
+
+    // Power-law size distribution: many small/medium rocks + occasional massive boulders
+    const sizeRoll = rng();
+    const baseScale =
+      sizeRoll > 0.92
+        ? 1.65 + rng() * 1.15
+        : sizeRoll > 0.55
+          ? 0.85 + rng() * 0.7
+          : 0.38 + rng() * 0.45;
+
+    if (isCrystal) {
+      dummy.scale.set(
+        baseScale * (0.75 + rng() * 0.4),
+        baseScale * (1.1 + rng() * 0.55),
+        baseScale * (0.75 + rng() * 0.4),
+      );
+    } else {
+      dummy.scale.set(
+        baseScale * (0.8 + rng() * 0.6),
+        baseScale * (0.65 + rng() * 0.5),
+        baseScale * (0.8 + rng() * 0.6),
+      );
+    }
+
     dummy.updateMatrix();
-    oreInstanced.setMatrixAt(i, dummy.matrix);
+    mesh.setMatrixAt(index, dummy.matrix);
+  }
+
+  for (let i = 0; i < oreCount; i++) {
+    placeAsteroidInstance(oreInstanced, i, false);
   }
   oreInstanced.instanceMatrix.needsUpdate = true;
 
   for (let i = 0; i < crystalCount; i++) {
-    const beltAngle = (i / crystalCount) * Math.PI * 2 + 0.4;
-    const beltRadius = 245 + ((i * 41) % 36) - 18;
-    dummy.position.set(
-      Math.cos(beltAngle) * beltRadius,
-      (((i * 29) % 16) - 8) * 0.6,
-      Math.sin(beltAngle) * beltRadius,
-    );
-    dummy.rotation.set(i * 0.9, i * 0.5, i * 1.3);
-    const scale = 0.6 + ((i * 31) % 100) / 95;
-    dummy.scale.set(scale, scale * 1.35, scale);
-    dummy.updateMatrix();
-    crystalInstanced.setMatrixAt(i, dummy.matrix);
+    placeAsteroidInstance(crystalInstanced, i, true);
   }
   crystalInstanced.instanceMatrix.needsUpdate = true;
 
@@ -236,7 +292,7 @@ export function createStarSystemEnvironment(
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;
       }
-      beltsGroup.rotation.y += deltaSeconds * 0.012;
+      beltsGroup.rotation.y += deltaSeconds * 0.008;
     },
     dispose(): void {
       for (const item of disposables) {

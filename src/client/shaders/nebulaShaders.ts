@@ -16,47 +16,47 @@ export const NEBULA_PALETTES: Readonly<Record<NebulaPaletteId, NebulaPaletteColo
   cyan_magenta: {
     id: 'cyan_magenta',
     displayName: 'Cyan-Magenta Emission Nebula',
-    deepSpaceBg: [0.015, 0.025, 0.06],
-    primaryNebula: [0.04, 0.52, 0.78],
-    secondaryNebula: [0.68, 0.12, 0.55],
-    accentGlow: [0.25, 0.88, 1.0],
-    starlightColor: [0.88, 0.95, 1.0],
+    deepSpaceBg: [0.002, 0.003, 0.007],
+    primaryNebula: [0.04, 0.45, 0.68],
+    secondaryNebula: [0.58, 0.1, 0.46],
+    accentGlow: [0.22, 0.75, 0.92],
+    starlightColor: [0.92, 0.96, 1.0],
   },
   golden_expanse: {
     id: 'golden_expanse',
     displayName: 'Golden Dust Expanse',
-    deepSpaceBg: [0.035, 0.022, 0.012],
-    primaryNebula: [0.82, 0.48, 0.12],
-    secondaryNebula: [0.45, 0.18, 0.08],
-    accentGlow: [1.0, 0.78, 0.32],
-    starlightColor: [1.0, 0.94, 0.82],
+    deepSpaceBg: [0.004, 0.003, 0.002],
+    primaryNebula: [0.76, 0.42, 0.1],
+    secondaryNebula: [0.42, 0.16, 0.06],
+    accentGlow: [0.95, 0.72, 0.28],
+    starlightColor: [1.0, 0.95, 0.86],
   },
   crimson_rift: {
     id: 'crimson_rift',
     displayName: 'Deep Crimson Rift',
-    deepSpaceBg: [0.04, 0.01, 0.02],
-    primaryNebula: [0.75, 0.08, 0.18],
-    secondaryNebula: [0.32, 0.05, 0.38],
-    accentGlow: [1.0, 0.32, 0.22],
-    starlightColor: [1.0, 0.88, 0.86],
+    deepSpaceBg: [0.005, 0.002, 0.003],
+    primaryNebula: [0.68, 0.07, 0.16],
+    secondaryNebula: [0.28, 0.04, 0.32],
+    accentGlow: [0.92, 0.28, 0.18],
+    starlightColor: [1.0, 0.9, 0.88],
   },
   emerald_veil: {
     id: 'emerald_veil',
     displayName: 'Emerald Ion Veil',
-    deepSpaceBg: [0.01, 0.035, 0.03],
-    primaryNebula: [0.08, 0.65, 0.45],
-    secondaryNebula: [0.06, 0.28, 0.55],
-    accentGlow: [0.35, 0.98, 0.68],
-    starlightColor: [0.88, 1.0, 0.94],
+    deepSpaceBg: [0.002, 0.005, 0.004],
+    primaryNebula: [0.06, 0.56, 0.38],
+    secondaryNebula: [0.05, 0.24, 0.46],
+    accentGlow: [0.3, 0.86, 0.6],
+    starlightColor: [0.9, 1.0, 0.95],
   },
   violet_core: {
     id: 'violet_core',
     displayName: 'Central Nexus Violet Core',
-    deepSpaceBg: [0.025, 0.015, 0.055],
-    primaryNebula: [0.48, 0.16, 0.85],
-    secondaryNebula: [0.12, 0.58, 0.92],
-    accentGlow: [0.85, 0.45, 1.0],
-    starlightColor: [0.94, 0.9, 1.0],
+    deepSpaceBg: [0.003, 0.002, 0.007],
+    primaryNebula: [0.42, 0.14, 0.74],
+    secondaryNebula: [0.1, 0.46, 0.78],
+    accentGlow: [0.76, 0.38, 0.92],
+    starlightColor: [0.95, 0.92, 1.0],
   },
 } as const;
 
@@ -120,36 +120,44 @@ float fbm(vec3 p) {
 
 void main() {
   vec3 dir = normalize(vWorldDirection);
-  float galacticBand = exp(-abs(dir.y) * 2.2);
 
-  // Domain-warped FBM for swirling volumetric nebula curtains
+  // Keep the vast majority of the sky pitch-black deep space, with localized nebula pockets
+  float galacticPlane = exp(-abs(dir.y) * 2.8);
+  float regionEnvelope = smoothstep(0.48, 0.78, fbm(dir * 1.4 + vec3(3.1, -1.8, 5.4))) * (0.2 + 0.8 * galacticPlane);
+
   vec3 warp = vec3(
-    fbm(dir * 2.2 + vec3(uTime * 0.004, 0.0, 0.0)),
-    fbm(dir * 2.2 + vec3(0.0, uTime * 0.003, 4.2)),
-    fbm(dir * 2.2 + vec3(2.1, -1.7, -uTime * 0.004))
+    fbm(dir * 2.4 + vec3(uTime * 0.002, 0.0, 0.0)),
+    fbm(dir * 2.4 + vec3(0.0, uTime * 0.002, 4.2)),
+    fbm(dir * 2.4 + vec3(2.1, -1.7, -uTime * 0.002))
   );
 
-  float cloud1 = fbm(dir * 3.0 + warp * 1.4);
-  float cloud2 = fbm(dir * 5.2 - warp * 1.1 + vec3(8.3));
-  float darkDust = smoothstep(0.42, 0.72, fbm(dir * 4.5 + warp * 0.8));
+  float cloud1 = fbm(dir * 3.2 + warp * 1.25);
+  float cloud2 = fbm(dir * 5.4 - warp * 1.0 + vec3(8.3));
+  float darkDust = smoothstep(0.42, 0.70, fbm(dir * 4.8 + warp * 0.7));
 
-  float primaryMask = smoothstep(0.32, 0.78, cloud1) * (0.35 + 0.65 * galacticBand);
-  float secondaryMask = smoothstep(0.38, 0.82, cloud2) * (0.25 + 0.75 * galacticBand);
-  float filamentMask = pow(max(0.0, 1.0 - abs(cloud1 - cloud2) * 3.5), 3.0) * galacticBand;
+  float primaryMask = smoothstep(0.50, 0.84, cloud1) * regionEnvelope;
+  float secondaryMask = smoothstep(0.54, 0.86, cloud2) * regionEnvelope;
+  float coreRim = pow(max(0.0, primaryMask * secondaryMask), 1.5) * 1.3;
 
   vec3 color = uDeepSpaceBg;
-  color = mix(color, uPrimaryNebula, primaryMask * 0.65);
-  color = mix(color, uSecondaryNebula, secondaryMask * 0.55);
-  color += uAccentGlow * filamentMask * 0.42;
+  color = mix(color, uPrimaryNebula, primaryMask * 0.52);
+  color = mix(color, uSecondaryNebula, secondaryMask * 0.45);
+  color += uAccentGlow * coreRim * 0.35;
 
-  // Carve dark interstellar dust lanes
-  color *= mix(1.0, 0.35, darkDust * 0.65);
+  // Dark interstellar dust lanes carving into the nebula clouds
+  color *= mix(1.0, 0.18, darkDust * regionEnvelope);
 
-  // Embedded high-frequency background stars
-  float starCell = hash31(floor(dir * 380.0));
-  float starSparkle = smoothstep(0.9965, 1.0, starCell);
-  float twinkle = 0.7 + 0.3 * sin(uTime * 2.5 + starCell * 90.0);
-  color += vec3(starSparkle * twinkle * 1.1);
+  // Layer 1: Dense field of crisp pinpoint deep-space stars
+  float fineCell = hash31(floor(dir * 520.0));
+  float fineStar = smoothstep(0.9935, 1.0, fineCell) * 0.65;
+
+  // Layer 2: Brighter, slightly larger twinkling stars with subtle warm/cool stellar tints
+  float brightCell = hash31(floor(dir * 260.0 + vec3(19.3)));
+  float brightStar = smoothstep(0.9968, 1.0, brightCell);
+  float twinkle = 0.75 + 0.25 * sin(uTime * 2.2 + brightCell * 120.0);
+  vec3 starTint = mix(vec3(1.0, 0.92, 0.82), vec3(0.84, 0.93, 1.0), fract(brightCell * 43.7));
+
+  color += vec3(fineStar) + starTint * brightStar * twinkle * 1.25;
 
   gl_FragColor = vec4(color, 1.0);
 }
