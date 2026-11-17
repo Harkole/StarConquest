@@ -302,11 +302,10 @@ export function createStarSystemEnvironment(
 
   const wormholeStates: InternalWormholeState[] = [];
 
-  // 3 stacked 3D funnel cloud layers descending into subspace below the orbital plane
+  // 2 concentric 3D funnel cloud layers sharing the exact same central throat axis (0, -y, 0)
   const funnelLayers = [
-    { depthOffset: 0.0, scale: 1.0, opacity: 0.94, rotY: 0.0 },
-    { depthOffset: 16.0, scale: 0.78, opacity: 0.82, rotY: 1.1 },
-    { depthOffset: 32.0, scale: 0.56, opacity: 0.74, rotY: 2.3 },
+    { depthOffset: 0.0, scale: 1.0, opacity: 0.95, rotY: 0.0 },
+    { depthOffset: 10.0, scale: 0.88, opacity: 0.62, rotY: 0.6 },
   ] as const;
 
   for (const item of wormholesInSystem) {
