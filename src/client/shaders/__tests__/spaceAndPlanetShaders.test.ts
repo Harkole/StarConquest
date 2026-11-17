@@ -5,6 +5,7 @@ import {
   computeOrbitalSlotPositions,
   createLivingPlanetGroup,
 } from '../../renderer/planetFactory.ts';
+import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import {
   ASTEROID_ROCK_FRAGMENT_SHADER,
@@ -153,5 +154,35 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       }
       env.dispose();
     }
+  });
+
+  it('constructs the Prospector Mining Frigate 3D model and dual-layer mining laser', () => {
+    const renderer = new HarvesterFleetRenderer();
+    renderer.syncHarvesters(
+      [
+        {
+          id: 'harvester_1',
+          ownerId: 'player_1',
+          homeSystemId: 'system_starter_1',
+          homePlanetId: 'system_starter_1_homeworld',
+          currentSystemId: 'system_starter_1',
+          position: { x: 400, z: 0 },
+          headingRadians: 0,
+          currentSpeed: 41.325,
+          state: 'mining',
+          targetBeltId: 'belt_1',
+          targetRockWorldPos: { x: 411.5, y: 1.2, z: 0 },
+          miningStandoffAngle: 0,
+          cargoType: 'ore',
+          cargoAmount: 20,
+          cargoCapacity: 40,
+          mineCrossSystemHub: false,
+        },
+      ],
+      'harvester_1',
+    );
+
+    expect(renderer.rootGroup.children).toHaveLength(1);
+    renderer.dispose();
   });
 });

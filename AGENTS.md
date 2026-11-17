@@ -4,8 +4,8 @@ This file defines the architectural, visual, and gameplay invariants for **StarC
 
 ## 0. Mandatory Blueprint Rule (`README.md` is the Source of Truth)
 
-* **[README.md](./README.md) is the canonical blueprint and single source of truth** for the entire game.
-* **Always Reference `README.md` First**: Before designing, implementing, or modifying any game system, UI, shader, or network layer, the agent **must** read [README.md](./README.md) to verify alignment with the blueprint.
+* **[README.md](./README.md) is the canonical blueprint and single source of truth** for the entire game, and **[docs/artstyle.md](./docs/artstyle.md) is the canonical 3D art style and model construction guide** for all ships and orbital platforms.
+* **Always Reference `README.md` & `docs/artstyle.md` First**: Before designing, implementing, or modifying any game system, UI, shader, 3D model, or network layer, the agent **must** read [README.md](./README.md) (and [docs/artstyle.md](./docs/artstyle.md) when working on 3D ship or platform models) to verify alignment with the blueprint.
 * **Always Keep `README.md` Up to Date**: Whenever the user and agent agree on a new design choice, balance adjustment, build option, or architectural change, the agent **must** update [README.md](./README.md) in the same turn so it never drifts out of sync with the project.
 
 ---
