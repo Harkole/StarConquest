@@ -297,4 +297,4 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Blitz Skirmish Economy Multiplier Scaling
 * **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
-* **Planned Fix**: Apply `harvestRateMultiplier` to platform unload rates (and optionally Harvester transit speed or cargo capacity) in **Blitz Skirmish** so the overall economy scales closer to `1.5x–1.6x`.
+* **Planned Fix**: Apply `harvestRateMultiplier` to platform unload rates in **Blitz Skirmish** so the overall economy scales closer to `1.5x–1.6x`. Also consider allowing two times more harvesters to dock at refineries, the CnC building is already allowing double.
