@@ -292,3 +292,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
     * **Command & Control (C&C)**: Unloads cargo at **`4` units/second** (10 seconds for a full `40`-unit load).
   * **Refinery Docking Capacity (Queueing)**: A **Refinery** can only unload **`2` Harvester frigates simultaneously**; additional arriving Harvesters must wait in a holding queue until a docking pad clears. This makes building multiple Refineries a key logistics investment to accelerate player income.
   * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
+
+### Orbital Ring Slot Marker Visibility
+* **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.
+* **Planned Fix**: Hide the orbital build slot dot/halo meshes whenever a slot is occupied by a constructed (or under-construction) platform, leaving only genuinely empty slots visible on the orbital ring.
