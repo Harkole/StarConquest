@@ -287,6 +287,10 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ## 12. Future Work & Known Bug Fixes
 
+### Ship build speed
+* **Known Issue**: Harvester are built instantly when ordered.
+* **Planned Fix**: Harvesters are considered frigate class ships, so should build faster than Destroyers but slower than fighers, test 9 seconds per build for initial pass. Consider that the platform can only build one ship at a time but can queue multiple requests.
+
 ### Orbital Ring Slot Marker Visibility
 * **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.
 * **Planned Fix**: Hide the orbital build slot dot/halo meshes whenever a slot is occupied by a constructed (or under-construction) platform, leaving only genuinely empty slots visible on the orbital ring.
