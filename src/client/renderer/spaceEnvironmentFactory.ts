@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import type { StarSystemNode, WormholeLink } from '../../shared/sim/galaxy.ts';
 import {
+  ASTEROID_ROCK_FRAGMENT_SHADER,
+  ASTEROID_ROCK_VERTEX_SHADER,
+  createCraggyAsteroidGeometry,
+  createCrystalClusterGeometry,
+  CRYSTAL_SHARD_FRAGMENT_SHADER,
+  CRYSTAL_SHARD_VERTEX_SHADER,
+} from '../shaders/asteroidShaders.ts';
+import {
   NEBULA_PALETTES,
   NEBULA_SKYBOX_FRAGMENT_SHADER,
   NEBULA_SKYBOX_VERTEX_SHADER,
@@ -148,19 +156,21 @@ export function createStarSystemEnvironment(
   const oreCount = Math.floor(totalAsteroids * oreRatio);
   const crystalCount = totalAsteroids - oreCount;
 
-  const oreGeometry = new THREE.DodecahedronGeometry(2.4, 1);
-  const oreMaterial = new THREE.MeshStandardMaterial({
-    color: 0x786452,
-    roughness: 0.88,
-    metalness: 0.35,
+  const oreGeometry = createCraggyAsteroidGeometry(2.5);
+  const oreMaterial = new THREE.ShaderMaterial({
+    vertexShader: ASTEROID_ROCK_VERTEX_SHADER,
+    fragmentShader: ASTEROID_ROCK_FRAGMENT_SHADER,
+    uniforms: {
+      uSunDirection: { value: sunDirection.clone() },
+    },
   });
-  const crystalGeometry = new THREE.OctahedronGeometry(2.15, 0);
-  const crystalMaterial = new THREE.MeshStandardMaterial({
-    color: 0x5eead4,
-    emissive: 0x0d9488,
-    emissiveIntensity: 0.55,
-    roughness: 0.22,
-    metalness: 0.75,
+  const crystalGeometry = createCrystalClusterGeometry(2.0);
+  const crystalMaterial = new THREE.ShaderMaterial({
+    vertexShader: CRYSTAL_SHARD_VERTEX_SHADER,
+    fragmentShader: CRYSTAL_SHARD_FRAGMENT_SHADER,
+    uniforms: {
+      uSunDirection: { value: sunDirection.clone() },
+    },
   });
   disposables.push(oreGeometry, oreMaterial, crystalGeometry, crystalMaterial);
 

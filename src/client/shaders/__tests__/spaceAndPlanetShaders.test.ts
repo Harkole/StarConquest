@@ -6,6 +6,12 @@ import {
   createLivingPlanetGroup,
 } from '../../renderer/planetFactory.ts';
 import {
+  ASTEROID_ROCK_FRAGMENT_SHADER,
+  createCraggyAsteroidGeometry,
+  createCrystalClusterGeometry,
+  CRYSTAL_SHARD_FRAGMENT_SHADER,
+} from '../asteroidShaders.ts';
+import {
   NEBULA_PALETTES,
   NEBULA_SKYBOX_FRAGMENT_SHADER,
 } from '../nebulaShaders.ts';
@@ -70,5 +76,18 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       handle.update(2.5, 0.016);
       handle.dispose();
     }
+  });
+
+  it('creates displaced craggy asteroid geometry and pale ice-blue crystal cluster geometry', () => {
+    const rockGeom = createCraggyAsteroidGeometry(2.5);
+    const crystalGeom = createCrystalClusterGeometry(2.0);
+
+    expect(rockGeom.attributes.position?.count).toBeGreaterThan(100);
+    expect(crystalGeom.attributes.position?.count).toBeGreaterThan(20);
+    expect(ASTEROID_ROCK_FRAGMENT_SHADER).toContain('bumpGrad');
+    expect(CRYSTAL_SHARD_FRAGMENT_SHADER).toContain('paleIceBlue');
+
+    rockGeom.dispose();
+    crystalGeom.dispose();
   });
 });
