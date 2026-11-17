@@ -1,8 +1,5 @@
 import * as THREE from 'three';
-import {
-  PLANET_CLASSES,
-  type OrbitalStructureId,
-} from '../../shared/config/index.ts';
+import { PLANET_CLASSES } from '../../shared/config/index.ts';
 import type { PlanetNode } from '../../shared/sim/galaxy.ts';
 import type { PlanetRuntimeState } from '../../shared/sim/gameSimulation.ts';
 import {
@@ -13,6 +10,7 @@ import {
   TERRAN_SURFACE_FRAGMENT_SHADER,
   VOLCANIC_ROCK_SURFACE_FRAGMENT_SHADER,
 } from '../shaders/planetShaders.ts';
+import { StationModelLibrary } from './stationModels.ts';
 
 export interface OrbitalSlotPoint {
   readonly slotIndex: number;
@@ -245,97 +243,8 @@ export function createLivingPlanetGroup(
     slotHaloMeshes.push(haloRing);
   }
 
-  // Reusable station building block geometries & materials
-  const cncCoreGeom = new THREE.OctahedronGeometry(4.2, 1);
-  const cncSpireGeom = new THREE.CylinderGeometry(1.1, 1.8, 11, 8);
-  const cncWingGeom = new THREE.BoxGeometry(3.2, 1.4, 14);
-  const outpostDishGeom = new THREE.ConeGeometry(2.8, 3.8, 12);
-  const refinerySiloGeom = new THREE.CylinderGeometry(1.8, 1.8, 6.2, 12);
-  const dockyardGantryGeom = new THREE.BoxGeometry(4.8, 2.6, 12.5);
-  const techCrystalGeom = new THREE.OctahedronGeometry(3.1, 0);
-  const defenseBastionGeom = new THREE.CylinderGeometry(3.8, 4.4, 4.2, 8);
-
-  const stationMatComplete = new THREE.MeshStandardMaterial({
-    color: 0xe2e8f0,
-    emissive: 0x0284c7,
-    emissiveIntensity: 0.65,
-    metalness: 0.82,
-    roughness: 0.25,
-  });
-  const stationMatBuilding = new THREE.MeshBasicMaterial({
-    color: 0x38bdf8,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.75,
-  });
-  const refineryMatComplete = new THREE.MeshStandardMaterial({
-    color: 0xd97706,
-    emissive: 0xb45309,
-    emissiveIntensity: 0.55,
-    metalness: 0.75,
-    roughness: 0.35,
-  });
-
-  disposables.push(
-    cncCoreGeom,
-    cncSpireGeom,
-    cncWingGeom,
-    outpostDishGeom,
-    refinerySiloGeom,
-    dockyardGantryGeom,
-    techCrystalGeom,
-    defenseBastionGeom,
-    stationMatComplete,
-    stationMatBuilding,
-    refineryMatComplete,
-  );
-
-  function buildStationMesh(
-    structureId: OrbitalStructureId,
-    isComplete: boolean,
-  ): THREE.Group {
-    const group = new THREE.Group();
-    const mat = !isComplete
-      ? stationMatBuilding
-      : structureId === 'refinery'
-        ? refineryMatComplete
-        : stationMatComplete;
-
-    switch (structureId) {
-      case 'command_and_control': {
-        group.add(new THREE.Mesh(cncCoreGeom, mat));
-        group.add(new THREE.Mesh(cncSpireGeom, mat));
-        group.add(new THREE.Mesh(cncWingGeom, mat));
-        break;
-      }
-      case 'planetary_outpost': {
-        group.add(new THREE.Mesh(outpostDishGeom, mat));
-        break;
-      }
-      case 'refinery': {
-        const s1 = new THREE.Mesh(refinerySiloGeom, mat);
-        s1.position.set(0, 0, -1.6);
-        const s2 = new THREE.Mesh(refinerySiloGeom, mat);
-        s2.position.set(0, 0, 1.6);
-        group.add(s1, s2);
-        break;
-      }
-      case 'orbital_dockyard': {
-        group.add(new THREE.Mesh(dockyardGantryGeom, mat));
-        break;
-      }
-      case 'tech_module': {
-        group.add(new THREE.Mesh(techCrystalGeom, mat));
-        break;
-      }
-      case 'heavy_defense_platform': {
-        group.add(new THREE.Mesh(defenseBastionGeom, mat));
-        group.add(new THREE.Mesh(cncWingGeom, mat));
-        break;
-      }
-    }
-    return group;
-  }
+  const stationModels = new StationModelLibrary();
+  disposables.push(stationModels);
 
   let lastSignature = '';
 
@@ -379,7 +288,10 @@ export function createLivingPlanetGroup(
         }
       }
 
-      const stationGroup = buildStationMesh(struct.structureId, struct.isComplete);
+      const stationGroup = stationModels.buildStationMesh(
+        struct.structureId,
+        struct.isComplete,
+      );
       stationGroup.position.set(
         Math.cos(angle) * orbitalRingRadius,
         0,

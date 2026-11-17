@@ -28,6 +28,8 @@ To ensure every ship and orbital platform shares a cohesive visual language acro
 | **Ore Containment / Molten Glow (Warm Industrial Amber)** | `#f59e0b` | `0.20` | `0.22` | Emissive `#b45309` (`0.75` intensity) when cargo pods carry Ore |
 | **Thruster Exhaust Core (Ion Blue-White)** | `#7dd3fc` | — | — | `MeshBasicMaterial` (`[0.35, 0.85, 1.35]`) inside dark thruster nozzle bells |
 | **Navigation / Antenna Beacon (Signal Red)** | `#ef4444` | — | — | Small pinpoint beacon at the tip of dorsal communication masts |
+| **Station Prow / Spire Tip Accent (Crimson Oxide)** | `#b91c1c` | `0.45` | `0.50` | Weathered red-tipped prows on radial docking arms and command spires |
+| **Solar Array Panels (Deep Photovoltaic Blue)** | `#1e3a5f` | `0.65` | `0.25` | Solar collector wings with subtle dark structural frame borders |
 
 ---
 
@@ -78,3 +80,27 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Three ventral landing/utility gear struts (1 forward beneath the chin, 2 aft beneath the rear hull) matching the side-profile orthographic blueprint.
 6. **Dual-Layer Mining Laser & Asteroid Impact Spark**:
    * Inner bright cyan-white core beam + outer warm orange-amber plasma sheath (`AdditiveBlending`), plus a glowing molten rock impact flare and spark ring at the exact point where the beam strikes the target asteroid or crystal cluster.
+
+---
+
+### 02. Command & Control (C&C) — Star-Station "Prometheus"
+
+* **Concept Reference**: ![Prometheus C&C Concept Art](./cnc-prometheus-concept.jpg)
+* **Orthographic Blueprint**: ![Prometheus C&C Orthographic Reference](./cnc-prometheus-orthographic.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
+
+#### Anatomical Breakdown & Orbital Clearance Rules
+1. **Planetary Clearance Constraint (Never Clip Planet or Atmosphere)**:
+   * On a Large Homeworld (`radius = 28`, atmosphere `31.5`), the orbital ring sits at `42.56` units (`11.06` units clear of the atmosphere).
+   * The "Prometheus" C&C is sized so its horizontal radial docking arms extend at most `7.2` units from the station center—leaving a clean `3.8+` unit deep-space gap from the planet's outer atmosphere halo, while its vertical upper spire (`+Y`) and lower conical ballast hull (`-Y`) rise and descend perpendicular to the orbital plane.
+2. **Central Command Core & Upper Observation Deck**:
+   * Multi-tiered stepped octagonal/cylindrical central hub in Gunmetal Slate (`#3e4652`) bound by Dark Charcoal (`#1e232a`) structural collars.
+   * **Upper Observation Deck**: Panoramic wrap-around angled bridge ring with glowing cyan-white/warm-amber observation windows (`#38bdf8` / `#fbbf24`) segmented by dark structural mullions, topped by communications dishes and a red-tipped sensor mast.
+3. **Upper Command Spire (`+Y`) & Lower Conical Ballast Hull (`-Y`)**:
+   * Tall tapered octagonal spire rising above the central command core with Weathered Ochre (`#c27d2c`) armor panels, dark ribbing, and a **Crimson Oxide (`#b91c1c`)** tipped prow.
+   * Matching tapered lower conical ballast/cargo hull descending below the hub (`-Y`) with a dark ribbed neck collar, ochre paneling, and a crimson-tipped lower prow.
+4. **4 Main Horizontal Radial Arms + 2 Angled Ventral Docking Arms**:
+   * Four heavy radial habitation/docking arms (`±X`, `±Z`) plus two ventral docking arms angled downward-outward (`±Z` tangent plane so they never angle toward the planet).
+   * Each arm features stepped gunmetal armor, ochre industrial plates, dark structural rib bands, recessed docking bay openings, glowing observation slit windows, and crimson-tipped prows.
+5. **Solar Array Panels & Point Defence Turrets**:
+   * Deep Photovoltaic Blue (`#1e3a5f`) solar array wings projecting from the mid-collar, plus twin dorsal Point Defence turret mounts.

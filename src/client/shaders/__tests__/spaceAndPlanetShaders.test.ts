@@ -7,6 +7,7 @@ import {
 } from '../../renderer/planetFactory.ts';
 import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
+import { StationModelLibrary } from '../../renderer/stationModels.ts';
 import {
   ASTEROID_ROCK_FRAGMENT_SHADER,
   createCraggyAsteroidGeometry,
@@ -184,5 +185,23 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     expect(renderer.rootGroup.children).toHaveLength(1);
     renderer.dispose();
+  });
+
+  it('constructs the Prometheus Command & Control station with planetary atmosphere clearance', () => {
+    const library = new StationModelLibrary();
+    const cncGroup = library.buildStationMesh('command_and_control', true);
+    expect(cncGroup.children.length).toBeGreaterThan(10);
+
+    const bbox = new THREE.Box3().setFromObject(cncGroup);
+    const maxHorizontalReach = Math.max(
+      Math.abs(bbox.min.x),
+      Math.abs(bbox.max.x),
+      Math.abs(bbox.min.z),
+      Math.abs(bbox.max.z),
+    );
+    // Homeworld radius = 28, atmosphere = 31.5, orbitalRingRadius = 42.56 -> clearance = 11.06
+    expect(maxHorizontalReach).toBeLessThan(8.0);
+
+    library.dispose();
   });
 });
