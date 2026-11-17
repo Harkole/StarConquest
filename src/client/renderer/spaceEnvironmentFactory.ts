@@ -115,7 +115,7 @@ export function createStarSystemEnvironment(
     starPositions[i * 3 + 2] = r * sinPhi * Math.sin(theta);
 
     const warmth = rng();
-    const brightness = 0.55 + rng() * 0.45;
+    const brightness = 0.32 + rng() * 0.26;
     starColors[i * 3] = brightness * (0.9 + warmth * 0.1);
     starColors[i * 3 + 1] = brightness * (0.88 + (1 - Math.abs(warmth - 0.5)) * 0.12);
     starColors[i * 3 + 2] = brightness * (0.82 + (1 - warmth) * 0.18);

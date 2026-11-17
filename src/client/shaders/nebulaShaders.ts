@@ -147,17 +147,16 @@ void main() {
   // Dark interstellar dust lanes carving into the nebula clouds
   color *= mix(1.0, 0.18, darkDust * regionEnvelope);
 
-  // Layer 1: Dense field of crisp pinpoint deep-space stars
+  // Layer 1: Dense field of crisp, steady pinpoint deep-space stars (kept below bloom threshold)
   float fineCell = hash31(floor(dir * 520.0));
-  float fineStar = smoothstep(0.9935, 1.0, fineCell) * 0.65;
+  float fineStar = smoothstep(0.9935, 1.0, fineCell) * 0.42;
 
-  // Layer 2: Brighter, slightly larger twinkling stars with subtle warm/cool stellar tints
+  // Layer 2: Steady brighter stars with subtle warm/cool stellar tints (no pulsing, below bloom threshold)
   float brightCell = hash31(floor(dir * 260.0 + vec3(19.3)));
-  float brightStar = smoothstep(0.9968, 1.0, brightCell);
-  float twinkle = 0.75 + 0.25 * sin(uTime * 2.2 + brightCell * 120.0);
+  float brightStar = smoothstep(0.9968, 1.0, brightCell) * 0.56;
   vec3 starTint = mix(vec3(1.0, 0.92, 0.82), vec3(0.84, 0.93, 1.0), fract(brightCell * 43.7));
 
-  color += vec3(fineStar) + starTint * brightStar * twinkle * 1.25;
+  color += vec3(fineStar) + starTint * brightStar;
 
   gl_FragColor = vec4(color, 1.0);
 }
