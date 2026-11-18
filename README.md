@@ -1,5 +1,7 @@
 # StarConquest
 
+[![StarConquest CI/CD](https://github.com/Harkole/StarConquest/actions/workflows/node.js.yml/badge.svg?branch=main)](https://github.com/Harkole/StarConquest/actions/workflows/node.js.yml)
+
 > **Blueprint & Source of Truth**: This document is the canonical design and technical blueprint for **StarConquest**. Every gameplay system, balance rule, visual standard, and architectural decision is recorded here and must be kept up to date as the project evolves. All 3D ship and orbital platform art decisions, reference sheets, and modeling rules are held in [docs/artstyle.md](./docs/artstyle.md) and must be used whenever generating or updating 3D models.
 
 **StarConquest** is a browser-based, 4-player real-time strategy (RTS) game set in deep space. Presented in a **2.5D/3D space view with an orbital camera**, it combines **macro-focused tug-of-war fleet command** with **orbital base management**, **spatial tower defence**, and a **5-class Rock-Paper-Scissors (RPS) combat loop**.
