@@ -470,4 +470,61 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(p1Harvester.cargoAmount).toBe(40);
     expect(p1Harvester.state).toBe('returning_to_dropoff');
   });
+
+  it('builds a free-floating Logistics Hub at a player-chosen deep-space coordinate, grants +15 supply, and enforces the 180u tower radius', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const p1 = sim.getPlayerState('player_1');
+    const initialSupplyCap = p1.supplyCap;
+
+    // 1. Reject placement overlapping the Homeworld's orbital ring (0, 0)
+    const tooCloseRes = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: 20, z: 10 },
+      structureId: 'logistics_hub',
+    });
+    expect(tooCloseRes.ok).toBe(false);
+
+    // 2. Reject building a Point Defence Tower before a Logistics Hub is completed nearby
+    const unanchoredTowerRes = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: 520, z: 320 },
+      structureId: 'point_defence_tower',
+    });
+    expect(unanchoredTowerRes.ok).toBe(false);
+
+    // 3. Place a Logistics Hub at a chosen deep-space location (500, 300)
+    const hubRes = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: 500, z: 300 },
+      structureId: 'logistics_hub',
+    });
+    expect(hubRes.ok).toBe(true);
+
+    const dsStructures = sim.getDeepSpaceStructuresInSystem('system_starter_1');
+    expect(dsStructures).toHaveLength(1);
+    expect(dsStructures[0]?.isComplete).toBe(false);
+    expect(dsStructures[0]?.position).toEqual({ x: 500, z: 300 });
+
+    // 4. Advance 20s construction timer -> Logistics Hub completes and grants +15 Fleet Supply
+    sim.stepTick(20);
+    expect(dsStructures[0]?.isComplete).toBe(true);
+    expect(p1.supplyCap).toBe(initialSupplyCap + 15);
+
+    // 5. Place a Point Defence Tower within 180u of the completed Logistics Hub (560, 340 -> dist ~72u)
+    const validTowerRes = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: 560, z: 340 },
+      structureId: 'point_defence_tower',
+    });
+    expect(validTowerRes.ok).toBe(true);
+    expect(sim.getDeepSpaceStructuresInSystem('system_starter_1')).toHaveLength(2);
+  });
 });

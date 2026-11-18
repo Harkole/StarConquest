@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import {
+  DEEP_SPACE_STRUCTURES,
+  type DeepSpaceStructureId,
+} from '../../shared/config/index.ts';
 import type {
   GalaxyTopology,
   PlanetNode,
@@ -16,6 +20,7 @@ import {
   type SpaceEnvironmentHandle,
   type WormholeInstanceHandle,
 } from './spaceEnvironmentFactory.ts';
+import { StationModelLibrary } from './stationModels.ts';
 
 export class SystemSceneManager {
   private readonly scene: THREE.Scene;
@@ -29,8 +34,30 @@ export class SystemSceneManager {
   private environmentHandle: SpaceEnvironmentHandle | null = null;
   private planetHandles: AnimatedPlanetHandle[] = [];
   private readonly harvesterRenderer = new HarvesterFleetRenderer();
+  private readonly deepSpaceModels = new StationModelLibrary();
+  private readonly deepSpaceRootGroup = new THREE.Group();
+  private readonly deepSpaceGroupsById = new Map<string, THREE.Group>();
+  private lastDeepSpaceSignature: string | null = null;
+
+  private pendingDeepSpaceBuildType: DeepSpaceStructureId | null = null;
+  private readonly placementPreviewGroup = new THREE.Group();
+  private readonly hubRadiusRingGeom = new THREE.RingGeometry(
+    DEEP_SPACE_STRUCTURES.logistics_hub.buildRadiusProvided - 1.2,
+    DEEP_SPACE_STRUCTURES.logistics_hub.buildRadiusProvided,
+    64,
+  ).rotateX(-Math.PI / 2);
+  private readonly hubRadiusRingMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.DoubleSide,
+  });
+
   private readonly raycaster = new THREE.Raycaster();
+  private readonly orbitalPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly selectionListeners: (() => void)[] = [];
+  private readonly placementResultListeners: ((message: string, ok: boolean) => void)[] =
+    [];
 
   constructor(
     scene: THREE.Scene,
@@ -44,6 +71,9 @@ export class SystemSceneManager {
     this.cameraController = cameraController;
     this.simAdapter = simAdapter;
     this.scene.add(this.harvesterRenderer.rootGroup);
+    this.scene.add(this.deepSpaceRootGroup);
+    this.placementPreviewGroup.visible = false;
+    this.scene.add(this.placementPreviewGroup);
 
     const initialSystem = galaxy.systems[0];
     if (!initialSystem) {
@@ -60,6 +90,63 @@ export class SystemSceneManager {
 
   public onSelectionChange(listener: () => void): void {
     this.selectionListeners.push(listener);
+  }
+
+  public onDeepSpacePlacementResult(
+    listener: (message: string, ok: boolean) => void,
+  ): void {
+    this.placementResultListeners.push(listener);
+  }
+
+  public getPendingDeepSpacePlacement(): DeepSpaceStructureId | null {
+    return this.pendingDeepSpaceBuildType;
+  }
+
+  public startDeepSpacePlacement(structureId: DeepSpaceStructureId | null): void {
+    this.pendingDeepSpaceBuildType = structureId;
+    this.placementPreviewGroup.clear();
+    if (!structureId) {
+      this.placementPreviewGroup.visible = false;
+      this.notifySelectionChanged();
+      return;
+    }
+
+    const previewMesh = this.deepSpaceModels.buildStationMesh(structureId, false);
+    this.placementPreviewGroup.add(previewMesh);
+    if (structureId === 'logistics_hub') {
+      const radiusMesh = new THREE.Mesh(
+        this.hubRadiusRingGeom,
+        this.hubRadiusRingMat,
+      );
+      radiusMesh.position.set(0, 0.25, 0);
+      this.placementPreviewGroup.add(radiusMesh);
+    }
+
+    const initialHit = new THREE.Vector3(0, 0, 0);
+    this.raycaster.setFromCamera(
+      new THREE.Vector2(0, 0),
+      this.cameraController.camera,
+    );
+    this.raycaster.ray.intersectPlane(this.orbitalPlane, initialHit);
+    this.placementPreviewGroup.position.set(initialHit.x, 0, initialHit.z);
+    this.placementPreviewGroup.visible = true;
+    this.notifySelectionChanged();
+  }
+
+  public focusDeepSpaceStructure(structureId: string): void {
+    const ds = this.simAdapter.simulation.getDeepSpaceStructureById(structureId);
+    if (!ds) {
+      return;
+    }
+    if (ds.systemId !== this.activeSystem.id) {
+      this.loadSystem(ds.systemId);
+    }
+    this.selectedHarvesterId = null;
+    this.cameraController.pinToTarget(
+      () => ({ x: ds.position.x, y: 0, z: ds.position.z }),
+      76,
+    );
+    this.notifySelectionChanged();
   }
 
   public getActiveSystem(): StarSystemNode {
@@ -229,6 +316,8 @@ export class SystemSceneManager {
       handle.update(elapsedSeconds, deltaSeconds, simElapsed);
     }
 
+    this.syncAndAnimateDeepSpaceStructures(elapsedSeconds);
+
     const harvestersInSystem = this.simAdapter.simulation.getHarvestersInSystem(
       this.activeSystem.id,
     );
@@ -249,9 +338,77 @@ export class SystemSceneManager {
     }
   }
 
+  private syncAndAnimateDeepSpaceStructures(elapsedSeconds: number): void {
+    const deepSpaceStructs = this.simAdapter.simulation.getDeepSpaceStructuresInSystem(
+      this.activeSystem.id,
+    );
+    const sig = deepSpaceStructs
+      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}`)
+      .join('|');
+
+    if (sig !== this.lastDeepSpaceSignature) {
+      this.lastDeepSpaceSignature = sig;
+      this.deepSpaceRootGroup.clear();
+      this.deepSpaceGroupsById.clear();
+
+      for (const ds of deepSpaceStructs) {
+        const stationGroup = this.deepSpaceModels.buildStationMesh(
+          ds.structureId,
+          ds.isComplete,
+        );
+        stationGroup.position.set(ds.position.x, 0, ds.position.z);
+
+        // Display operational 180u build-radius tether ring around completed Logistics Hubs
+        if (ds.structureId === 'logistics_hub' && ds.isComplete) {
+          const radiusRing = new THREE.Mesh(
+            this.hubRadiusRingGeom,
+            this.hubRadiusRingMat,
+          );
+          radiusRing.position.set(0, 0.2, 0);
+          stationGroup.add(radiusRing);
+        }
+
+        this.deepSpaceRootGroup.add(stationGroup);
+        this.deepSpaceGroupsById.set(ds.id, stationGroup);
+      }
+    }
+
+    for (const ds of deepSpaceStructs) {
+      const group = this.deepSpaceGroupsById.get(ds.id);
+      if (group) {
+        this.deepSpaceModels.updateStationAnimation(group, elapsedSeconds, null);
+      }
+    }
+  }
+
   private bindCanvasPicking(canvasElement: HTMLElement): void {
     let downX = 0;
     let downY = 0;
+    const hitPoint = new THREE.Vector3();
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.pendingDeepSpaceBuildType !== null) {
+        this.startDeepSpacePlacement(null);
+        this.notifyPlacementResult('Cancelled deep-space placement mode.', false);
+      }
+    });
+
+    canvasElement.addEventListener('pointermove', (e) => {
+      if (!this.pendingDeepSpaceBuildType) {
+        return;
+      }
+      const rect = canvasElement.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      this.raycaster.setFromCamera(
+        new THREE.Vector2(ndcX, ndcY),
+        this.cameraController.camera,
+      );
+      if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
+        this.placementPreviewGroup.position.set(hitPoint.x, 0, hitPoint.z);
+        this.placementPreviewGroup.visible = true;
+      }
+    });
 
     canvasElement.addEventListener('pointerdown', (e) => {
       if (e.button === 0) {
@@ -278,6 +435,35 @@ export class SystemSceneManager {
         this.cameraController.camera,
       );
 
+      // 0. If in Deep-Space Placement Mode, place structure at clicked (x, z) coordinate on orbital plane
+      if (this.pendingDeepSpaceBuildType) {
+        if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
+          const structId = this.pendingDeepSpaceBuildType;
+          const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
+          const res = this.simAdapter.submitPlayerCommand({
+            type: 'BUILD_DEEP_SPACE_STRUCTURE',
+            playerId: this.simAdapter.localPlayerId,
+            systemId: this.activeSystem.id,
+            position: pos,
+            structureId: structId,
+          });
+          if (res.ok) {
+            const cfg = DEEP_SPACE_STRUCTURES[structId];
+            this.startDeepSpacePlacement(null);
+            this.notifyPlacementResult(
+              `Started constructing ${cfg.displayName} at (${pos.x}, ${pos.z})`,
+              true,
+            );
+          } else {
+            this.notifyPlacementResult(
+              `Cannot place here: ${res.reason}`,
+              false,
+            );
+          }
+        }
+        return;
+      }
+
       // 1. Check if user clicked a Harvester in 3D space
       const pickedHarvesterId = this.harvesterRenderer.pickHarvester(this.raycaster);
       if (pickedHarvesterId) {
@@ -285,7 +471,16 @@ export class SystemSceneManager {
         return;
       }
 
-      // 2. Check if user clicked a Planet in 3D space
+      // 2. Check if user clicked a Deep-Space Structure in 3D space
+      for (const [dsId, dsGroup] of this.deepSpaceGroupsById.entries()) {
+        const hits = this.raycaster.intersectObject(dsGroup, true);
+        if (hits.length > 0) {
+          this.focusDeepSpaceStructure(dsId);
+          return;
+        }
+      }
+
+      // 3. Check if user clicked a Planet in 3D space
       for (const pHandle of this.planetHandles) {
         const hits = this.raycaster.intersectObject(pHandle.rootGroup, true);
         if (hits.length > 0) {
@@ -302,6 +497,12 @@ export class SystemSceneManager {
     }
   }
 
+  private notifyPlacementResult(message: string, ok: boolean): void {
+    for (const cb of this.placementResultListeners) {
+      cb(message, ok);
+    }
+  }
+
   private clearCurrentSystem(): void {
     if (this.environmentHandle) {
       this.scene.remove(this.environmentHandle.rootGroup);
@@ -313,6 +514,9 @@ export class SystemSceneManager {
       handle.dispose();
     }
     this.planetHandles = [];
+    this.deepSpaceRootGroup.clear();
+    this.deepSpaceGroupsById.clear();
+    this.lastDeepSpaceSignature = null;
     this.harvesterRenderer.syncHarvesters([]);
   }
 }

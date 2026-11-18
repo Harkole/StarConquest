@@ -1,7 +1,9 @@
 import {
+  DEEP_SPACE_STRUCTURES,
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
+  type DeepSpaceStructureId,
   type OrbitalStructureId,
 } from '../../shared/config/index.ts';
 import type { ResourceTargetFocus } from '../../shared/protocol/commands.ts';
@@ -21,6 +23,12 @@ const BUILDABLE_STRUCTURE_IDS: readonly OrbitalStructureId[] = [
   'orbital_dockyard',
   'tech_module',
   'heavy_defense_platform',
+];
+
+const BUILDABLE_DEEP_SPACE_IDS: readonly DeepSpaceStructureId[] = [
+  'logistics_hub',
+  'point_defence_tower',
+  'hull_breaker_tower',
 ];
 
 function formatHarvesterState(
@@ -431,6 +439,39 @@ export function mountSystemHud(
         ? `${sysRes.extractionMultiplier}x Enriched Yield`
         : '1.0x Standard Yield';
 
+    const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
+    const deepSpaceInSystem = sim.getDeepSpaceStructuresInSystem(activeSystem.id);
+    const hasCompletedFriendlyHub = deepSpaceInSystem.some(
+      (s) => s.structureId === 'logistics_hub' && s.ownerId === playerId && s.isComplete,
+    );
+
+    const deepSpaceBuildButtonsHtml = BUILDABLE_DEEP_SPACE_IDS.map((dsId) => {
+      const cfg = DEEP_SPACE_STRUCTURES[dsId];
+      const isPending = pendingDeepSpace === dsId;
+      const lockedByHubRule = cfg.requiresLogisticsHubRadius && !hasCompletedFriendlyHub;
+      return `<button class="hud-btn ${isPending ? 'active' : ''}" data-place-deepspace="${dsId}" ${lockedByHubRule ? 'disabled' : ''}>
+        ${isPending ? `Click 3D Space to Place ${cfg.displayName}` : `+ Place ${cfg.displayName} (${cfg.cost.ore} Ore • ${cfg.cost.crystal} Crystal • ${cfg.buildTimeSeconds}s)`}
+      </button>`;
+    }).join('');
+
+    const deepSpaceInstancesHtml =
+      deepSpaceInSystem.length > 0
+        ? `<div class="hud-btn-row" style="margin-top: 6px;">
+            ${deepSpaceInSystem
+              .map((ds, idx) => {
+                const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
+                const statusText = ds.isComplete
+                  ? 'Operational'
+                  : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
+                return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
+                  ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
+                  <span class="hud-badge">${statusText}</span>
+                </button>`;
+              })
+              .join('')}
+          </div>`
+        : '';
+
     mainBodyEl.innerHTML = `
       <div class="hud-header">
         <div>
@@ -449,6 +490,17 @@ export function mountSystemHud(
         <div class="hud-label">Planets & Wormholes in ${activeSystem.name}</div>
         <div class="hud-planet-row">${planetButtonsHtml}</div>
         <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>
+      </div>
+
+      <div class="hud-section">
+        <div class="hud-label">
+          Deep-Space Installations — Free-Floating Logistics Hub ("Atlas") & Defence Towers
+        </div>
+        <div class="hud-btn-row">
+          ${deepSpaceBuildButtonsHtml}
+          ${pendingDeepSpace ? `<button class="hud-btn" data-action="cancel-deepspace">Cancel Placement (Esc)</button>` : ''}
+        </div>
+        ${deepSpaceInstancesHtml}
       </div>
 
       <div class="hud-section">
@@ -609,6 +661,47 @@ export function mountSystemHud(
       });
 
     mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-place-deepspace]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dsId = btn.dataset.placeDeepspace as DeepSpaceStructureId | undefined;
+          if (!dsId) {
+            return;
+          }
+          const current = sceneManager.getPendingDeepSpacePlacement();
+          if (current === dsId) {
+            sceneManager.startDeepSpacePlacement(null);
+            statusBannerMessage = 'Cancelled deep-space placement mode.';
+          } else {
+            sceneManager.startDeepSpacePlacement(dsId);
+            const cfg = DEEP_SPACE_STRUCTURES[dsId];
+            statusBannerMessage = `Placement active: click any free location in 3D space to deploy ${cfg.displayName} (press Esc to cancel).`;
+          }
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="cancel-deepspace"]')
+      ?.addEventListener('click', () => {
+        sceneManager.startDeepSpacePlacement(null);
+        statusBannerMessage = 'Cancelled deep-space placement mode.';
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-focus-deepspace]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dsId = btn.dataset.focusDeepspace;
+          if (dsId) {
+            sceneManager.focusDeepSpaceStructure(dsId);
+            renderMainPanel();
+          }
+        });
+      });
+
+    mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="overview"]')
       ?.addEventListener('click', () => {
         sceneManager.focusSystemOverview();
@@ -620,6 +713,12 @@ export function mountSystemHud(
     renderMainPanel();
   });
 
+  sceneManager.onDeepSpacePlacementResult((message) => {
+    statusBannerMessage = message;
+    renderEconomyBar();
+    renderMainPanel();
+  });
+
   renderEconomyBar();
   renderHarvesterInspector();
   renderMainPanel();
@@ -628,10 +727,13 @@ export function mountSystemHud(
     renderEconomyBar();
     renderHarvesterInspector();
     const activePlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
-    const anyActiveTimers = activePlanetState.structures.some(
+    const anyActiveOrbitalTimers = activePlanetState.structures.some(
       (s) => !s.isComplete || s.productionQueue.length > 0,
     );
-    if (anyActiveTimers) {
+    const anyActiveDeepSpaceTimers = sim
+      .getDeepSpaceStructuresInSystem(sceneManager.getActiveSystem().id)
+      .some((ds) => !ds.isComplete);
+    if (anyActiveOrbitalTimers || anyActiveDeepSpaceTimers) {
       renderMainPanel();
     }
   }, 250);

@@ -105,7 +105,8 @@ Outside of planetary rings, players cannot build structures freely in open space
 
 ### Logistics Hubs
 * **Role**: Forward deep-space support stations placed near wormholes, asteroid belts, or staging zones.
-* **Attributes**: Moderate resource cost, low hull/shield durability, and a generous **Build & Operational Radius**.
+* **3D Click-to-Place Deployment (`BUILD_DEEP_SPACE_STRUCTURE`)**: Selecting **+ Place Logistics Hub** in the HUD enters interactive 3D placement mode, projecting a holographic wireframe preview of the **Atlas Logistics Hub** and its `180`-unit operational radius ring onto the star system's orbital plane (`y = 0`). Clicking any valid deep-space coordinate (clear of planetary orbital rings and other installations) deducts `250 Ore / 100 Crystal` and begins its `20s` construction.
+* **Attributes**: Moderate resource cost, low hull/shield durability, and a generous **Build & Operational Radius (`180` units)**.
 * **Functions**:
   1. **Tower Construction Radius**: Enables the placement of Defence Towers within its radius.
   2. **Fighter Operations**: Acts as a forward carrier base, allowing short-range **Fighters** to operate and refuel in the area.

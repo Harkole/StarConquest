@@ -1,8 +1,10 @@
 import {
+  DEEP_SPACE_STRUCTURES,
   MATCH_PRESETS,
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
+  type DeepSpaceStructureId,
   type MatchPresetId,
   type OrbitalStructureId,
   type ShipClassId,
@@ -64,6 +66,22 @@ export const STARTER_OUTER_ORE_RESERVES = 180;
 export const STARTER_OUTER_CRYSTAL_RESERVES = 120;
 export const CENTRAL_HUB_ROCK_RESERVES = 600;
 export const CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER = 1.6;
+
+export const MIN_DEEP_SPACE_PLANET_CLEARANCE_BUFFER = 24;
+export const MIN_DEEP_SPACE_STRUCTURE_SPACING = 28;
+
+export interface DeepSpaceStructureInstance {
+  readonly id: string;
+  readonly structureId: DeepSpaceStructureId;
+  readonly ownerId: PlayerSlotId;
+  readonly systemId: string;
+  readonly position: Vector2D;
+  buildProgressSeconds: number;
+  readonly totalBuildTimeSeconds: number;
+  isComplete: boolean;
+  shields: number;
+  hull: number;
+}
 
 export interface SystemResourceSummary {
   readonly systemId: string;
@@ -172,6 +190,7 @@ export class GameSimulation {
 
   private readonly players = new Map<PlayerSlotId, PlayerEconomyState>();
   private readonly planets = new Map<string, PlanetRuntimeState>();
+  private readonly deepSpaceStructures: DeepSpaceStructureInstance[] = [];
   private readonly miningBelts: AsteroidMiningBeltNode[] = [];
   private readonly harvesters: HarvesterUnitState[] = [];
   private nextEntityCounter = 1;
@@ -356,6 +375,37 @@ export class GameSimulation {
     return false;
   }
 
+  public getDeepSpaceStructuresInSystem(
+    systemId: string,
+  ): readonly DeepSpaceStructureInstance[] {
+    return this.deepSpaceStructures.filter((s) => s.systemId === systemId);
+  }
+
+  public getDeepSpaceStructureById(
+    structureId: string,
+  ): DeepSpaceStructureInstance | undefined {
+    return this.deepSpaceStructures.find((s) => s.id === structureId);
+  }
+
+  public destroyDeepSpaceStructure(structureId: string): boolean {
+    const idx = this.deepSpaceStructures.findIndex((s) => s.id === structureId);
+    if (idx === -1) {
+      return false;
+    }
+    const [removed] = this.deepSpaceStructures.splice(idx, 1);
+    if (!removed) {
+      return false;
+    }
+    if (removed.isComplete) {
+      const player = this.players.get(removed.ownerId);
+      const config = DEEP_SPACE_STRUCTURES[removed.structureId];
+      if (player) {
+        player.supplyCap = Math.max(0, player.supplyCap - config.supplyProvided);
+      }
+    }
+    return true;
+  }
+
   public submitCommand(command: GameCommand): CommandResult {
     switch (command.type) {
       case 'BUILD_ORBITAL_STRUCTURE':
@@ -363,6 +413,13 @@ export class GameSimulation {
           command.playerId,
           command.planetId,
           command.slotIndex,
+          command.structureId,
+        );
+      case 'BUILD_DEEP_SPACE_STRUCTURE':
+        return this.handleBuildDeepSpaceStructure(
+          command.playerId,
+          command.systemId,
+          command.position,
           command.structureId,
         );
       case 'QUEUE_SHIP':
@@ -425,6 +482,22 @@ export class GameSimulation {
                 );
               }
             }
+          }
+        }
+      }
+    }
+
+    // 2b. Advance deep-space structure construction timers (Logistics Hubs & Defence Towers)
+    for (const dsStruct of this.deepSpaceStructures) {
+      if (!dsStruct.isComplete) {
+        dsStruct.buildProgressSeconds += deltaSeconds;
+        if (dsStruct.buildProgressSeconds >= dsStruct.totalBuildTimeSeconds) {
+          dsStruct.buildProgressSeconds = dsStruct.totalBuildTimeSeconds;
+          dsStruct.isComplete = true;
+          const player = this.players.get(dsStruct.ownerId);
+          const config = DEEP_SPACE_STRUCTURES[dsStruct.structureId];
+          if (player) {
+            player.supplyCap += config.supplyProvided;
           }
         }
       }
@@ -613,6 +686,103 @@ export class GameSimulation {
     planetState.structures.push(instance);
     if (instance.isComplete) {
       this.onOrbitalStructureCompleted(planetState, instance);
+    }
+
+    return { ok: true };
+  }
+
+  private handleBuildDeepSpaceStructure(
+    playerId: PlayerSlotId,
+    systemId: string,
+    position: Vector2D,
+    structureId: DeepSpaceStructureId,
+  ): CommandResult {
+    const player = this.players.get(playerId);
+    const system = this.galaxy.systems.find((s) => s.id === systemId);
+    if (!player || !system) {
+      return { ok: false, reason: 'Invalid player or star system' };
+    }
+
+    const config = DEEP_SPACE_STRUCTURES[structureId];
+    if (!config) {
+      return { ok: false, reason: 'Unknown deep-space structure type' };
+    }
+
+    // 1. Ensure placement does not overlap any planet or its orbital ring
+    for (const planet of system.planets) {
+      const orbitalRingRadius =
+        PLANET_CLASSES[planet.planetClass].radiusUnits * 1.52;
+      const minClearance =
+        orbitalRingRadius + MIN_DEEP_SPACE_PLANET_CLEARANCE_BUFFER;
+      const distToPlanet = Math.hypot(
+        position.x - planet.position.x,
+        position.z - planet.position.z,
+      );
+      if (distToPlanet < minClearance) {
+        return {
+          ok: false,
+          reason: `Too close to ${planet.name} orbital ring (requires ${Math.ceil(minClearance)}u clearance)`,
+        };
+      }
+    }
+
+    // 2. Ensure placement does not overlap another deep-space structure in the same system
+    const existingInSystem = this.getDeepSpaceStructuresInSystem(systemId);
+    for (const existing of existingInSystem) {
+      const dist = Math.hypot(
+        position.x - existing.position.x,
+        position.z - existing.position.z,
+      );
+      if (dist < MIN_DEEP_SPACE_STRUCTURE_SPACING) {
+        return {
+          ok: false,
+          reason: 'Too close to an existing deep-space installation',
+        };
+      }
+    }
+
+    // 3. Enforce Logistics Hub radius rule for Defence Towers (PD Tower & Hull Breaker Tower)
+    if (config.requiresLogisticsHubRadius) {
+      const hubConfig = DEEP_SPACE_STRUCTURES.logistics_hub;
+      const insideFriendlyHub = existingInSystem.some(
+        (s) =>
+          s.structureId === 'logistics_hub' &&
+          s.ownerId === playerId &&
+          s.isComplete &&
+          Math.hypot(position.x - s.position.x, position.z - s.position.z) <=
+            hubConfig.buildRadiusProvided,
+      );
+      if (!insideFriendlyHub) {
+        return {
+          ok: false,
+          reason: `Requires placement within a completed friendly Logistics Hub radius (${hubConfig.buildRadiusProvided}u)`,
+        };
+      }
+    }
+
+    // 4. Validate and deduct Ore & Crystal cost upfront
+    if (player.ore < config.cost.ore || player.crystal < config.cost.crystal) {
+      return { ok: false, reason: 'Insufficient Ore or Crystals' };
+    }
+    player.ore -= config.cost.ore;
+    player.crystal -= config.cost.crystal;
+
+    const instance: DeepSpaceStructureInstance = {
+      id: `ds_struct_${this.nextEntityCounter++}`,
+      structureId,
+      ownerId: playerId,
+      systemId,
+      position: { x: position.x, z: position.z },
+      buildProgressSeconds: 0,
+      totalBuildTimeSeconds: config.buildTimeSeconds,
+      isComplete: config.buildTimeSeconds === 0,
+      shields: config.maxShields,
+      hull: config.maxHull,
+    };
+    this.deepSpaceStructures.push(instance);
+
+    if (instance.isComplete) {
+      player.supplyCap += config.supplyProvided;
     }
 
     return { ok: true };
