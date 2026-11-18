@@ -31,6 +31,7 @@ To ensure every ship and orbital platform shares a cohesive visual language acro
 | **Station Prow / Spire Tip Accent (Crimson Oxide)** | `#b91c1c` | `0.45` | `0.50` | Weathered red-tipped prows on radial docking arms and command spires |
 | **Solar Array Panels (Deep Photovoltaic Blue)** | `#1e3a5f` | `0.65` | `0.25` | Solar collector wings with subtle dark structural frame borders |
 | **Forge Heat-Sink Glow (Molten Copper-Orange)** | `#fb923c` | `0.25` | `0.25` | Emissive `#ea580c` (`0.95` intensity) between dark radiator fins on Refinery banks |
+| **Quantum R&D Prism Glow (Quantum Violet-Indigo)** | `#c084fc` | `0.25` | `0.20` | Emissive `#7e22ce` (`0.95` intensity) for R&D multi-prism sensor nodes & quantum data cores |
 
 ---
 
@@ -163,3 +164,22 @@ Each ship and orbital platform is designed and locked in one at a time.
 4. **Live Progressive Hull Assembly, Shuttling Elevators & Runway Strobes**:
    * Inside **Slot 1 (Primary Dreadnought Bay)**, a 3D capital hull rests inside a cyan construction wireframe cradle while a glowing planar **Laser-Fabrication Scanner** sweeps from stern to bow (`progressRatio` driven by `structure.productionQueue[0]`, or a continuous ambient fabrication pass when idle), progressively solidifying the armored hull.
    * Vertical **Material Transport Elevator** cages shuttle up and down the inner slipway walls, and 24 **Launch-Corridor Runway Strobes** pulse sequentially outward toward the open launch mouth (`+X`).
+
+---
+
+### 06. C&C Tech & Specialization Module — Star-Station "Minerva"
+
+* **Orthographic Blueprint**: ![Minerva Tech Module Orthographic Reference](./tech-minerva-orthographic.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
+
+#### Anatomical Breakdown, Sci-Fi R&D Accents & Live Holographic Projections
+1. **Curved 1-Slot R&D Bastion Deck & Data Conduit Spine**:
+   * Curves across 7 arc segments (`1.5x` scale: `~21.2u` arc length × `~8.2u` radial width) along the host planet's exact `orbitalRingRadius` to fill its 1-slot footprint while staying anchored in the faction's Gunmetal Slate (`#3e4652`), Weathered Ochre (`#c27d2c`), and Dark Charcoal Iron (`#1e232a`) industrial foundation.
+   * External Weathered Ochre **Data Conduit Spine** pipes run along both lower hull flanks, while raised perimeter armor berms carry pulsing **Multi-Prism Quantum Sensor Nodes** (`#c084fc` / emissive `#7e22ce`).
+2. **Central Data Core, Translucent Geodesic Dome & 4 Data Relay Spires**:
+   * Stepped multi-story R&D command center at the center segment topped by a **translucent cyan Geodesic Data Core Dome** (`opacity: 0.58` inside a dark wireframe lattice) that reveals **3 rotating internal Quantum Computing Server Monoliths**, flanked by 4 tall vertical **Data Relay & Sensor Array Spires**.
+3. **Advanced Hull Development Bay & Doctrine Calibration Holo-Tables**:
+   * **Advanced Hull Development Bay (Port Court)**: Projects a hovering, gently rotating **3D cyan wireframe prototype capital ship hologram** above a glowing holo-pad.
+   * **Doctrine Integration & Calibration Lab (Starboard Court)**: Projects a floating **5-ship miniature fleet delta formation hologram** above a tactical calibration table.
+4. **Cruciform Modular R&D Lab Modules (Inset Detail) & Fleet Logistics Supply Core**:
+   * Mid-bay courts house **4-wing Cruciform Modular R&D Lab Modules** (each topped by an Integrated Quantum Sensor Array) alongside stacked ochre and cyan **Fleet Logistics & Supply Core** cargo modules (`+15` Fleet Supply).

@@ -294,4 +294,29 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     library.dispose();
   });
+
+  it('constructs the curved 1-slot Minerva C&C Tech & Specialization Module with holographic R&D projections', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const techGroup = library.buildStationMesh('tech_module', true, ringRadius);
+
+    expect(techGroup.children).toHaveLength(7);
+    expect(typeof techGroup.userData.animateStation).toBe('function');
+
+    const firstSeg = techGroup.children[0];
+    const centerSeg = techGroup.children[3];
+    const lastSeg = techGroup.children[6];
+    expect(centerSeg?.position.x).toBeCloseTo(0, 4);
+    expect(firstSeg?.position.x).toBeLessThan(0);
+    expect(lastSeg?.position.x).toBeLessThan(0);
+
+    const bbox = new THREE.Box3().setFromObject(techGroup);
+    const arcSpanZ = bbox.max.z - bbox.min.z;
+    const radialWidthX = bbox.max.x - bbox.min.x;
+    expect(arcSpanZ).toBeGreaterThan(19);
+    expect(arcSpanZ).toBeGreaterThan(radialWidthX * 1.8);
+
+    library.updateStationAnimation(techGroup, 2.75, null);
+    library.dispose();
+  });
 });

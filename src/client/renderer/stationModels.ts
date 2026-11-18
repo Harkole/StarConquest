@@ -82,6 +82,34 @@ export class StationModelLibrary {
   private readonly dockWeldingFlareMat = new THREE.MeshBasicMaterial({
     color: 0xe0f2fe,
   });
+  private readonly techQuantumVioletMat = new THREE.MeshStandardMaterial({
+    color: 0xc084fc,
+    emissive: 0x7e22ce,
+    emissiveIntensity: 0.95,
+    metalness: 0.25,
+    roughness: 0.2,
+  });
+  private readonly techHoloWireframeMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.85,
+  });
+  private readonly techHoloSurfaceMat = new THREE.MeshBasicMaterial({
+    color: 0x0ea5e9,
+    transparent: true,
+    opacity: 0.36,
+    side: THREE.DoubleSide,
+  });
+  private readonly techTranslucentDomeMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.55,
+    metalness: 0.2,
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.58,
+  });
 
   // Wireframe & Baseline Materials
   private readonly buildingWireframeMat = new THREE.MeshBasicMaterial({
@@ -101,14 +129,49 @@ export class StationModelLibrary {
   private readonly geometries: THREE.BufferGeometry[] = [];
 
   // Baseline geometries for remaining structures (to be upgraded one-by-one)
-  private readonly techCrystalGeom = this.registerGeom(
-    new THREE.OctahedronGeometry(3.1, 0),
-  );
   private readonly defenseBastionGeom = this.registerGeom(
     new THREE.CylinderGeometry(3.8, 4.4, 4.2, 8),
   );
   private readonly defenseWingGeom = this.registerGeom(
     new THREE.BoxGeometry(3.2, 1.4, 14),
+  );
+
+  // Minerva C&C Tech & Specialization Module reusable geometries (1-slot curved R&D platform)
+  private readonly techDataConduitPipeGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.14, 0.14, 2.08, 8),
+  );
+  private readonly techDataCoreBlockGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.54, 0.68, 0.42),
+  );
+  private readonly techRelaySpireGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.04, 0.11, 2.15, 6),
+  );
+  private readonly techPrismNodeBaseGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.32, 0.42, 0.24, 8),
+  );
+  private readonly techPrismOrbGeom = this.registerGeom(
+    new THREE.OctahedronGeometry(0.24, 1),
+  );
+  private readonly techCruciformHubGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.58, 0.56, 0.58),
+  );
+  private readonly techCruciformWingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.68, 0.48, 0.42),
+  );
+  private readonly techHoloTableGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.75, 0.08, 1.55),
+  );
+  private readonly techHoloHullMainGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.68, 0.34, 1.35),
+  );
+  private readonly techHoloHullBowGeom = this.registerGeom(
+    new THREE.ConeGeometry(0.38, 0.78, 5),
+  );
+  private readonly techHoloHullWingGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.32, 0.08, 0.58),
+  );
+  private readonly techHoloMiniShipGeom = this.registerGeom(
+    new THREE.ConeGeometry(0.14, 0.42, 4),
   );
 
   // Titan Orbital Dockyard reusable geometries (2-slot curved fabrication core + twin outward slipways)
@@ -398,15 +461,14 @@ export class StationModelLibrary {
     if (structureId === 'orbital_dockyard') {
       return this.buildTitanOrbitalDockyard(isComplete, orbitalRingRadius);
     }
+    if (structureId === 'tech_module') {
+      return this.buildMinervaTechModule(isComplete, orbitalRingRadius);
+    }
 
     const group = new THREE.Group();
     const mat = !isComplete ? this.buildingWireframeMat : this.baselineStationMat;
 
     switch (structureId) {
-      case 'tech_module': {
-        group.add(new THREE.Mesh(this.techCrystalGeom, mat));
-        break;
-      }
       case 'heavy_defense_platform': {
         group.add(new THREE.Mesh(this.defenseBastionGeom, mat));
         group.add(new THREE.Mesh(this.defenseWingGeom, mat));
@@ -447,6 +509,10 @@ export class StationModelLibrary {
     this.dockForceFieldMat.dispose();
     this.dockLaserScannerMat.dispose();
     this.dockWeldingFlareMat.dispose();
+    this.techQuantumVioletMat.dispose();
+    this.techHoloWireframeMat.dispose();
+    this.techHoloSurfaceMat.dispose();
+    this.techTranslucentDomeMat.dispose();
     this.buildingWireframeMat.dispose();
     this.baselineStationMat.dispose();
   }
@@ -1376,6 +1442,294 @@ export class StationModelLibrary {
       for (const strobe of runwayStrobes) {
         const isLit = strobe.index % 6 === activeStrobeBucket;
         strobe.mesh.scale.y = isLit ? 1.85 : 0.75;
+      }
+    };
+
+    return root;
+  }
+
+  /**
+   * Builds the "Minerva" C&C Tech & Specialization Module (docs/artstyle.md #06).
+   * Curves a 7-segment rectangular R&D deck (`1.5x` scale: `~21.2u` arc length × `~8.2u` radial width)
+   * along the host planet's exact `orbitalRingRadius` to fill its 1-slot footprint while elevating
+   * the faction's gunmetal-and-ochre industrial theme with high-tech R&D accents:
+   * - Central Data Core & Multi-Story R&D Labs crowned by a translucent Geodesic Dome with rotating
+   *   internal Quantum Computing Monoliths and 4 Data Relay Spires.
+   * - Advanced Hull Development Bay projecting a hovering 3D cyan wireframe prototype capital ship hologram.
+   * - Doctrine Integration & Calibration Lab projecting a floating miniature fleet formation above a holo-table.
+   * - Cruciform 4-wing Modular R&D Lab Modules (Inset Detail), Fleet Logistics & Supply Core cargo stacks,
+   *   external ochre Data Conduit Spine pipes, and glowing violet-cyan Multi-Prism Quantum Sensor Nodes.
+   */
+  private buildMinervaTechModule(
+    isComplete: boolean,
+    orbitalRingRadius: number,
+  ): THREE.Group {
+    const root = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+    const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
+    const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
+    const domeMat = isComplete ? this.techTranslucentDomeMat : this.buildingWireframeMat;
+    const quantumMat = isComplete ? this.techQuantumVioletMat : this.buildingWireframeMat;
+    const holoWireMat = isComplete ? this.techHoloWireframeMat : this.buildingWireframeMat;
+    const holoSurfMat = isComplete ? this.techHoloSurfaceMat : this.buildingWireframeMat;
+
+    const ringR = Math.max(18, orbitalRingRadius);
+    const techScale = 1.5;
+    const segmentCount = 7;
+    const segmentArcSpacing = 2.02 * techScale; // ~21.2u total curved arc length (fills 1 orbital slot)
+    const halfSpan = ((segmentCount - 1) * segmentArcSpacing) * 0.5;
+    const centerIdx = Math.floor(segmentCount / 2);
+
+    const buildCruciformLabModule = (): THREE.Group => {
+      const labGroup = new THREE.Group();
+      const hub = new THREE.Mesh(this.techCruciformHubGeom, hullMat);
+      hub.position.set(0, 0.28, 0);
+      labGroup.add(hub);
+
+      const sensorCap = new THREE.Mesh(this.techPrismOrbGeom, quantumMat);
+      sensorCap.scale.setScalar(0.65);
+      sensorCap.position.set(0, 0.68, 0);
+      labGroup.add(sensorCap);
+
+      for (const yaw of [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2]) {
+        const wingPivot = new THREE.Group();
+        wingPivot.rotation.y = yaw;
+        const wing = new THREE.Mesh(this.techCruciformWingGeom, ochreMat);
+        wing.position.set(0.55, 0.24, 0);
+        wingPivot.add(wing);
+        labGroup.add(wingPivot);
+      }
+      return labGroup;
+    };
+
+    let internalQuantumCoreGroup: THREE.Group | null = null;
+    let holoPrototypeShipGroup: THREE.Group | null = null;
+    let holoFleetFormationGroup: THREE.Group | null = null;
+    const prismOrbs: { readonly mesh: THREE.Mesh; readonly phase: number }[] = [];
+
+    for (let i = 0; i < segmentCount; i++) {
+      const arcS = -halfSpan + i * segmentArcSpacing;
+      const theta = arcS / ringR;
+      const segPivot = new THREE.Group();
+
+      // Map segment onto circular orbital arc centered at (-ringR, 0, 0)
+      segPivot.position.set(
+        ringR * Math.cos(theta) - ringR,
+        0,
+        ringR * Math.sin(theta),
+      );
+      segPivot.rotation.y = -theta;
+      segPivot.scale.setScalar(techScale);
+
+      const isEndCap = i === 0 || i === segmentCount - 1;
+      const isCenter = i === centerIdx;
+
+      // 1. Curved Rectangular R&D Bastion Deck + External Ochre Data Conduit Spine Pipes (Side View)
+      if (isEndCap) {
+        const endDeck = new THREE.Mesh(this.outpostEndProwGeom, hullMat);
+        endDeck.scale.set(1.08, 1.0, 0.62);
+        segPivot.add(endDeck);
+
+        const endDir = i === 0 ? -1 : 1;
+        const relayPod = new THREE.Mesh(this.outpostAnchorThrusterGeom, frameMat);
+        relayPod.position.set(0, -0.04, endDir * 1.36);
+        segPivot.add(relayPod);
+
+        // Multi-Prism Quantum Sensor Node at each chamfered end-prow
+        const endBase = new THREE.Mesh(this.techPrismNodeBaseGeom, frameMat);
+        endBase.position.set(0, 0.34, endDir * 0.45);
+        segPivot.add(endBase);
+
+        const endOrb = new THREE.Mesh(this.techPrismOrbGeom, quantumMat);
+        endOrb.position.set(0, 0.62, endDir * 0.45);
+        segPivot.add(endOrb);
+        prismOrbs.push({ mesh: endOrb, phase: i * 1.3 });
+      } else {
+        segPivot.add(new THREE.Mesh(this.outpostDeckSegGeom, hullMat));
+
+        const keel = new THREE.Mesh(this.refKeelSegGeom, frameMat);
+        keel.position.set(0, -0.48, 0);
+        segPivot.add(keel);
+
+        for (const side of [-1, 1]) {
+          const berm = new THREE.Mesh(this.outpostBermWallGeom, frameMat);
+          berm.position.set(side * 2.34, 0.36, 0);
+          segPivot.add(berm);
+
+          const channel = new THREE.Mesh(this.outpostThermalChannelGeom, heatMat);
+          channel.position.set(side * 2.02, 0.25, 0);
+          segPivot.add(channel);
+
+          // External Data Conduit Spine Pipe running along the lower hull flanks (Side View schematic)
+          const conduitPipe = new THREE.Mesh(this.techDataConduitPipeGeom, ochreMat);
+          conduitPipe.rotation.x = Math.PI / 2;
+          conduitPipe.position.set(side * 2.58, -0.04, 0);
+          segPivot.add(conduitPipe);
+
+          // Perimeter Multi-Prism Quantum Sensor Nodes along the berm
+          if (i % 2 === 1) {
+            const nodeBase = new THREE.Mesh(this.techPrismNodeBaseGeom, trimMat);
+            nodeBase.position.set(side * 2.32, 0.62, 0);
+            segPivot.add(nodeBase);
+
+            const orb = new THREE.Mesh(this.techPrismOrbGeom, quantumMat);
+            orb.position.set(side * 2.32, 0.92, 0);
+            segPivot.add(orb);
+            prismOrbs.push({ mesh: orb, phase: i * 0.9 + (side > 0 ? 1.5 : 0) });
+          }
+        }
+      }
+
+      // 2. Central Data Core, Multi-Story R&D Labs, Translucent Geodesic Dome & 4 Data Relay Spires
+      if (isCenter) {
+        const ventralInterface = new THREE.Mesh(this.outpostVentralHullGeom, frameMat);
+        ventralInterface.position.set(0, -0.78, 0);
+        segPivot.add(ventralInterface);
+
+        const labBase = new THREE.Mesh(this.outpostCommandBaseGeom, hullMat);
+        labBase.scale.set(1.08, 1.15, 1.08);
+        labBase.position.set(0, 0.64, 0);
+        segPivot.add(labBase);
+
+        const labTier = new THREE.Mesh(this.outpostCommandTierGeom, ochreMat);
+        labTier.scale.set(1.06, 1.2, 1.06);
+        labTier.position.set(0, 1.28, 0);
+        segPivot.add(labTier);
+
+        const labWindows = new THREE.Mesh(this.refControlWindowGeom, cabinMat);
+        labWindows.scale.set(1.92, 1.0, 1.92);
+        labWindows.position.set(0, 0.96, 0);
+        segPivot.add(labWindows);
+
+        // Internal Quantum Server Monoliths visible inside the translucent Geodesic Data Core Dome
+        const quantumCorePivot = new THREE.Group();
+        quantumCorePivot.position.set(0, 2.05, 0);
+        for (const [mIdx, offset] of [
+          [-0.38, -0.28],
+          [0.38, -0.28],
+          [0.0, 0.36],
+        ].entries()) {
+          const monolith = new THREE.Mesh(
+            this.techDataCoreBlockGeom,
+            mIdx === 2 ? quantumMat : ochreMat,
+          );
+          monolith.position.set(offset[0] ?? 0, 0, offset[1] ?? 0);
+          quantumCorePivot.add(monolith);
+        }
+        segPivot.add(quantumCorePivot);
+        internalQuantumCoreGroup = quantumCorePivot;
+
+        const domeCore = new THREE.Mesh(this.outpostSensorDomeCoreGeom, domeMat);
+        domeCore.position.set(0, 2.12, 0);
+        segPivot.add(domeCore);
+
+        const domeLattice = new THREE.Mesh(
+          this.outpostSensorDomeLatticeGeom,
+          latticeMat,
+        );
+        domeLattice.position.set(0, 2.12, 0);
+        segPivot.add(domeLattice);
+
+        // 4 Tall Data Relay Towers & Sensor Array Spires flanking the Central Data Core
+        for (const sx of [-1.45, 1.45]) {
+          for (const sz of [-0.72, 0.72]) {
+            const spire = new THREE.Mesh(this.techRelaySpireGeom, trimMat);
+            spire.position.set(sx, 2.15, sz);
+            segPivot.add(spire);
+          }
+        }
+      } else if (i === 1) {
+        // 3. Advanced Hull Development Bay (Floating 3D Cyan Wireframe Prototype Ship Hologram)
+        const holoPad = new THREE.Mesh(this.techHoloTableGeom, holoSurfMat);
+        holoPad.position.set(0, 0.28, 0);
+        segPivot.add(holoPad);
+
+        const holoShip = new THREE.Group();
+        holoShip.position.set(0, 0.92, 0);
+
+        const hullBody = new THREE.Mesh(this.techHoloHullMainGeom, holoWireMat);
+        holoShip.add(hullBody);
+
+        const hullBow = new THREE.Mesh(this.techHoloHullBowGeom, holoWireMat);
+        hullBow.rotation.x = Math.PI / 2;
+        hullBow.position.set(0, 0, 1.05);
+        holoShip.add(hullBow);
+
+        const hullWings = new THREE.Mesh(this.techHoloHullWingGeom, holoWireMat);
+        hullWings.position.set(0, -0.04, -0.15);
+        holoShip.add(hullWings);
+
+        segPivot.add(holoShip);
+        holoPrototypeShipGroup = holoShip;
+      } else if (i === 5) {
+        // 4. Doctrine Integration & Calibration Lab (Tactical Fleet Formation Holo-Table)
+        const holoTable = new THREE.Mesh(this.techHoloTableGeom, holoSurfMat);
+        holoTable.position.set(0, 0.28, 0);
+        segPivot.add(holoTable);
+
+        const fleetFormation = new THREE.Group();
+        fleetFormation.position.set(0, 0.72, 0);
+        const shipOffsets: readonly [number, number, number][] = [
+          [0, 0.14, 0.48],
+          [-0.44, 0.04, 0.05],
+          [0.44, 0.04, 0.05],
+          [-0.68, -0.06, -0.42],
+          [0.68, -0.06, -0.42],
+        ];
+        for (const [fx, fy, fz] of shipOffsets) {
+          const miniShip = new THREE.Mesh(this.techHoloMiniShipGeom, holoWireMat);
+          miniShip.rotation.x = Math.PI / 2;
+          miniShip.position.set(fx, fy, fz);
+          fleetFormation.add(miniShip);
+        }
+        segPivot.add(fleetFormation);
+        holoFleetFormationGroup = fleetFormation;
+      } else if (i === 2 || i === 4) {
+        // 5. Cruciform Modular R&D Lab Modules (Inset Detail) & Fleet Logistics Supply Core (+15 Supply)
+        const cruciformLab = buildCruciformLabModule();
+        cruciformLab.position.set(-0.68, 0.22, 0);
+        segPivot.add(cruciformLab);
+
+        for (const crateZ of [-0.38, 0.38]) {
+          const crate = new THREE.Mesh(
+            this.outpostSupplyCrateGeom,
+            crateZ < 0 ? ochreMat : obsMat,
+          );
+          crate.position.set(1.15, 0.44, crateZ);
+          segPivot.add(crate);
+        }
+      }
+
+      root.add(segPivot);
+    }
+
+    // Live R&D holographic & quantum core animations via updateStationAnimation
+    root.userData.animateStation = (elapsedSeconds: number): void => {
+      if (!isComplete) {
+        return;
+      }
+      if (internalQuantumCoreGroup) {
+        internalQuantumCoreGroup.rotation.y = elapsedSeconds * 0.65;
+      }
+      if (holoPrototypeShipGroup) {
+        holoPrototypeShipGroup.position.y =
+          0.92 + Math.sin(elapsedSeconds * 1.8) * 0.12;
+        holoPrototypeShipGroup.rotation.y = Math.sin(elapsedSeconds * 0.7) * 0.35;
+      }
+      if (holoFleetFormationGroup) {
+        holoFleetFormationGroup.position.y =
+          0.72 + Math.cos(elapsedSeconds * 2.1) * 0.09;
+        holoFleetFormationGroup.rotation.y = elapsedSeconds * 0.45;
+      }
+      for (const item of prismOrbs) {
+        const pulse = 0.85 + 0.3 * Math.sin(elapsedSeconds * 3.2 + item.phase);
+        item.mesh.scale.setScalar(pulse);
+        item.mesh.rotation.y = elapsedSeconds * 1.2 + item.phase;
       }
     };
 
