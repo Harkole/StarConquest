@@ -222,25 +222,20 @@ export function createLivingPlanetGroup(
     metalness: 0.7,
     roughness: 0.3,
   });
-  const occupiedSlotMaterial = new THREE.MeshStandardMaterial({
-    color: 0x0ea5e9,
-    emissive: 0x38bdf8,
-    emissiveIntensity: 1.15,
-    metalness: 0.8,
-    roughness: 0.2,
-  });
-  disposables.push(freeSlotMaterial, occupiedSlotMaterial);
+  disposables.push(freeSlotMaterial);
 
   const slotNodeMeshes: THREE.Mesh[] = [];
   const slotHaloMeshes: THREE.Mesh[] = [];
 
   for (const slot of slotPoints) {
     const nodeMesh = new THREE.Mesh(slotNodeGeometry, freeSlotMaterial);
+    nodeMesh.name = `orbital_slot_node_${slot.slotIndex}`;
     nodeMesh.position.set(slot.x, 0, slot.z);
     orbitalGroup.add(nodeMesh);
     slotNodeMeshes.push(nodeMesh);
 
     const haloRing = new THREE.Mesh(slotRingGeometry, freeSlotMaterial);
+    haloRing.name = `orbital_slot_halo_${slot.slotIndex}`;
     haloRing.position.set(slot.x, 0, slot.z);
     orbitalGroup.add(haloRing);
     slotHaloMeshes.push(haloRing);
@@ -249,7 +244,7 @@ export function createLivingPlanetGroup(
   const stationModels = new StationModelLibrary();
   disposables.push(stationModels);
 
-  let lastSignature = '';
+  let lastSignature: string | null = null;
 
   function syncStructures(planetState: PlanetRuntimeState): void {
     isHabitedUniform.value = planetState.ownerId !== null ? 1.0 : 0.0;
@@ -258,7 +253,7 @@ export function createLivingPlanetGroup(
     }
 
     const sig = planetState.structures
-      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}`)
+      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}:${s.occupiedSlots.join(',')}`)
       .join('|');
     if (sig === lastSignature) {
       return;
@@ -306,10 +301,10 @@ export function createLivingPlanetGroup(
     }
 
     slotNodeMeshes.forEach((mesh, idx) => {
-      mesh.material = occupiedSet.has(idx) ? occupiedSlotMaterial : freeSlotMaterial;
+      mesh.visible = !occupiedSet.has(idx);
     });
     slotHaloMeshes.forEach((mesh, idx) => {
-      mesh.material = occupiedSet.has(idx) ? occupiedSlotMaterial : freeSlotMaterial;
+      mesh.visible = !occupiedSet.has(idx);
     });
   }
 

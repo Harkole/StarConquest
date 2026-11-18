@@ -220,4 +220,32 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     library.dispose();
   });
+
+  it('hides orbital ring slot dot and halo meshes when slots are occupied by a platform', () => {
+    const galaxy = createFiveSystemGalaxy();
+    const homeworld = galaxy.systems[0]?.planets[0];
+    expect(homeworld).toBeDefined();
+
+    if (homeworld) {
+      const handle = createLivingPlanetGroup(homeworld, new THREE.Vector3(1, 0.5, -1));
+
+      // Homeworld starts with a 2-slot Command & Control occupying slots 0 and 1
+      for (const occupiedIdx of [0, 1]) {
+        const node = handle.rootGroup.getObjectByName(`orbital_slot_node_${occupiedIdx}`);
+        const halo = handle.rootGroup.getObjectByName(`orbital_slot_halo_${occupiedIdx}`);
+        expect(node?.visible).toBe(false);
+        expect(halo?.visible).toBe(false);
+      }
+
+      // Free slots 2..9 remain visible
+      for (let freeIdx = 2; freeIdx < homeworld.orbitalSlots; freeIdx += 1) {
+        const node = handle.rootGroup.getObjectByName(`orbital_slot_node_${freeIdx}`);
+        const halo = handle.rootGroup.getObjectByName(`orbital_slot_halo_${freeIdx}`);
+        expect(node?.visible).toBe(true);
+        expect(halo?.visible).toBe(true);
+      }
+
+      handle.dispose();
+    }
+  });
 });

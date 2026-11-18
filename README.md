@@ -192,7 +192,7 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
      * **Animated Magma Fissures**: Emissive procedural lava cracks and caldera pools that slowly pulse and flow using UV/noise distortion, glowing brightly through the HDR bloom pass.
      * **Scorched Atmosphere**: Warm orange/ember Fresnel rim haze.
 3. **Orbital Rings, Wormholes & Combat VFX**:
-   * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit (including the 2-slot Command & Control flagship station on starter Homeworlds).
+   * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) on empty slots where stations can be constructed. Once a 1-slot or 2-slot platform occupies a slot (such as the 2-slot Command & Control flagship station on starter Homeworlds), its blue orbital build slot marker is automatically hidden so only genuinely free slots remain visible.
    * **Wormholes (DS9-Style Proximity Opening Event)**: Wormholes (`src/client/shaders/wormholeShader.ts` & `src/client/renderer/spaceEnvironmentFactory.ts`) rest as a compact, shimmering subspace anomaly marker when idle. When a ship approaches within proximity (`240` units—or when triggered from the HUD for inspection), the wormhole erupts with a Deep Space 9-inspired gravimetric cross-flare and shockwave ring before unfurling into a 3D depth-displaced swirling cloud funnel and luminous tunnel throat.
    * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`), Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
 4. **Orbital Camera & Sector Navigation (`src/client/renderer/orbitalCamera.ts` & `src/client/ui/systemHud.ts`)**:
@@ -286,10 +286,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ---
 
 ## 12. Future Work & Known Bug Fixes
-
-### Orbital Ring Slot Marker Visibility
-* **Known Issue**: Occupied orbital slot nodes (`slotNodeMeshes` and `slotHaloMeshes` in `src/client/renderer/planetFactory.ts`) currently remain visible as bright blue dots on the orbital ring after a station is built. On 2-slot platforms like the **Prometheus Command & Control** (whose model sits centered between the two slots), the exposed blue slot dots create the misleading illusion that those slots are still available to build on.
-* **Planned Fix**: Hide the orbital build slot dot/halo meshes whenever a slot is occupied by a constructed (or under-construction) platform, leaving only genuinely empty slots visible on the orbital ring.
 
 ### Blitz Skirmish Economy Multiplier Scaling
 * **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
