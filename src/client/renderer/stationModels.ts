@@ -115,22 +115,6 @@ export class StationModelLibrary {
     transparent: true,
     opacity: 0.58,
   });
-  private readonly aegisShieldShellMat = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
-    emissive: 0x0284c7,
-    emissiveIntensity: 0.45,
-    metalness: 0.15,
-    roughness: 0.15,
-    transparent: true,
-    opacity: 0.24,
-    side: THREE.DoubleSide,
-  });
-  private readonly aegisShieldLatticeMat = new THREE.MeshBasicMaterial({
-    color: 0x7dd3fc,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.48,
-  });
 
   // Wireframe & Baseline Materials
   private readonly buildingWireframeMat = new THREE.MeshBasicMaterial({
@@ -244,12 +228,6 @@ export class StationModelLibrary {
   );
   private readonly hubFighterWingGeom = this.registerGeom(
     new THREE.BoxGeometry(0.24, 0.06, 0.86),
-  );
-  private readonly hubShieldRingShellGeom = this.registerGeom(
-    new THREE.TorusGeometry(9.65, 0.68, 10, 32).rotateX(Math.PI / 2),
-  );
-  private readonly hubShieldRingLatticeGeom = this.registerGeom(
-    new THREE.TorusGeometry(9.69, 0.72, 10, 32).rotateX(Math.PI / 2),
   );
   private readonly hubSpireTrunkGeom = this.registerGeom(
     new THREE.CylinderGeometry(1.95, 2.75, 5.4, 12),
@@ -643,8 +621,6 @@ export class StationModelLibrary {
     this.techHoloWireframeMat.dispose();
     this.techHoloSurfaceMat.dispose();
     this.techTranslucentDomeMat.dispose();
-    this.aegisShieldShellMat.dispose();
-    this.aegisShieldLatticeMat.dispose();
     this.buildingWireframeMat.dispose();
   }
 
@@ -2204,12 +2180,6 @@ export class StationModelLibrary {
     const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
     const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
     const portalMat = isComplete ? this.dockForceFieldMat : this.buildingWireframeMat;
-    const shieldShellMat = isComplete
-      ? this.aegisShieldShellMat
-      : this.buildingWireframeMat;
-    const shieldLatticeMat = isComplete
-      ? this.aegisShieldLatticeMat
-      : this.buildingWireframeMat;
 
     // 1. Wide Sloped Circular Base Apron, Inner Stepped Plateau & Lower-Deck Reactor/Thruster Assembly
     const baseApron = new THREE.Mesh(this.hubBaseApronGeom, hullMat);
@@ -2234,14 +2204,7 @@ export class StationModelLibrary {
       root.add(thruster);
     }
 
-    // 2. 360-Degree Perimeter Integrated Shield Emitter Ring around the outer saucer rim
-    const shieldRingGroup = new THREE.Group();
-    shieldRingGroup.position.set(0, 0.15, 0);
-    shieldRingGroup.add(new THREE.Mesh(this.hubShieldRingShellGeom, shieldShellMat));
-    shieldRingGroup.add(new THREE.Mesh(this.hubShieldRingLatticeGeom, shieldLatticeMat));
-    root.add(shieldRingGroup);
-
-    // 3. Four Diagonal Fighter Hangar Bays & Launch Catapult Systems (45°, 135°, 225°, 315°)
+    // 2. Four Diagonal Fighter Hangar Bays & Launch Catapult Systems (45°, 135°, 225°, 315°)
     const buildStagedFighterMesh = (): THREE.Group => {
       const fighter = new THREE.Group();
       const body = new THREE.Mesh(this.hubFighterBodyGeom, trimMat);
@@ -2405,7 +2368,6 @@ export class StationModelLibrary {
         return;
       }
       sensorSpherePivot.rotation.y = elapsedSeconds * 0.55;
-      shieldRingGroup.rotation.y = -elapsedSeconds * 0.15;
 
       for (const elev of elevatorCages) {
         elev.mesh.position.y =

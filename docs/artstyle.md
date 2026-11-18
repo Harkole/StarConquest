@@ -212,9 +212,9 @@ Each ship and orbital platform is designed and locked in one at a time.
 * **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts)
 
 #### Anatomical Breakdown, Radial Fighter Hangar Bays & Pagoda Fabrication Spire
-1. **Free-Floating Radial Saucer Apron & Perimeter Integrated Shield Ring**:
+1. **Free-Floating Radial Saucer Apron**:
    * Because the Logistics Hub operates in open deep space near wormholes or asteroid belts (rather than on a curved planetary orbital ring), it uses a 360-degree symmetrical radial saucer/octagonal apron (`radius ~9.6u`) underpinned by a lower-deck **Reactor & Power Core Access** housing and a quad **Ventral Thruster Assembly**.
-   * Encircled around the outer rim by a translucent cyan hexagonal-lattice **Integrated Shield Emitter Ring** (`TorusGeometry` with rotating `#7dd3fc` wireframe lattice).
+   * Static always-on shield ring meshes are omitted; no shields are rendered on any platform until the dedicated Shield VFX art pass is completed.
 2. **4 Diagonal Rectangular Open Fighter Hangar Bays (`45°, 135°, 225°, 315°` — Inset Detail)**:
    * Four sunken diagonal flight-deck courts framed by Weathered Ochre (`#c27d2c`) berms and pulsing Molten Copper-Orange (`#fb923c`) **Launch Catapult System** tracks.
    * Each bay stages **6 Fighter craft (`2x3` formation, 24 fighters total)** facing an outer sloped **Atmospheric Containment Force-Field Hangar Portal** (`#7dd3fc`).
