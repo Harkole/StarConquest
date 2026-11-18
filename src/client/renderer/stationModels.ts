@@ -62,6 +62,12 @@ export class StationModelLibrary {
     metalness: 0.25,
     roughness: 0.25,
   });
+  private readonly geodesicLatticeMat = new THREE.MeshBasicMaterial({
+    color: 0x1e232a,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.65,
+  });
 
   // Wireframe & Baseline Materials
   private readonly buildingWireframeMat = new THREE.MeshBasicMaterial({
@@ -81,9 +87,6 @@ export class StationModelLibrary {
   private readonly geometries: THREE.BufferGeometry[] = [];
 
   // Baseline geometries for remaining structures (to be upgraded one-by-one)
-  private readonly outpostDishGeom = this.registerGeom(
-    new THREE.ConeGeometry(2.8, 3.8, 12),
-  );
   private readonly dockyardGantryGeom = this.registerGeom(
     new THREE.BoxGeometry(4.8, 2.6, 12.5),
   );
@@ -95,6 +98,56 @@ export class StationModelLibrary {
   );
   private readonly defenseWingGeom = this.registerGeom(
     new THREE.BoxGeometry(3.2, 1.4, 14),
+  );
+
+  // Vanguard Planetary Outpost reusable geometries (curved rectangular 1-slot bastion)
+  private readonly outpostDeckSegGeom = this.registerGeom(
+    new THREE.BoxGeometry(5.2, 0.44, 2.15),
+  );
+  private readonly outpostEndProwGeom = this.registerGeom(
+    new THREE.CylinderGeometry(2.15, 2.48, 0.44, 6),
+  );
+  private readonly outpostBermWallGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.46, 0.36, 2.12),
+  );
+  private readonly outpostThermalChannelGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.16, 0.24, 1.98),
+  );
+  private readonly outpostVentralHullGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.75, 0.95, 0.88, 8),
+  );
+  private readonly outpostCommandBaseGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.78, 2.18, 0.78, 8),
+  );
+  private readonly outpostCommandTierGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.42, 1.72, 0.52, 8),
+  );
+  private readonly outpostSensorDomeCoreGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(1.26, 2),
+  );
+  private readonly outpostSensorDomeLatticeGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(1.29, 2),
+  );
+  private readonly outpostSupplyCrateGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.84, 0.48, 0.58),
+  );
+  private readonly outpostSupplyCanisterGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.2, 0.2, 0.74, 8),
+  );
+  private readonly outpostPdPedestalGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.44, 0.56, 0.36, 8),
+  );
+  private readonly outpostPdHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.56, 0.38, 0.68),
+  );
+  private readonly outpostPdAmmoDrumGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.22, 0.28, 0.48),
+  );
+  private readonly outpostPdBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.045, 0.055, 0.64, 6),
+  );
+  private readonly outpostAnchorThrusterGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.76, 0.44, 0.88),
   );
 
   // Hephaes Orbital Refinery reusable geometries (curved along orbital arc)
@@ -227,15 +280,14 @@ export class StationModelLibrary {
     if (structureId === 'refinery') {
       return this.buildHephaesRefinery(isComplete, orbitalRingRadius);
     }
+    if (structureId === 'planetary_outpost') {
+      return this.buildVanguardPlanetaryOutpost(isComplete, orbitalRingRadius);
+    }
 
     const group = new THREE.Group();
     const mat = !isComplete ? this.buildingWireframeMat : this.baselineStationMat;
 
     switch (structureId) {
-      case 'planetary_outpost': {
-        group.add(new THREE.Mesh(this.outpostDishGeom, mat));
-        break;
-      }
       case 'orbital_dockyard': {
         group.add(new THREE.Mesh(this.dockyardGantryGeom, mat));
         break;
@@ -267,6 +319,7 @@ export class StationModelLibrary {
     this.warmCabinMat.dispose();
     this.beaconRedMat.dispose();
     this.moltenHeatSinkMat.dispose();
+    this.geodesicLatticeMat.dispose();
     this.buildingWireframeMat.dispose();
     this.baselineStationMat.dispose();
   }
@@ -612,6 +665,189 @@ export class StationModelLibrary {
         const crystalArray = new THREE.Mesh(this.refCrystalArrayGeom, obsMat);
         crystalArray.position.set(0, 0.92, 0);
         segPivot.add(crystalArray);
+      }
+
+      root.add(segPivot);
+    }
+
+    return root;
+  }
+
+  /**
+   * Builds the "Vanguard" Planetary Outpost (docs/artstyle.md #04).
+   * Curves an elongated rectangular bastion deck (with chamfered octagonal end-prows) along the
+   * host planet's exact `orbitalRingRadius` to fill its 1-slot orbital footprint, featuring a central
+   * Phased-Array Geodesic Sensor Sphere, Fortified Command Core, sunken Fleet Supply Depots,
+   * 4 Twin-Barrel Automated Gatling Point-Defense Turrets, and Planetary Anchoring Thrusters.
+   */
+  private buildVanguardPlanetaryOutpost(
+    isComplete: boolean,
+    orbitalRingRadius: number,
+  ): THREE.Group {
+    const root = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+    const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
+    const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
+
+    const ringR = Math.max(18, orbitalRingRadius);
+    const outpostScale = 1.5;
+    const segmentCount = 7;
+    const segmentArcSpacing = 2.02 * outpostScale; // ~21.2u total curved arc length (fills 1 orbital slot)
+    const halfSpan = ((segmentCount - 1) * segmentArcSpacing) * 0.5;
+    const centerIdx = Math.floor(segmentCount / 2);
+
+    const buildPdGatlingTurret = (yaw: number): THREE.Group => {
+      const turretGroup = new THREE.Group();
+      turretGroup.add(new THREE.Mesh(this.outpostPdPedestalGeom, frameMat));
+
+      const head = new THREE.Group();
+      head.position.set(0, 0.34, 0);
+      head.rotation.y = yaw;
+      head.add(new THREE.Mesh(this.outpostPdHousingGeom, hullMat));
+
+      for (const drumSide of [-1, 1]) {
+        const drum = new THREE.Mesh(this.outpostPdAmmoDrumGeom, ochreMat);
+        drum.position.set(drumSide * 0.36, -0.04, -0.04);
+        head.add(drum);
+
+        const barrel = new THREE.Mesh(this.outpostPdBarrelGeom, trimMat);
+        barrel.rotation.x = Math.PI / 2.2;
+        barrel.position.set(drumSide * 0.12, 0.06, 0.52);
+        head.add(barrel);
+      }
+
+      turretGroup.add(head);
+      return turretGroup;
+    };
+
+    for (let i = 0; i < segmentCount; i++) {
+      const arcS = -halfSpan + i * segmentArcSpacing;
+      const theta = arcS / ringR;
+      const segPivot = new THREE.Group();
+
+      // Map segment onto circular orbital arc centered at (-ringR, 0, 0)
+      segPivot.position.set(
+        ringR * Math.cos(theta) - ringR,
+        0,
+        ringR * Math.sin(theta),
+      );
+      segPivot.rotation.y = -theta;
+      segPivot.scale.setScalar(outpostScale);
+
+      const isEndCap = i === 0 || i === segmentCount - 1;
+      const isCenter = i === centerIdx;
+
+      // 1. Curved Rectangular Bastion Deck (with chamfered hexagonal end-prows)
+      if (isEndCap) {
+        const endDeck = new THREE.Mesh(this.outpostEndProwGeom, hullMat);
+        endDeck.scale.set(1.08, 1.0, 0.62);
+        segPivot.add(endDeck);
+
+        // Fore/Aft Planetary Anchoring Thrusters at the ends of the curved bastion
+        const endDir = i === 0 ? -1 : 1;
+        const endThruster = new THREE.Mesh(this.outpostAnchorThrusterGeom, frameMat);
+        endThruster.position.set(0, -0.05, endDir * 1.38);
+        segPivot.add(endThruster);
+
+        const endGlow = new THREE.Mesh(this.refPadBeaconGeom, heatMat);
+        endGlow.scale.set(1.2, 0.9, 0.45);
+        endGlow.position.set(0, -0.02, endDir * 1.82);
+        segPivot.add(endGlow);
+      } else {
+        segPivot.add(new THREE.Mesh(this.outpostDeckSegGeom, hullMat));
+
+        const keel = new THREE.Mesh(this.refKeelSegGeom, frameMat);
+        keel.position.set(0, -0.48, 0);
+        segPivot.add(keel);
+
+        // Raised perimeter armor berm & recessed glowing copper-amber conduit channels
+        for (const side of [-1, 1]) {
+          const berm = new THREE.Mesh(this.outpostBermWallGeom, frameMat);
+          berm.position.set(side * 2.34, 0.36, 0);
+          segPivot.add(berm);
+
+          const channel = new THREE.Mesh(this.outpostThermalChannelGeom, heatMat);
+          channel.position.set(side * 2.02, 0.25, 0);
+          segPivot.add(channel);
+        }
+      }
+
+      // 2. Central Fortified Command Core & Phased-Array Geodesic Sensor Sphere
+      if (isCenter) {
+        const ventralInterface = new THREE.Mesh(this.outpostVentralHullGeom, frameMat);
+        ventralInterface.position.set(0, -0.78, 0);
+        segPivot.add(ventralInterface);
+
+        const cmdBase = new THREE.Mesh(this.outpostCommandBaseGeom, hullMat);
+        cmdBase.position.set(0, 0.58, 0);
+        segPivot.add(cmdBase);
+
+        const cmdTier = new THREE.Mesh(this.outpostCommandTierGeom, ochreMat);
+        cmdTier.position.set(0, 1.15, 0);
+        segPivot.add(cmdTier);
+
+        const cmdWindows = new THREE.Mesh(this.refControlWindowGeom, cabinMat);
+        cmdWindows.scale.set(1.85, 0.95, 1.85);
+        cmdWindows.position.set(0, 0.88, 0);
+        segPivot.add(cmdWindows);
+
+        // Phased-Array Geodesic Sensor Sphere (inner glowing cyan dome + outer geodesic wireframe lattice)
+        const domeCore = new THREE.Mesh(this.outpostSensorDomeCoreGeom, obsMat);
+        domeCore.position.set(0, 1.98, 0);
+        segPivot.add(domeCore);
+
+        const domeLattice = new THREE.Mesh(
+          this.outpostSensorDomeLatticeGeom,
+          latticeMat,
+        );
+        domeLattice.position.set(0, 1.98, 0);
+        segPivot.add(domeLattice);
+
+        // Long-Range Communications Array Mast
+        const commMast = new THREE.Mesh(this.cncAntennaMastGeom, trimMat);
+        commMast.position.set(-1.35, 1.72, 0);
+        segPivot.add(commMast);
+
+        if (isComplete) {
+          const beacon = new THREE.Mesh(this.cncBeaconTipGeom, this.beaconRedMat);
+          beacon.position.set(-1.35, 2.5, 0);
+          segPivot.add(beacon);
+        }
+
+        // Lateral Planetary Anchoring Thrusters on the central core flanks
+        for (const side of [-1, 1]) {
+          const flankThruster = new THREE.Mesh(this.outpostAnchorThrusterGeom, frameMat);
+          flankThruster.position.set(side * 2.72, -0.04, 0);
+          segPivot.add(flankThruster);
+        }
+      } else {
+        // 3. Sunken Fleet Supply Depots (Ochre Cargo Module Stacks & Cylindrical Supply Canisters)
+        for (const side of [-1, 1]) {
+          const crate = new THREE.Mesh(this.outpostSupplyCrateGeom, ochreMat);
+          crate.position.set(side * 1.18, 0.44, -0.36);
+          segPivot.add(crate);
+
+          const canister = new THREE.Mesh(this.outpostSupplyCanisterGeom, trimMat);
+          canister.rotation.z = Math.PI / 2;
+          canister.position.set(side * 1.15, 0.36, 0.42);
+          segPivot.add(canister);
+        }
+
+        // 4. Automated Light Point-Defense Turrets (4 Twin-Barrel Gatling Modules on segments 2 & 4)
+        if (i === centerIdx - 1 || i === centerIdx + 1) {
+          const zDir = i < centerIdx ? -1 : 1;
+          for (const side of [-1, 1]) {
+            const yaw = Math.atan2(side * 0.8, zDir);
+            const pdTurret = buildPdGatlingTurret(yaw);
+            pdTurret.position.set(side * 1.65, 0.38, zDir * 0.25);
+            segPivot.add(pdTurret);
+          }
+        }
       }
 
       root.add(segPivot);

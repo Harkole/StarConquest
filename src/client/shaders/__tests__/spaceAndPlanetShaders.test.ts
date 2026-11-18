@@ -248,4 +248,27 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       handle.dispose();
     }
   });
+
+  it('constructs the curved rectangular Vanguard Planetary Outpost to fill 1 orbital slot', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 27.36; // Medium 8-slot planet orbital ring radius
+    const outpostGroup = library.buildStationMesh('planetary_outpost', true, ringRadius);
+
+    expect(outpostGroup.children).toHaveLength(7);
+    const firstSeg = outpostGroup.children[0];
+    const centerSeg = outpostGroup.children[3];
+    const lastSeg = outpostGroup.children[6];
+    expect(centerSeg?.position.x).toBeCloseTo(0, 4);
+    expect(firstSeg?.position.x).toBeLessThan(0);
+    expect(lastSeg?.position.x).toBeLessThan(0);
+
+    const bbox = new THREE.Box3().setFromObject(outpostGroup);
+    const arcSpanZ = bbox.max.z - bbox.min.z;
+    const radialWidthX = bbox.max.x - bbox.min.x;
+    // Rectangular aspect ratio: tangential arc span (~21u) is significantly longer than radial width (~8.5u)
+    expect(arcSpanZ).toBeGreaterThan(19);
+    expect(arcSpanZ).toBeGreaterThan(radialWidthX * 1.8);
+
+    library.dispose();
+  });
 });

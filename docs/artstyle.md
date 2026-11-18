@@ -123,3 +123,23 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Twin rows of parallel, slightly V-canted radiator fin banks flanking the central spine. Dark Charcoal Iron (`#1e232a`) fin plates frame glowing **Molten Copper-Orange (`#fb923c` / emissive `#ea580c`)** smelter cores, matching the signature thermal glow in the schematic.
 4. **Flanking Landing & Cargo Pads + Crystal Processing Array**:
    * Outer deck aprons along both sides of the heat-sink banks feature recessed Harvester landing/cargo pads with subtle cyan/amber beacon strips, plus a Crystal Processing Array at the end of the central spine.
+
+---
+
+### 04. Planetary Outpost — Star-Station "Vanguard"
+
+* **Orthographic Blueprint**: ![Vanguard Planetary Outpost Orthographic Reference](./outpost-vanguard-orthographic.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
+
+#### Anatomical Breakdown & Orbital Arc Curvature
+1. **Elongated Curved Rectangular Bastion Deck (1-Slot Footprint)**:
+   * Stretched into a rectangular profile (`1.5x` scale across 7 curved arc segments: `~21.2u` arc length × `~8.2u` radial width) with chamfered hexagonal end-prows and **bent along the host planet's exact `orbitalRingRadius`** so it fills the full 1-slot section on Small (6-slot), Medium (8-slot), or Super-Earth (12-slot) orbital rings while keeping strict atmosphere clearance.
+   * Raised Dark Charcoal Iron (`#1e232a`) perimeter armor berms and recessed Molten Copper-Orange (`#fb923c` / emissive `#ea580c`) conduit channels frame the sunken supply deck bays.
+2. **Fortified Command & Control Core + Phased-Array Geodesic Sensor Sphere**:
+   * Central stepped octagonal command bunker in Gunmetal Slate (`#3e4652`) and Weathered Ochre (`#c27d2c`) with warm amber bridge slits (`#fbbf24`), a Long-Range Communications Array mast with a red tip beacon, and a ventral **Planetary Surface Interface & Approach Docking Point** hull (`-Y`).
+   * **Phased-Array Sensor Sphere**: Elevated glowing pale ice-blue geodesic dome (`#38bdf8` / emissive `#0284c7`) encased inside a dark structural geodesic wireframe lattice (`IcosahedronGeometry` detail `2`), visually signaling its `240` sensor range.
+3. **Sunken Fleet Supply Depots (Cargo Module Stacks)**:
+   * Flanking curved supply courts house rows of Weathered Ochre (`#c27d2c`) cargo containers paired with horizontal Steel Grey (`#64748b`) cylindrical supply canisters, visually representing the Outpost's `+10` Fleet Supply contribution.
+4. **4 Automated Light Point-Defense Turrets & Planetary Anchoring Thrusters**:
+   * Four twin-barrel automated Gatling PD turrets mounted on raised octagonal pedestals around the central core, each featuring a swiveling gunmetal housing, twin ochre side ammo drums, and dual elevated barrels (`15` Point Defence DPS).
+   * Four outrigger **Planetary Anchoring Thrusters** at the fore/aft chamfered prows and central lateral flanks.
