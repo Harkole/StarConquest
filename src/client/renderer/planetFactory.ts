@@ -245,8 +245,11 @@ export function createLivingPlanetGroup(
   disposables.push(stationModels);
 
   let lastSignature: string | null = null;
+  let latestPlanetState: PlanetRuntimeState | null = null;
+  const stationGroupsById = new Map<string, THREE.Group>();
 
   function syncStructures(planetState: PlanetRuntimeState): void {
+    latestPlanetState = planetState;
     isHabitedUniform.value = planetState.ownerId !== null ? 1.0 : 0.0;
     if (planetState.ownerId !== null) {
       trackMaterial.color.setHex(0x38bdf8);
@@ -261,6 +264,7 @@ export function createLivingPlanetGroup(
     lastSignature = sig;
 
     stationDynamicGroup.clear();
+    stationGroupsById.clear();
 
     const occupiedSet = new Set<number>();
     for (const struct of planetState.structures) {
@@ -298,6 +302,7 @@ export function createLivingPlanetGroup(
       );
       stationGroup.rotation.y = -angle;
       stationDynamicGroup.add(stationGroup);
+      stationGroupsById.set(struct.id, stationGroup);
     }
 
     slotNodeMeshes.forEach((mesh, idx) => {
@@ -358,6 +363,23 @@ export function createLivingPlanetGroup(
       surfaceMesh.rotation.y += deltaSeconds * 0.045;
       orbitalGroup.rotation.y =
         simElapsedSeconds * ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC;
+
+      if (latestPlanetState) {
+        for (const struct of latestPlanetState.structures) {
+          const stationGroup = stationGroupsById.get(struct.id);
+          if (stationGroup) {
+            const activeOrder = struct.productionQueue[0];
+            const progressRatio = activeOrder
+              ? activeOrder.progressSeconds / Math.max(0.1, activeOrder.buildTimeSeconds)
+              : null;
+            stationModels.updateStationAnimation(
+              stationGroup,
+              elapsedSeconds,
+              progressRatio,
+            );
+          }
+        }
+      }
     },
     dispose(): void {
       for (const item of disposables) {

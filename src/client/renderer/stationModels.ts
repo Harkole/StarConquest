@@ -68,6 +68,20 @@ export class StationModelLibrary {
     transparent: true,
     opacity: 0.65,
   });
+  private readonly dockForceFieldMat = new THREE.MeshBasicMaterial({
+    color: 0x7dd3fc,
+    transparent: true,
+    opacity: 0.72,
+  });
+  private readonly dockLaserScannerMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.65,
+    side: THREE.DoubleSide,
+  });
+  private readonly dockWeldingFlareMat = new THREE.MeshBasicMaterial({
+    color: 0xe0f2fe,
+  });
 
   // Wireframe & Baseline Materials
   private readonly buildingWireframeMat = new THREE.MeshBasicMaterial({
@@ -87,9 +101,6 @@ export class StationModelLibrary {
   private readonly geometries: THREE.BufferGeometry[] = [];
 
   // Baseline geometries for remaining structures (to be upgraded one-by-one)
-  private readonly dockyardGantryGeom = this.registerGeom(
-    new THREE.BoxGeometry(4.8, 2.6, 12.5),
-  );
   private readonly techCrystalGeom = this.registerGeom(
     new THREE.OctahedronGeometry(3.1, 0),
   );
@@ -98,6 +109,107 @@ export class StationModelLibrary {
   );
   private readonly defenseWingGeom = this.registerGeom(
     new THREE.BoxGeometry(3.2, 1.4, 14),
+  );
+
+  // Titan Orbital Dockyard reusable geometries (2-slot curved fabrication core + twin outward slipways)
+  private readonly dockRearCoreSegGeom = this.registerGeom(
+    new THREE.BoxGeometry(4.4, 2.2, 4.4),
+  );
+  private readonly dockRearUpperDeckGeom = this.registerGeom(
+    new THREE.BoxGeometry(3.4, 0.85, 4.1),
+  );
+  private readonly dockSiloGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.42, 0.46, 1.15, 10),
+  );
+  private readonly dockFabDomeCoreGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(1.75, 2),
+  );
+  private readonly dockFabDomeLatticeGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(1.79, 2),
+  );
+  private readonly dockControlTowerBaseGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.1, 1.35, 1.6, 8),
+  );
+  private readonly dockControlTowerShaftGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.72, 0.92, 1.8, 8),
+  );
+  private readonly dockControlRadarSphereGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(0.75, 1),
+  );
+  private readonly dockForceFieldPortalGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.24, 1.75, 3.8),
+  );
+  private readonly dockPortalFrameTopGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.55, 0.32, 4.2),
+  );
+  private readonly dockOuterPierGeom = this.registerGeom(
+    new THREE.BoxGeometry(14.6, 1.65, 2.5),
+  );
+  private readonly dockCenterPierGeom = this.registerGeom(
+    new THREE.BoxGeometry(14.2, 1.85, 2.8),
+  );
+  private readonly dockVentralSpineGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.35, 0.85, 13.4, 8),
+  );
+  private readonly dockSlipwayFloorGeom = this.registerGeom(
+    new THREE.BoxGeometry(13.6, 0.34, 5.4),
+  );
+  private readonly dockSmallCraftAlcoveGeom = this.registerGeom(
+    new THREE.BoxGeometry(3.4, 0.75, 1.45),
+  );
+  private readonly dockSmallCraftHullGeom = this.registerGeom(
+    new THREE.ConeGeometry(0.44, 1.85, 5),
+  );
+  private readonly dockThermalRailGeom = this.registerGeom(
+    new THREE.BoxGeometry(13.8, 0.18, 0.22),
+  );
+  private readonly dockElevatorTrackGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.32, 2.6, 0.42),
+  );
+  private readonly dockElevatorCageGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.46, 0.48, 0.56),
+  );
+  private readonly dockGantryPylonGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.58, 3.6, 0.58),
+  );
+  private readonly dockGantryCrossBeamGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.52, 0.48, 6.2),
+  );
+  private readonly dockGantryCantileverGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.26, 0.26, 3.2),
+  );
+  private readonly dockCraneCabGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.72, 0.65, 0.78),
+  );
+  private readonly dockCraneArmGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.18, 1.35, 0.18),
+  );
+  private readonly dockWeldingFlareGeom = this.registerGeom(
+    new THREE.SphereGeometry(0.22, 8, 8),
+  );
+  private readonly dockDreadHullSternGeom = this.registerGeom(
+    new THREE.BoxGeometry(3.4, 1.15, 2.55),
+  );
+  private readonly dockDreadHullMidGeom = this.registerGeom(
+    new THREE.BoxGeometry(4.2, 1.05, 2.25),
+  );
+  private readonly dockDreadHullBowGeom = this.registerGeom(
+    new THREE.ConeGeometry(1.38, 3.4, 6),
+  );
+  private readonly dockDreadBridgeGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.1, 0.72, 1.35),
+  );
+  private readonly dockCruiserHullMidGeom = this.registerGeom(
+    new THREE.BoxGeometry(5.2, 0.85, 1.72),
+  );
+  private readonly dockCruiserHullBowGeom = this.registerGeom(
+    new THREE.ConeGeometry(1.02, 2.9, 6),
+  );
+  private readonly dockLaserScannerPlaneGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.16, 2.1, 4.4),
+  );
+  private readonly dockRunwayStrobeGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.48, 0.12, 0.24),
   );
 
   // Vanguard Planetary Outpost reusable geometries (curved rectangular 1-slot bastion)
@@ -283,15 +395,14 @@ export class StationModelLibrary {
     if (structureId === 'planetary_outpost') {
       return this.buildVanguardPlanetaryOutpost(isComplete, orbitalRingRadius);
     }
+    if (structureId === 'orbital_dockyard') {
+      return this.buildTitanOrbitalDockyard(isComplete, orbitalRingRadius);
+    }
 
     const group = new THREE.Group();
     const mat = !isComplete ? this.buildingWireframeMat : this.baselineStationMat;
 
     switch (structureId) {
-      case 'orbital_dockyard': {
-        group.add(new THREE.Mesh(this.dockyardGantryGeom, mat));
-        break;
-      }
       case 'tech_module': {
         group.add(new THREE.Mesh(this.techCrystalGeom, mat));
         break;
@@ -303,6 +414,19 @@ export class StationModelLibrary {
       }
     }
     return group;
+  }
+
+  public updateStationAnimation(
+    stationGroup: THREE.Group,
+    elapsedSeconds: number,
+    activeBuildProgressRatio: number | null = null,
+  ): void {
+    const animateFn = stationGroup.userData.animateStation as
+      | ((elapsed: number, progressRatio: number | null) => void)
+      | undefined;
+    if (animateFn) {
+      animateFn(elapsedSeconds, activeBuildProgressRatio);
+    }
   }
 
   public dispose(): void {
@@ -320,6 +444,9 @@ export class StationModelLibrary {
     this.beaconRedMat.dispose();
     this.moltenHeatSinkMat.dispose();
     this.geodesicLatticeMat.dispose();
+    this.dockForceFieldMat.dispose();
+    this.dockLaserScannerMat.dispose();
+    this.dockWeldingFlareMat.dispose();
     this.buildingWireframeMat.dispose();
     this.baselineStationMat.dispose();
   }
@@ -852,6 +979,405 @@ export class StationModelLibrary {
 
       root.add(segPivot);
     }
+
+    return root;
+  }
+
+  /**
+   * Builds the "Titan" 2-Slot Orbital Dockyard (docs/artstyle.md #05).
+   * Option A layout:
+   * - The rear Central Manufacturing & Fabrication Core curves along the 2-slot orbital ring arc
+   *   (`~32u` wide across the two slots), keeping inward (`-X`) radial reach at `~3.2u` so it never
+   *   clips the planet's atmosphere.
+   * - Three heavy dry-dock piers and two wide-open parallel slipways (**Slot 1: Primary Dreadnought Bay**
+   *   and **Slot 2: Cruiser / Carrier Bay**) project outward (`+X`) into deep space away from the planet.
+   * - Includes live animations via `userData.animateStation`: progressive 3D hull assembly with a
+   *   sweeping laser-fabrication scanner plane, 4 traversing Colossal Gantry Cranes with articulated
+   *   welding arms and spark flares, pulsing cyan force-field hangar portals, shuttling Material
+   *   Transport Elevators, rotating Dockyard Control Tower radar sphere, and sequential runway strobes.
+   */
+  private buildTitanOrbitalDockyard(
+    isComplete: boolean,
+    orbitalRingRadius: number,
+  ): THREE.Group {
+    const root = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+    const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
+    const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
+    const portalMat = isComplete ? this.dockForceFieldMat : this.buildingWireframeMat;
+    const scannerMat = isComplete ? this.dockLaserScannerMat : this.buildingWireframeMat;
+    const flareMat = isComplete ? this.dockWeldingFlareMat : this.buildingWireframeMat;
+
+    const ringR = Math.max(18, orbitalRingRadius);
+    const dockScale = 1.25;
+
+    // 1. Curved Rear Central Manufacturing & Fabrication Core (7 segments spanning the 2-slot orbital arc)
+    const rearCoreGroup = new THREE.Group();
+    const rearSegCount = 7;
+    const rearArcSpacing = 3.85; // ~23.1u unscaled * 1.25 = ~28.9u curved rear wall across the 2-slot section
+    const rearHalfSpan = ((rearSegCount - 1) * rearArcSpacing) * 0.5;
+
+    let radarDishGroup: THREE.Group | null = null;
+
+    for (let i = 0; i < rearSegCount; i++) {
+      const arcS = -rearHalfSpan + i * rearArcSpacing;
+      const theta = arcS / ringR;
+      const segPivot = new THREE.Group();
+      segPivot.position.set(
+        ringR * Math.cos(theta) - ringR,
+        0,
+        ringR * Math.sin(theta),
+      );
+      segPivot.rotation.y = -theta;
+
+      const baseBlock = new THREE.Mesh(this.dockRearCoreSegGeom, hullMat);
+      baseBlock.position.set(0, 0.2, 0);
+      segPivot.add(baseBlock);
+
+      const upperBlock = new THREE.Mesh(this.dockRearUpperDeckGeom, frameMat);
+      upperBlock.position.set(-0.25, 1.45, 0);
+      segPivot.add(upperBlock);
+
+      // Material Storage Silos & Fleet Supply Intake Ports along the rear fabrication spine
+      for (const sz of [-1.15, 1.15]) {
+        const silo = new THREE.Mesh(this.dockSiloGeom, i % 2 === 0 ? ochreMat : trimMat);
+        silo.position.set(-0.65, 2.25, sz);
+        segPivot.add(silo);
+      }
+
+      // Central Manufacturing & Fabrication Geodesic Dome (on segment 4, matching Top View schematic)
+      if (i === 4) {
+        const domeCore = new THREE.Mesh(this.dockFabDomeCoreGeom, obsMat);
+        domeCore.position.set(0.15, 2.35, 0);
+        segPivot.add(domeCore);
+
+        const domeLattice = new THREE.Mesh(this.dockFabDomeLatticeGeom, latticeMat);
+        domeLattice.position.set(0.15, 2.35, 0);
+        segPivot.add(domeLattice);
+      }
+
+      // Tall Stepped Dockyard Control Tower with Rotating Radar Sphere (on segment 5)
+      if (i === 5) {
+        const towerBase = new THREE.Mesh(this.dockControlTowerBaseGeom, hullMat);
+        towerBase.position.set(-0.35, 2.45, 0);
+        segPivot.add(towerBase);
+
+        const towerShaft = new THREE.Mesh(this.dockControlTowerShaftGeom, ochreMat);
+        towerShaft.position.set(-0.35, 3.85, 0);
+        segPivot.add(towerShaft);
+
+        const towerWin = new THREE.Mesh(this.refControlWindowGeom, cabinMat);
+        towerWin.scale.set(1.35, 1.1, 1.35);
+        towerWin.position.set(-0.35, 4.15, 0);
+        segPivot.add(towerWin);
+
+        const radarPivot = new THREE.Group();
+        radarPivot.position.set(-0.35, 5.15, 0);
+        radarPivot.add(new THREE.Mesh(this.dockControlRadarSphereGeom, obsMat));
+        radarPivot.add(new THREE.Mesh(this.dockControlRadarSphereGeom, latticeMat));
+        segPivot.add(radarPivot);
+        radarDishGroup = radarPivot;
+      }
+
+      rearCoreGroup.add(segPivot);
+    }
+    rearCoreGroup.scale.setScalar(dockScale);
+    root.add(rearCoreGroup);
+
+    // 2. Twin Parallel Outward Slipways & Three Heavy Dry-Dock Piers (+X outward into deep space)
+    const slipwaysGroup = new THREE.Group();
+    slipwaysGroup.scale.setScalar(dockScale);
+    root.add(slipwaysGroup);
+
+    const bayCenterX = 7.4;
+    const bay1Z = -4.35; // Slot 1: Primary Dreadnought Bay
+    const bay2Z = 4.35; // Slot 2: Cruiser / Carrier Bay
+    const outerPierZ = 8.45;
+
+    // Central Dividing Pier + Bulbous Ventral Central Manufacturing Spine (Front View schematic)
+    const centerPier = new THREE.Mesh(this.dockCenterPierGeom, hullMat);
+    centerPier.position.set(bayCenterX, 0.35, 0);
+    slipwaysGroup.add(centerPier);
+
+    const ventralSpine = new THREE.Mesh(this.dockVentralSpineGeom, frameMat);
+    ventralSpine.rotation.z = Math.PI / 2;
+    ventralSpine.position.set(bayCenterX - 0.3, -1.35, 0);
+    slipwaysGroup.add(ventralSpine);
+
+    // Port & Starboard Outer Dry-Dock Piers + Component Hangars / Dry Dock Modules for Smaller Craft
+    const elevatorCages: {
+      readonly mesh: THREE.Mesh;
+      readonly baseY: number;
+      readonly phaseOffset: number;
+    }[] = [];
+
+    for (const side of [-1, 1]) {
+      const pier = new THREE.Mesh(this.dockOuterPierGeom, hullMat);
+      pier.position.set(bayCenterX, 0.25, side * outerPierZ);
+      slipwaysGroup.add(pier);
+
+      // Glowing Copper-Orange Crane Rail Channels along both sides of each slipway
+      const outerRail = new THREE.Mesh(this.dockThermalRailGeom, heatMat);
+      outerRail.position.set(bayCenterX, 1.15, side * (outerPierZ - 1.12));
+      slipwaysGroup.add(outerRail);
+
+      const innerRail = new THREE.Mesh(this.dockThermalRailGeom, heatMat);
+      innerRail.position.set(bayCenterX, 1.32, side * 1.28);
+      slipwaysGroup.add(innerRail);
+
+      // Outer Small-Craft Dry-Dock Alcoves (2 per outer flank with docked fighter/escort frames)
+      for (const alcoveX of [4.8, 10.2]) {
+        const alcove = new THREE.Mesh(this.dockSmallCraftAlcoveGeom, frameMat);
+        alcove.position.set(alcoveX, 0.05, side * (outerPierZ + 1.65));
+        slipwaysGroup.add(alcove);
+
+        const escortHull = new THREE.Mesh(this.dockSmallCraftHullGeom, trimMat);
+        escortHull.rotation.z = -Math.PI / 2;
+        escortHull.position.set(alcoveX, 0.55, side * (outerPierZ + 1.65));
+        slipwaysGroup.add(escortHull);
+      }
+
+      // Vertical Material Transport Elevators on the inner slipway walls (Side View schematic)
+      for (let eIdx = 0; eIdx < 2; eIdx++) {
+        const elevX = 3.8 + eIdx * 5.2;
+        const elevZ = side * (outerPierZ - 1.25);
+        const track = new THREE.Mesh(this.dockElevatorTrackGeom, frameMat);
+        track.position.set(elevX, 0.55, elevZ);
+        slipwaysGroup.add(track);
+
+        const cage = new THREE.Mesh(this.dockElevatorCageGeom, ochreMat);
+        cage.position.set(elevX, 0.55, elevZ);
+        slipwaysGroup.add(cage);
+        elevatorCages.push({
+          mesh: cage,
+          baseY: 0.55,
+          phaseOffset: eIdx * 1.9 + (side > 0 ? 0.8 : 0),
+        });
+      }
+    }
+
+    // 3. Slipway Floors, Rear Glowing Cyan Force-Field Portals & Sequential Runway Strobes
+    const runwayStrobes: { readonly mesh: THREE.Mesh; readonly index: number }[] = [];
+
+    for (const [bayIdx, bayZ] of [bay1Z, bay2Z].entries()) {
+      const floor = new THREE.Mesh(this.dockSlipwayFloorGeom, frameMat);
+      floor.position.set(bayCenterX, -0.58, bayZ);
+      slipwaysGroup.add(floor);
+
+      // Glowing Cyan Atmospheric Containment Force-Field Hangar Portal at the rear bulkhead
+      const portal = new THREE.Mesh(this.dockForceFieldPortalGeom, portalMat);
+      portal.position.set(1.55, 0.55, bayZ);
+      slipwaysGroup.add(portal);
+
+      const portalFrame = new THREE.Mesh(this.dockPortalFrameTopGeom, ochreMat);
+      portalFrame.position.set(1.65, 1.55, bayZ);
+      slipwaysGroup.add(portalFrame);
+
+      // 6 Sequential Launch-Corridor Runway Strobes per bay leading out to the open launch mouth (+X)
+      for (let sIdx = 0; sIdx < 6; sIdx++) {
+        const strobeX = 2.8 + sIdx * 2.1;
+        for (const railSide of [-1, 1]) {
+          const strobe = new THREE.Mesh(
+            this.dockRunwayStrobeGeom,
+            sIdx % 2 === 0 ? obsMat : cabinMat,
+          );
+          strobe.position.set(strobeX, -0.35, bayZ + railSide * 2.15);
+          slipwaysGroup.add(strobe);
+          runwayStrobes.push({ mesh: strobe, index: sIdx + bayIdx * 2 });
+        }
+      }
+    }
+
+    // 4. Four Colossal Gantry Crane Structures & Articulated Welding Booms (2 per slipway)
+    interface GantryCraneRig {
+      readonly bridgeGroup: THREE.Group;
+      readonly baseX: number;
+      readonly travelAmplitude: number;
+      readonly phaseOffset: number;
+      readonly lowerBoomGroup: THREE.Group;
+      readonly weldingFlareMesh: THREE.Mesh;
+    }
+    const gantries: GantryCraneRig[] = [];
+
+    for (const [bayIdx, bayZ] of [bay1Z, bay2Z].entries()) {
+      for (let cIdx = 0; cIdx < 2; cIdx++) {
+        const baseX = 4.6 + cIdx * 5.2;
+        const bridgeGroup = new THREE.Group();
+        bridgeGroup.position.set(baseX, 0, bayZ);
+
+        // Twin vertical gantry towers straddling the slipway
+        for (const pSide of [-1, 1]) {
+          const pylon = new THREE.Mesh(this.dockGantryPylonGeom, frameMat);
+          pylon.position.set(0, 2.15, pSide * 2.75);
+          bridgeGroup.add(pylon);
+
+          // Diagonal cantilever truss arm above the gantry tower (Side View & Front View schematic)
+          const cantilever = new THREE.Mesh(this.dockGantryCantileverGeom, ochreMat);
+          cantilever.rotation.x = -pSide * 0.32;
+          cantilever.position.set(0, 3.85, pSide * 1.45);
+          bridgeGroup.add(cantilever);
+        }
+
+        // Overhead horizontal gantry cross-beam
+        const crossBeam = new THREE.Mesh(this.dockGantryCrossBeamGeom, ochreMat);
+        crossBeam.position.set(0, 3.65, 0);
+        bridgeGroup.add(crossBeam);
+
+        // Articulated Ship-Assembly Crane Cab & Pivoting Manipulator Boom (Inset Detail)
+        const craneCab = new THREE.Mesh(this.dockCraneCabGeom, hullMat);
+        craneCab.position.set(0, 3.25, (cIdx === 0 ? -1 : 1) * 0.65);
+        bridgeGroup.add(craneCab);
+
+        const lowerBoomGroup = new THREE.Group();
+        lowerBoomGroup.position.set(0, 3.05, (cIdx === 0 ? -1 : 1) * 0.65);
+
+        const boomArm = new THREE.Mesh(this.dockCraneArmGeom, trimMat);
+        boomArm.position.set(0, -0.68, 0);
+        lowerBoomGroup.add(boomArm);
+
+        const weldingFlareMesh = new THREE.Mesh(this.dockWeldingFlareGeom, flareMat);
+        weldingFlareMesh.position.set(0, -1.42, 0);
+        lowerBoomGroup.add(weldingFlareMesh);
+
+        bridgeGroup.add(lowerBoomGroup);
+        slipwaysGroup.add(bridgeGroup);
+
+        gantries.push({
+          bridgeGroup,
+          baseX,
+          travelAmplitude: 1.65,
+          phaseOffset: bayIdx * 1.7 + cIdx * 2.4,
+          lowerBoomGroup,
+          weldingFlareMesh,
+        });
+      }
+    }
+
+    // 5. Progressive 3D Fleet Hull Assemblies Inside Slot 1 (Dreadnought Bay) & Slot 2 (Cruiser Bay)
+    const buildDreadnoughtHullAssembly = (mat: THREE.Material, accent: THREE.Material): THREE.Group => {
+      const shipGroup = new THREE.Group();
+      const stern = new THREE.Mesh(this.dockDreadHullSternGeom, mat);
+      stern.position.set(4.1, 0.25, 0);
+      shipGroup.add(stern);
+
+      const mid = new THREE.Mesh(this.dockDreadHullMidGeom, mat);
+      mid.position.set(7.6, 0.22, 0);
+      shipGroup.add(mid);
+
+      const bow = new THREE.Mesh(this.dockDreadHullBowGeom, accent);
+      bow.rotation.z = -Math.PI / 2;
+      bow.position.set(11.1, 0.18, 0);
+      shipGroup.add(bow);
+
+      const bridge = new THREE.Mesh(this.dockDreadBridgeGeom, accent);
+      bridge.position.set(5.4, 0.98, 0);
+      shipGroup.add(bridge);
+
+      return shipGroup;
+    };
+
+    // Slot 1 (Bay 1): Wireframe skeletal cradle + solid armored hull that progressive-fills + laser scanner plane
+    const bay1WireframeHull = buildDreadnoughtHullAssembly(
+      this.buildingWireframeMat,
+      this.buildingWireframeMat,
+    );
+    bay1WireframeHull.position.set(0, 0, bay1Z);
+    slipwaysGroup.add(bay1WireframeHull);
+
+    const bay1SolidHull = buildDreadnoughtHullAssembly(hullMat, ochreMat);
+    bay1SolidHull.position.set(0, 0, bay1Z);
+    slipwaysGroup.add(bay1SolidHull);
+
+    const laserScannerPlane = new THREE.Mesh(
+      this.dockLaserScannerPlaneGeom,
+      scannerMat,
+    );
+    laserScannerPlane.position.set(7.5, 0.55, bay1Z);
+    slipwaysGroup.add(laserScannerPlane);
+
+    // Slot 2 (Bay 2): Secondary Cruiser / Carrier hull under assembly
+    const bay2CruiserGroup = new THREE.Group();
+    bay2CruiserGroup.position.set(0, 0, bay2Z);
+    const cruiserMid = new THREE.Mesh(this.dockCruiserHullMidGeom, hullMat);
+    cruiserMid.position.set(6.4, 0.15, 0);
+    bay2CruiserGroup.add(cruiserMid);
+
+    const cruiserBow = new THREE.Mesh(this.dockCruiserHullBowGeom, ochreMat);
+    cruiserBow.rotation.z = -Math.PI / 2;
+    cruiserBow.position.set(10.2, 0.15, 0);
+    bay2CruiserGroup.add(cruiserBow);
+
+    const cruiserBridge = new THREE.Mesh(this.dockDreadBridgeGeom, trimMat);
+    cruiserBridge.scale.set(0.75, 0.75, 0.75);
+    cruiserBridge.position.set(5.2, 0.76, 0);
+    bay2CruiserGroup.add(cruiserBridge);
+    slipwaysGroup.add(bay2CruiserGroup);
+
+    // Attach live per-frame shipyard animation hook to root.userData
+    root.userData.animateStation = (
+      elapsedSeconds: number,
+      activeBuildProgressRatio: number | null,
+    ): void => {
+      if (!isComplete) {
+        return;
+      }
+
+      const isActivelyBuilding = activeBuildProgressRatio !== null;
+      const speedMult = isActivelyBuilding ? 2.4 : 1.0;
+      const progress =
+        activeBuildProgressRatio !== null
+          ? Math.max(0.05, Math.min(1.0, activeBuildProgressRatio))
+          : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(elapsedSeconds * 0.45));
+
+      // 1. Rotate Dockyard Control Tower Radar Sphere
+      if (radarDishGroup) {
+        radarDishGroup.rotation.y = elapsedSeconds * 0.85 * speedMult;
+      }
+
+      // 2. Sweep Laser-Fabrication Scanner Plane & Progressive Hull Solidification in Slot 1 Bay
+      const scannerX = 2.6 + progress * 9.8;
+      laserScannerPlane.position.x = scannerX;
+      bay1SolidHull.scale.set(progress, 1.0, 1.0);
+      bay1SolidHull.position.x = 2.4 * (1.0 - progress);
+
+      // 3. Traverse Colossal Gantry Cranes & Flicker Articulated Welding Arcs
+      for (const gantry of gantries) {
+        const wave = Math.sin(elapsedSeconds * 0.75 * speedMult + gantry.phaseOffset);
+        gantry.bridgeGroup.position.x = gantry.baseX + wave * gantry.travelAmplitude;
+        gantry.lowerBoomGroup.rotation.z =
+          Math.sin(elapsedSeconds * 1.9 * speedMult + gantry.phaseOffset) * 0.28;
+        gantry.lowerBoomGroup.rotation.x =
+          Math.cos(elapsedSeconds * 1.4 * speedMult + gantry.phaseOffset) * 0.22;
+
+        // Pulse welding arc flare at manipulator tip
+        const sparkPulse =
+          0.5 +
+          0.5 * Math.sin(elapsedSeconds * 16.0 * speedMult + gantry.phaseOffset * 3.1);
+        const flareScale = isActivelyBuilding
+          ? 0.65 + sparkPulse * 0.95
+          : 0.25 + sparkPulse * 0.45;
+        gantry.weldingFlareMesh.scale.setScalar(flareScale);
+      }
+
+      // 4. Shuttle Material Transport Elevators up and down between lower spine and crane deck
+      for (const elev of elevatorCages) {
+        elev.mesh.position.y =
+          elev.baseY +
+          Math.sin(elapsedSeconds * 1.15 * speedMult + elev.phaseOffset) * 0.92;
+      }
+
+      // 5. Pulse Sequential Launch-Corridor Runway Strobes outward toward the launch mouth (+X)
+      const activeStrobeBucket = Math.floor(elapsedSeconds * 4.5 * speedMult) % 6;
+      for (const strobe of runwayStrobes) {
+        const isLit = strobe.index % 6 === activeStrobeBucket;
+        strobe.mesh.scale.y = isLit ? 1.85 : 0.75;
+      }
+    };
 
     return root;
   }

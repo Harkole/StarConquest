@@ -271,4 +271,27 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     library.dispose();
   });
+
+  it('constructs the 2-slot Titan Orbital Dockyard with outward parallel slipways, planet clearance, and live crane/hull animation', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const dockyardGroup = library.buildStationMesh('orbital_dockyard', true, ringRadius);
+
+    // 2 top-level groups: curved rear fabrication core + outward parallel slipways
+    expect(dockyardGroup.children).toHaveLength(2);
+    expect(typeof dockyardGroup.userData.animateStation).toBe('function');
+
+    const bbox = new THREE.Box3().setFromObject(dockyardGroup);
+    // Inward (-X) radial reach stays well within the 11.06u Homeworld atmosphere clearance
+    expect(Math.abs(bbox.min.x)).toBeLessThan(8.5);
+    // Outward (+X) parallel slipways extend into deep space (> 15u) and span the 2-slot width (> 28u)
+    expect(bbox.max.x).toBeGreaterThan(15);
+    expect(bbox.max.z - bbox.min.z).toBeGreaterThan(28);
+
+    // Verify live shipyard animation hook executes cleanly for both idle and active build queue ratios
+    library.updateStationAnimation(dockyardGroup, 3.5, null);
+    library.updateStationAnimation(dockyardGroup, 4.2, 0.65);
+
+    library.dispose();
+  });
 });

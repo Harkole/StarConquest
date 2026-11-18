@@ -143,3 +143,23 @@ Each ship and orbital platform is designed and locked in one at a time.
 4. **4 Automated Light Point-Defense Turrets & Planetary Anchoring Thrusters**:
    * Four twin-barrel automated Gatling PD turrets mounted on raised octagonal pedestals around the central core, each featuring a swiveling gunmetal housing, twin ochre side ammo drums, and dual elevated barrels (`15` Point Defence DPS).
    * Four outrigger **Planetary Anchoring Thrusters** at the fore/aft chamfered prows and central lateral flanks.
+
+---
+
+### 05. Orbital Dockyard — Star-Station "Titan"
+
+* **Orthographic Blueprint**: ![Titan Orbital Dockyard Orthographic Reference](./dockyard-titan-orthographic.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
+
+#### Anatomical Breakdown, 2-Slot Orbital Layout & Live Shipyard Animations
+1. **Option A 2-Slot Layout (Curved Rear Fabrication Core + Outward Parallel Slipways)**:
+   * **Curved Rear Central Manufacturing & Fabrication Core**: Spans the 2-slot orbital ring section across 7 curved arc segments (`~29u` tangential span), keeping inward (`-X`) radial reach at `~3.2u` so it never clips the host planet's atmosphere.
+   * **Geodesic Fabrication Dome, Dockyard Control Tower & Material Storage Silos**: The rear spine is topped by a glowing pale ice-blue geodesic fabrication sphere wrapped in a dark wireframe lattice, a tall stepped Dockyard Control Tower with warm amber bridge slits and a continuously rotating spherical radar array, and paired rows of cylindrical Material Storage Silos.
+2. **Twin Parallel Wide-Open Dry-Dock Slipways (`+X` Deep-Space Launch Orientation)**:
+   * Three heavy dry-dock piers (Port Outer Pier, Central Dividing Pier with its bulbous ventral **Central Manufacturing Spine**, and Starboard Outer Pier) project outward (`+X`) away from the planet, creating **Slot 1: Primary Dreadnought Bay** and **Slot 2: Cruiser / Carrier Bay**.
+   * Recessed **Atmospheric Containment Force-Field Hangar Portals** (`#7dd3fc`) glow at the rear bulkhead of both slipways, while outer **Component Hangars & Dry Dock Modules for Smaller Craft** house smaller escort hulls along the port and starboard flanks.
+3. **4 Colossal Traversing Gantry Cranes & Articulated Welding Booms**:
+   * Two overhead gantry crane bridges straddle each slipway (`4` total) on glowing copper-orange structural crane rails (`#fb923c`), complete with diagonal cantilever truss arms, crane cabs, pivoting manipulator booms, and pulsing blue-white (`#e0f2fe`) welding arc flares.
+4. **Live Progressive Hull Assembly, Shuttling Elevators & Runway Strobes**:
+   * Inside **Slot 1 (Primary Dreadnought Bay)**, a 3D capital hull rests inside a cyan construction wireframe cradle while a glowing planar **Laser-Fabrication Scanner** sweeps from stern to bow (`progressRatio` driven by `structure.productionQueue[0]`, or a continuous ambient fabrication pass when idle), progressively solidifying the armored hull.
+   * Vertical **Material Transport Elevator** cages shuttle up and down the inner slipway walls, and 24 **Launch-Corridor Runway Strobes** pulse sequentially outward toward the open launch mouth (`+X`).
