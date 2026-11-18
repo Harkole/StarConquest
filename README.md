@@ -294,6 +294,10 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ## 12. Future Work & Known Bug Fixes
 
+### HUD Build Queue & Platform Completion Stale State
+* **Known Issue**: In `src/client/ui/systemHud.ts`, the 250ms polling timer only calls `renderMainPanel()` while `anyActiveTimers` (`!s.isComplete || s.productionQueue.length > 0`) is true. When the final queued Harvester or orbital platform finishes building, `isComplete` becomes `true` and `productionQueue.length` drops to `0` before the next 250ms poll. As a result, `anyActiveTimers` evaluates to `false` and skips the completion re-render, leaving the UI frozen at `1s` remaining (and leaving dock counts and system reserve totals in `mainBodyEl` stale until the player clicks a HUD button).
+* **Planned Fix**: Track a state signature (or update live text/DOM bindings every 250ms tick whenever structure completion, queue length, remaining build seconds, active dock counts, or system reserves change) so the HUD always renders the final completion transition and live telemetry without requiring a manual click.
+
 ### Harvester Planetary Collision & Orbit Avoidance
 * **Known Issue**: Harvesters currently travel in a direct straight line (`moveToward` in `src/shared/sim/gameSimulation.ts`) between their home orbital platform, asteroid belts, and wormholes, which causes them to fly straight through the interior of a planet whenever their target lies on the opposite side of the planet.
 * **Planned Fix**: Add planetary obstacle avoidance / tangential waypoint steering around planet radii (plus atmospheric clearance) so Harvesters smoothly arc around the orbital perimeter rather than clipping through planets.
@@ -301,3 +305,13 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Blitz Skirmish Economy Multiplier Scaling
 * **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
 * **Planned Fix**: Apply `harvestRateMultiplier` to platform unload rates in **Blitz Skirmish** so the overall economy scales closer to `1.5x–1.6x`. Also consider allowing two times more harvesters to dock at refineries, the CnC building is already allowing double.
+
+### Outstanding 3D Platform Models (`src/client/renderer/stationModels.ts` & `docs/artstyle.md`)
+Each remaining orbital and deep-space platform will be designed, reviewed, and added to [docs/artstyle.md](./docs/artstyle.md) one at a time:
+1. **Planetary Outpost (`planetary_outpost`, 1 Orbital Slot)**: Required first structure to claim an unowned Small, Medium, or Super-Earth planet; provides `+10` Fleet Supply, `240` sensor range, and light Point Defence (`15` DPS). Currently uses a placeholder cone primitive (`outpostDishGeom`).
+2. **Orbital Dockyard (`orbital_dockyard`, 2 Orbital Slots)**: Primary shipyard spanning 2 adjacent orbital slots that constructs combat ships via queues and rally points; carries light Point Defence (`10` DPS). Currently uses a placeholder box primitive (`dockyardGantryGeom`).
+3. **C&C Tech & Specialization Module (`tech_module`, 1 Orbital Slot)**: Orbital research and logistics expansion that unlocks Tier 2 Cruisers (1 module) and Tier 3 Carriers and Dreadnoughts (2 modules) while providing `+15` Fleet Supply. Currently uses a placeholder octahedron primitive (`techCrystalGeom`).
+4. **Heavy Orbital Defense Platform (`heavy_defense_platform`, 2 Orbital Slots)**: Heavily armed planetary fortress spanning 2 orbital slots with `2,200` shields, `3,500` hull, rapid Point Defence batteries (`45` DPS), and heavy anti-capital turrets (`65` DPS). Currently uses a placeholder cylinder-and-box cross (`defenseBastionGeom` and `defenseWingGeom`).
+5. **Logistics Hub (`logistics_hub`, Deep Space)**: Forward deep-space support station placed near wormholes or asteroid belts; projects a `180`-unit build radius for Defence Towers, stages Fighter Squadrons, and adds `+15` Fleet Supply.
+6. **Point Defence Tower (`point_defence_tower`, Deep Space)**: Fast-tracking turret platform (`0.95` tracking, `0.35s` reload, `18` alpha) built inside a Logistics Hub radius to shred Fighters and Destroyers.
+7. **Hull Breaker Tower (`hull_breaker_tower`, Deep Space)**: Heavy anti-capital weapon platform (`320` alpha, `3.5s` reload, `0.15` tracking) built inside a Logistics Hub radius to punish slow Cruisers, Carriers, and Dreadnoughts.
