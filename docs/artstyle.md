@@ -204,3 +204,23 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Built simultaneously with the main platform at `theta = -108°`, `180°` (far opposite side of the planet), and `+108°` just outside the orbital ring (`orbitalRingRadius + 7.2u`), ensuring visual line-of-sight coverage against hostile fleets approaching from behind the planet.
    * Purely cosmetic extension of the main platform: as long as any turret or battery has line of sight, the full DPS of the platform applies, and destroying the main platform automatically destroys all three remote sentry turrets.
    * Each remote turret features a tall armored **Vertical Sentry Gun Spine** (`4.4u` height) with dark structural rib collars and copper-orange power conduits, a flared upper crown mounting a rotating **Heavy Plasma Sentry Turret**, **3 vertically stacked rotating Point-Defense (`PDx2`) Turrets** down its outward face, and a lower **Reactor & Power Core Access Base** with twin rear station-keeping thrusters.
+
+---
+
+### 08. Deep-Space Logistics Hub — Star-Station "Atlas"
+
+* **Orthographic Blueprint**: ![Atlas Deep-Space Logistics Hub Orthographic Reference](./hub-atlas-orthographic.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts)
+
+#### Anatomical Breakdown, Radial Fighter Hangar Bays & Pagoda Fabrication Spire
+1. **Free-Floating Radial Saucer Apron & Perimeter Integrated Shield Ring**:
+   * Because the Logistics Hub operates in open deep space near wormholes or asteroid belts (rather than on a curved planetary orbital ring), it uses a 360-degree symmetrical radial saucer/octagonal apron (`radius ~9.6u`) underpinned by a lower-deck **Reactor & Power Core Access** housing and a quad **Ventral Thruster Assembly**.
+   * Encircled around the outer rim by a translucent cyan hexagonal-lattice **Integrated Shield Emitter Ring** (`TorusGeometry` with rotating `#7dd3fc` wireframe lattice).
+2. **4 Diagonal Rectangular Open Fighter Hangar Bays (`45°, 135°, 225°, 315°` — Inset Detail)**:
+   * Four sunken diagonal flight-deck courts framed by Weathered Ochre (`#c27d2c`) berms and pulsing Molten Copper-Orange (`#fb923c`) **Launch Catapult System** tracks.
+   * Each bay stages **6 Fighter craft (`2x3` formation, 24 fighters total)** facing an outer sloped **Atmospheric Containment Force-Field Hangar Portal** (`#7dd3fc`).
+3. **4 Cardinal Logistics, Fleet Supply & Tower-Construction Wedges (`0°, 90°, 180°, 270°`)**:
+   * Between the diagonal fighter bays sit four industrial cardinal wedges containing paired **Material Storage Silos**, **Cargo Modules** (`+15` Fleet Supply), the **Turret / Hull-Breaker Construction Core**, and outer **Remote Maneuvering Thrusters**.
+4. **Multi-Tiered Pagoda Fabrication & Command Spire (`Side View`)**:
+   * Rising from the central plateau is a tall pagoda tower surrounded by **3 stacked cantilevered horizontal discs** (**Open Hangar Deck** and **Fabrication & Construction Decks**) with warm amber bridge window rings and **4 shuttling vertical Material Transport Elevators**.
+   * Crowned by the **Central Command & Control Core**, a rotating geodesic **Sensor Array Sphere** (`260` sensor range), and a tall tapered **Command Spire Elevation** needle with a red navigation beacon.

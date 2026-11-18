@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import type { OrbitalStructureId } from '../../shared/config/index.ts';
+import type {
+  DeepSpaceStructureId,
+  OrbitalStructureId,
+} from '../../shared/config/index.ts';
+
+export type StationOrDeepSpaceStructureId = OrbitalStructureId | DeepSpaceStructureId;
 
 /**
  * Shared 3D Orbital Platform & Station Model Builder following `docs/artstyle.md`.
@@ -213,6 +218,62 @@ export class StationModelLibrary {
   );
   private readonly aegisSentryPdBarrelGeom = this.registerGeom(
     new THREE.CylinderGeometry(0.055, 0.07, 0.82, 6),
+  );
+
+  // Atlas Deep-Space Logistics Hub reusable geometries (free-floating radial carrier & fabrication hub)
+  private readonly hubBaseApronGeom = this.registerGeom(
+    new THREE.CylinderGeometry(8.2, 9.6, 1.35, 16),
+  );
+  private readonly hubInnerPlateauGeom = this.registerGeom(
+    new THREE.CylinderGeometry(4.9, 6.2, 1.05, 16),
+  );
+  private readonly hubVentralReactorGeom = this.registerGeom(
+    new THREE.CylinderGeometry(4.2, 2.1, 1.65, 8).rotateY(Math.PI / 8),
+  );
+  private readonly hubVentralThrusterGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.32, 0.44, 0.85, 8),
+  );
+  private readonly hubHangarCourtGeom = this.registerGeom(
+    new THREE.BoxGeometry(4.4, 0.34, 3.6),
+  );
+  private readonly hubHangarBermGeom = this.registerGeom(
+    new THREE.BoxGeometry(4.55, 0.48, 0.28),
+  );
+  private readonly hubCatapultRailGeom = this.registerGeom(
+    new THREE.BoxGeometry(4.1, 0.14, 0.14),
+  );
+  private readonly hubHangarPortalGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.24, 0.82, 3.2),
+  );
+  private readonly hubFighterBodyGeom = this.registerGeom(
+    new THREE.ConeGeometry(0.26, 0.92, 4),
+  );
+  private readonly hubFighterWingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.24, 0.06, 0.86),
+  );
+  private readonly hubShieldRingShellGeom = this.registerGeom(
+    new THREE.TorusGeometry(9.65, 0.68, 10, 32).rotateX(Math.PI / 2),
+  );
+  private readonly hubShieldRingLatticeGeom = this.registerGeom(
+    new THREE.TorusGeometry(9.69, 0.72, 10, 32).rotateX(Math.PI / 2),
+  );
+  private readonly hubSpireTrunkGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.95, 2.75, 5.4, 12),
+  );
+  private readonly hubTierDisc1Geom = this.registerGeom(
+    new THREE.CylinderGeometry(4.8, 4.3, 0.52, 16),
+  );
+  private readonly hubTierDisc2Geom = this.registerGeom(
+    new THREE.CylinderGeometry(4.15, 3.65, 0.48, 16),
+  );
+  private readonly hubTierDisc3Geom = this.registerGeom(
+    new THREE.CylinderGeometry(3.35, 2.95, 0.44, 16),
+  );
+  private readonly hubCommandNeedleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.08, 0.48, 2.8, 8),
+  );
+  private readonly deepSpaceTowerPlaceholderGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.6, 2.2, 4.2, 8),
   );
 
   // Minerva C&C Tech & Specialization Module reusable geometries (1-slot curved R&D platform)
@@ -524,7 +585,7 @@ export class StationModelLibrary {
   );
 
   public buildStationMesh(
-    structureId: OrbitalStructureId,
+    structureId: StationOrDeepSpaceStructureId,
     isComplete: boolean,
     orbitalRingRadius = 42.56,
   ): THREE.Group {
@@ -541,6 +602,15 @@ export class StationModelLibrary {
         return this.buildMinervaTechModule(isComplete, orbitalRingRadius);
       case 'heavy_defense_platform':
         return this.buildAegisHeavyDefensePlatform(isComplete, orbitalRingRadius);
+      case 'logistics_hub':
+        return this.buildAtlasLogisticsHub(isComplete);
+      case 'point_defence_tower':
+      case 'hull_breaker_tower': {
+        const group = new THREE.Group();
+        const mat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+        group.add(new THREE.Mesh(this.deepSpaceTowerPlaceholderGeom, mat));
+        return group;
+      }
     }
   }
 
@@ -2130,6 +2200,247 @@ export class StationModelLibrary {
       }
       for (const item of sentryPdTurrets) {
         item.pivot.rotation.y = Math.sin(elapsedSeconds * 1.45 + item.phase) * 0.42;
+      }
+    };
+
+    return root;
+  }
+
+  /**
+   * Builds the "Atlas" Deep-Space Logistics Hub (docs/artstyle.md #08).
+   * Free-floating 360-degree radial carrier and tower-fabrication hub featuring:
+   * - Wide sloped circular/octagonal lower apron encircled by a translucent cyan hexagonal-lattice
+   *   Integrated Shield Emitter Ring and underpinned by a lower-deck Reactor & Thruster Assembly.
+   * - 4 Diagonal Rectangular Open Fighter Hangar Bays (`45°, 135°, 225°, 315°`), each housing 6 staged
+   *   Fighter craft (`2x3` formation, 24 fighters total) on copper-orange Launch Catapult Systems with
+   *   glowing cyan Atmospheric Containment Portals along the outer sloped rim.
+   * - 4 Cardinal Industrial & Fleet Supply Wedges (`0°, 90°, 180°, 270°`) housing the Turret / Hull-Breaker
+   *   Construction Core, Material Storage Silos, Cargo Modules (+15 Fleet Supply), and Maneuvering Thrusters.
+   * - Multi-Tiered Pagoda Fabrication & Command Spire rising from the center with 3 stacked cantilevered
+   *   horizontal discs (`Fabrication & Construction Decks` and `Open Hangar Deck`), 4 shuttling vertical
+   *   Material Transport Elevators, a geodesic Sensor Array Sphere, and a tall Command Spire Elevation needle.
+   */
+  private buildAtlasLogisticsHub(isComplete: boolean): THREE.Group {
+    const root = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+    const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
+    const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
+    const portalMat = isComplete ? this.dockForceFieldMat : this.buildingWireframeMat;
+    const shieldShellMat = isComplete
+      ? this.aegisShieldShellMat
+      : this.buildingWireframeMat;
+    const shieldLatticeMat = isComplete
+      ? this.aegisShieldLatticeMat
+      : this.buildingWireframeMat;
+
+    // 1. Wide Sloped Circular Base Apron, Inner Stepped Plateau & Lower-Deck Reactor/Thruster Assembly
+    const baseApron = new THREE.Mesh(this.hubBaseApronGeom, hullMat);
+    root.add(baseApron);
+
+    const innerPlateau = new THREE.Mesh(this.hubInnerPlateauGeom, frameMat);
+    innerPlateau.position.set(0, 1.05, 0);
+    root.add(innerPlateau);
+
+    const ventralReactor = new THREE.Mesh(this.hubVentralReactorGeom, frameMat);
+    ventralReactor.position.set(0, -1.35, 0);
+    root.add(ventralReactor);
+
+    for (const [tx, tz] of [
+      [-1.1, -1.1],
+      [1.1, -1.1],
+      [-1.1, 1.1],
+      [1.1, 1.1],
+    ] as const) {
+      const thruster = new THREE.Mesh(this.hubVentralThrusterGeom, obsMat);
+      thruster.position.set(tx, -2.35, tz);
+      root.add(thruster);
+    }
+
+    // 2. 360-Degree Perimeter Integrated Shield Emitter Ring around the outer saucer rim
+    const shieldRingGroup = new THREE.Group();
+    shieldRingGroup.position.set(0, 0.15, 0);
+    shieldRingGroup.add(new THREE.Mesh(this.hubShieldRingShellGeom, shieldShellMat));
+    shieldRingGroup.add(new THREE.Mesh(this.hubShieldRingLatticeGeom, shieldLatticeMat));
+    root.add(shieldRingGroup);
+
+    // 3. Four Diagonal Fighter Hangar Bays & Launch Catapult Systems (45°, 135°, 225°, 315°)
+    const buildStagedFighterMesh = (): THREE.Group => {
+      const fighter = new THREE.Group();
+      const body = new THREE.Mesh(this.hubFighterBodyGeom, trimMat);
+      body.rotation.z = -Math.PI / 2;
+      fighter.add(body);
+
+      const wing = new THREE.Mesh(this.hubFighterWingGeom, ochreMat);
+      wing.position.set(-0.1, 0, 0);
+      fighter.add(wing);
+      return fighter;
+    };
+
+    const catapultRails: { readonly mesh: THREE.Mesh; readonly phase: number }[] = [];
+    const diagonalAngles = [
+      Math.PI / 4,
+      (Math.PI * 3) / 4,
+      (Math.PI * 5) / 4,
+      (Math.PI * 7) / 4,
+    ];
+
+    diagonalAngles.forEach((yaw, bayIdx) => {
+      const bayPivot = new THREE.Group();
+      bayPivot.rotation.y = yaw;
+
+      const court = new THREE.Mesh(this.hubHangarCourtGeom, frameMat);
+      court.position.set(6.25, 0.72, 0);
+      bayPivot.add(court);
+
+      // Raised Copper-Orange Hangar Frame Berms & Launch Catapult Rails (Inset Detail)
+      for (const side of [-1, 1]) {
+        const berm = new THREE.Mesh(this.hubHangarBermGeom, ochreMat);
+        berm.position.set(6.25, 0.96, side * 1.82);
+        bayPivot.add(berm);
+
+        const rail = new THREE.Mesh(this.hubCatapultRailGeom, heatMat);
+        rail.position.set(6.25, 0.92, side * 0.78);
+        bayPivot.add(rail);
+        catapultRails.push({ mesh: rail, phase: bayIdx * 1.4 + (side > 0 ? 0.7 : 0) });
+      }
+
+      // Glowing Cyan Atmospheric Containment Hangar Portal along the outer sloped saucer rim (Side View)
+      const portal = new THREE.Mesh(this.hubHangarPortalGeom, portalMat);
+      portal.position.set(8.55, 0.42, 0);
+      bayPivot.add(portal);
+
+      // 6 Staged Fighters (2 rows x 3 columns) ready on the Launch Catapult Tracks
+      for (const rowZ of [-0.78, 0.78]) {
+        for (const colX of [4.85, 6.25, 7.65]) {
+          const fighter = buildStagedFighterMesh();
+          fighter.position.set(colX, 1.05, rowZ);
+          bayPivot.add(fighter);
+        }
+      }
+
+      root.add(bayPivot);
+    });
+
+    // 4. Four Cardinal Logistics, Fleet Supply & Turret-Construction Wedges (0°, 90°, 180°, 270°)
+    const cardinalAngles = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
+    for (const yaw of cardinalAngles) {
+      const wedgePivot = new THREE.Group();
+      wedgePivot.rotation.y = yaw;
+
+      // Material Storage Silos & Cargo Modules (+15 Fleet Supply)
+      for (const sz of [-0.85, 0.85]) {
+        const silo = new THREE.Mesh(this.dockSiloGeom, ochreMat);
+        silo.position.set(5.95, 1.15, sz);
+        wedgePivot.add(silo);
+
+        const crate = new THREE.Mesh(this.outpostSupplyCrateGeom, hullMat);
+        crate.position.set(7.35, 0.92, sz * 1.15);
+        wedgePivot.add(crate);
+
+        const canister = new THREE.Mesh(this.outpostSupplyCanisterGeom, trimMat);
+        canister.rotation.z = Math.PI / 2;
+        canister.position.set(7.25, 0.88, 0);
+        wedgePivot.add(canister);
+      }
+
+      // Remote Maneuvering Thruster & Fleet Supply Intake Port on the outer cardinal rim
+      const rimThruster = new THREE.Mesh(this.outpostAnchorThrusterGeom, frameMat);
+      rimThruster.position.set(8.85, 0.35, 0);
+      wedgePivot.add(rimThruster);
+
+      root.add(wedgePivot);
+    }
+
+    // 5. Multi-Tiered Pagoda Fabrication & Command Spire (Side View Schematic)
+    const spireTrunk = new THREE.Mesh(this.hubSpireTrunkGeom, hullMat);
+    spireTrunk.position.set(0, 3.85, 0);
+    root.add(spireTrunk);
+
+    // 3 Stacked Cantilevered Horizontal Discs (Open Hangar Deck & Fabrication/Construction Decks)
+    const tier1 = new THREE.Mesh(this.hubTierDisc1Geom, hullMat);
+    tier1.position.set(0, 2.55, 0);
+    root.add(tier1);
+
+    const tier2 = new THREE.Mesh(this.hubTierDisc2Geom, ochreMat);
+    tier2.position.set(0, 3.95, 0);
+    root.add(tier2);
+
+    const tier3 = new THREE.Mesh(this.hubTierDisc3Geom, hullMat);
+    tier3.position.set(0, 5.25, 0);
+    root.add(tier3);
+
+    // Warm Amber Bridge Windows between the stacked pagoda decks
+    for (const winY of [3.15, 4.55, 5.75]) {
+      const winRing = new THREE.Mesh(this.refControlWindowGeom, cabinMat);
+      const s = 3.2 - (winY - 3.15) * 0.45;
+      winRing.scale.set(s, 0.95, s);
+      winRing.position.set(0, winY, 0);
+      root.add(winRing);
+    }
+
+    // 4 Vertical Material Transport Elevators linking the lower apron to the pagoda fabrication decks
+    const elevatorCages: {
+      readonly mesh: THREE.Mesh;
+      readonly baseY: number;
+      readonly phase: number;
+    }[] = [];
+
+    cardinalAngles.forEach((yaw, idx) => {
+      const elevPivot = new THREE.Group();
+      elevPivot.rotation.y = yaw;
+
+      const track = new THREE.Mesh(this.dockElevatorTrackGeom, frameMat);
+      track.scale.set(1.0, 1.55, 1.0);
+      track.position.set(2.55, 3.65, 0);
+      elevPivot.add(track);
+
+      const cage = new THREE.Mesh(this.dockElevatorCageGeom, heatMat);
+      cage.position.set(2.65, 3.65, 0);
+      elevPivot.add(cage);
+      elevatorCages.push({ mesh: cage, baseY: 3.65, phase: idx * 1.6 });
+
+      root.add(elevPivot);
+    });
+
+    // Central Command & Control Core + Geodesic Sensor Array Sphere + Tall Command Spire Elevation Needle
+    const sensorSpherePivot = new THREE.Group();
+    sensorSpherePivot.position.set(0, 6.45, 0);
+    sensorSpherePivot.add(new THREE.Mesh(this.outpostSensorDomeCoreGeom, obsMat));
+    sensorSpherePivot.add(
+      new THREE.Mesh(this.outpostSensorDomeLatticeGeom, latticeMat),
+    );
+    root.add(sensorSpherePivot);
+
+    const commandNeedle = new THREE.Mesh(this.hubCommandNeedleGeom, ochreMat);
+    commandNeedle.position.set(0, 8.35, 0);
+    root.add(commandNeedle);
+
+    if (isComplete) {
+      const topBeacon = new THREE.Mesh(this.cncBeaconTipGeom, this.beaconRedMat);
+      topBeacon.position.set(0, 9.85, 0);
+      root.add(topBeacon);
+    }
+
+    // Live Logistics Hub animations via updateStationAnimation
+    root.userData.animateStation = (elapsedSeconds: number): void => {
+      if (!isComplete) {
+        return;
+      }
+      sensorSpherePivot.rotation.y = elapsedSeconds * 0.55;
+      shieldRingGroup.rotation.y = -elapsedSeconds * 0.15;
+
+      for (const elev of elevatorCages) {
+        elev.mesh.position.y =
+          elev.baseY + Math.sin(elapsedSeconds * 1.25 + elev.phase) * 1.35;
+      }
+      for (const rail of catapultRails) {
+        const pulse = 0.85 + 0.35 * Math.sin(elapsedSeconds * 3.8 + rail.phase);
+        rail.mesh.scale.y = pulse;
       }
     };
 

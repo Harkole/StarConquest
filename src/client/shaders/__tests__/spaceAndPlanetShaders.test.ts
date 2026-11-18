@@ -349,4 +349,25 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     library.updateStationAnimation(defenseGroup, 5.0, null);
     library.dispose();
   });
+
+  it('constructs the radial free-floating Atlas Deep-Space Logistics Hub with 4 diagonal fighter bays and pagoda command spire', () => {
+    const library = new StationModelLibrary();
+    const hubGroup = library.buildStationMesh('logistics_hub', true);
+
+    expect(hubGroup.children.length).toBeGreaterThanOrEqual(15);
+    expect(typeof hubGroup.userData.animateStation).toBe('function');
+
+    const bbox = new THREE.Box3().setFromObject(hubGroup);
+    const spanX = bbox.max.x - bbox.min.x;
+    const spanZ = bbox.max.z - bbox.min.z;
+    const heightY = bbox.max.y - bbox.min.y;
+
+    // Symmetrical 360-degree radial saucer (~20.8u diameter in X and Z) and tall pagoda command spire (> 11u)
+    expect(spanX).toBeGreaterThan(19);
+    expect(Math.abs(spanX - spanZ)).toBeLessThan(0.5);
+    expect(heightY).toBeGreaterThan(11);
+
+    library.updateStationAnimation(hubGroup, 3.25, null);
+    library.dispose();
+  });
 });
