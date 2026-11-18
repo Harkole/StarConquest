@@ -14,7 +14,7 @@ Rather than relying on high-APM individual unit micro, players focus on grand st
 
 1. **Macro-Focused Tug-of-War RTS**: Players command fleets via rally points, patrol routes, and automated engagement stances rather than twitch micro-management.
 2. **Orbital Ring Base Building**: Planets have a fixed number of orbital slots based on their size. Every slot matters—forcing meaningful trade-offs between economy, ship production, tech specialization, and planetary defense.
-3. **Asymmetric Economy & Forced Conflict**: Starting systems have skewed resource distributions (Ore-heavy or Crystal-heavy), compelling players to expand into a contested central system.
+3. **Depleting Starter Belts & Forced Expansion**: All 4 starter systems begin with an identical, fair **Ore-heavy / Crystal-scarce** resource profile and finite tiered reserves whose inner Homeworld ring runs dry quickly, compelling players to expand into the contested **Central Nexus** (where enriched high-yield deposits await).
 4. **Tactical Choke-Point Fortification**: Wormholes are open spatial corridors. Players project power around them using fragile Logistics Hubs that enable forward Defence Towers and Fighter operations.
 5. **Tactical Rock-Paper-Scissors Combat**: Five distinct combat ship classes interact through a directional counter-matrix driven by weapon tracking, shields vs. hull mechanics, and fleet screening.
 
@@ -34,11 +34,15 @@ flowchart TD
 ```
 
 ### System Rules
-* **Starter Systems (x4)**:
-  * Each player begins in a unique outer system containing a guaranteed **Large Homeworld** (10 orbital slots) and a randomized number of secondary **Small** (6 slots) or **Medium** (8 slots) planets.
-  * Contains enough initial Ore and Crystal asteroid belts to bootstrap a base and early fleet, but with an **asymmetric resource mix** (e.g., rich in Ore but scarce in Crystals, or vice versa).
-* **Central Neutral System (x1)**:
-  * A resource-rich contested hub anchored by a single **Super-Earth** (12 orbital slots) alongside randomized Small/Medium planets and dense asteroid belts.
+* **Starter Systems (x4 — Identical Balanced Ore-Heavy / Crystal-Scarce Start)**:
+  * Each player begins in a unique outer system containing a guaranteed **Large Homeworld** (10 orbital slots) and secondary **Small** (6 slots) and **Medium** (8 slots) planets.
+  * Every starter system has the **exact same resource profile (`6,960` base Ore and `1,160` base Crystal — `6:1` Ore-to-Crystal ratio)** so all 4 players have an identical, fair start:
+    * **Inner Homeworld Belt (`r ~ 420`)**: Fast-access early vein (`1,920` Ore and only `320` Crystal) that depletes within the first few minutes, forcing Harvesters away from the safety of the Homeworld C&C.
+    * **Mid-System & Outer Pockets (`r ~ 1,120–1,620`)**: Mid-game reserves (`5,040` Ore and `840` Crystal) near the outer perimeter that also deplete as the game progresses.
+    * Because **Crystals are strictly scarce in starter systems** (`1,160` total base Crystal), players can always build basic Ore-based defences and raiders at home, but **must venture outside their starter system** once local Crystals (or Ore) run dry to fund mid/late-game capital fleets (**Cruisers, Carriers, Dreadnoughts**) and **Hull Breaker Towers**.
+* **Central Neutral System (x1 — Enriched High-Yield Hub)**:
+  * A resource-rich contested hub anchored by a single **Super-Earth** (12 orbital slots) alongside secondary Small/Medium planets and massive, balanced asteroid belts (`22,800` base Ore and `22,800` base Crystal).
+  * **Enriched High-Purity Deposits (`1.6x` Extraction Speed)**: Asteroid and Crystal clusters in the Central Nexus extract **`1.6x` faster** (`~7.8s` to fill a 40-unit Harvester cargo bay instead of `12.5s` in starter systems).
   * Always generates **4 wormholes**—one leading to each of the 4 player starter systems, even in matches with fewer than 4 human/AI players (allowing flanking or expansion into empty starter systems).
 * **Wormholes & System Scale**:
   * Wormholes are **open spatial choke points** located on the outer perimeter of each star system (`1,850–2,050` units from the central planet), while secondary planets orbit `850–1,250+` units away in separate quadrants.
@@ -58,7 +62,8 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
 * **Automated Harvesting**: Constructing a **Refinery** (or using the starting Command & Control's built-in drop-off) automatically provides **1 free Harvester**, with the option to queue additional Harvesters (`9s` build time, sequential 1-at-a-time queue capped at `5` orders; resources deducted upfront and refunded immediately if cancelled).
 * **Mining Loop, Speeds & Single-Rock Lock**:
   * **Outward vs. Laden Speed**: Harvesters travel at `41.3 u/s` when empty (`-25%` from base cruise) and slow to `27.6 u/s` when full (`-50%` from base cruise), making laden Harvesters prime targets for raiders.
-  * **12.5-Second Single-Rock Extraction**: Each Harvester holds `40` Ore or Crystals per mining session and takes `12.5 seconds` (`10–15s` window) to fill its bay. During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
+  * **12.5-Second Standard vs. 7.8-Second Enriched Extraction**: Each Harvester holds `40` Ore or Crystals per mining session. In starter systems (`1.0x` Standard Yield), extraction takes `12.5 seconds` (`3.2 u/s`); in the Central Nexus (`1.6x` Enriched Yield), high-purity deposits fill the 40-unit bay in **`~7.8 seconds`** (`5.12 u/s`). During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
+  * **Visual Belt Depletion & Automatic Wormhole Expansion**: As a deposit's reserves are mined down, its 3D asteroid/crystal cluster visually shrinks and disappears completely when exhausted. Harvesters naturally deplete the nearby Inner Homeworld Belt (`r ~ 420`) first, then push out to the Mid/Outer pockets (`r ~ 1,120–1,620`), and **automatically transit the wormhole into the Central Nexus** once their starter system runs out of their target resource.
   * **Selection & Camera Pin**: Clicking any Harvester (or Planet) in 3D space or the HUD pins the camera to follow it and displays its target resource and live cargo progress (`x / 40`); panning manually with the mouse or `WASD` breaks the camera pin.
   * **Home Platform & Unload Rates**: Every Harvester docks directly at its originating **Refinery** (`10` units/sec unload) or **Command & Control** (`4` units/sec unload) orbital platform.
   * **Platform Docking Capacity (Queueing)**: A **Refinery** can unload **`2` Harvester frigates simultaneously** (`20/s` max), while a **Command & Control** is capped at **`1` concurrent Harvester dock** in Standard Tactical / Grand Conquest (`2` in **Blitz Skirmish**). Additional arriving Harvesters wait in a holding queue until a docking pad clears, making Refineries essential for scaling income.

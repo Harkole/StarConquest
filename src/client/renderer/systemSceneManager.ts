@@ -108,6 +108,9 @@ export class SystemSceneManager {
       targetSystem,
       wormholesInSystem,
     );
+    this.environmentHandle.syncBeltDepletion?.(
+      this.simAdapter.simulation.getMiningBeltsInSystem(targetSystem.id),
+    );
     this.scene.add(this.environmentHandle.rootGroup);
 
     const sunDir = this.environmentHandle.sunDirection;
@@ -236,6 +239,9 @@ export class SystemSceneManager {
 
     const shipPositions = harvestersInSystem.map((h) => h.position);
     if (this.environmentHandle) {
+      this.environmentHandle.syncBeltDepletion?.(
+        this.simAdapter.simulation.getMiningBeltsInSystem(this.activeSystem.id),
+      );
       for (const wh of this.environmentHandle.wormholes) {
         wh.updateShipProximity(shipPositions);
       }

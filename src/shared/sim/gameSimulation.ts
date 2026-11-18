@@ -15,6 +15,7 @@ import type {
 } from '../protocol/commands.ts';
 import {
   type AsteroidBeltRockInstance,
+  type AsteroidBeltZone,
   getAsteroidWorldPosition,
   getSystemAsteroidLayout,
 } from './asteroidBeltLayout.ts';
@@ -48,6 +49,32 @@ export const REFINERY_UNLOAD_RATE_PER_SECOND = 10;
 export const CNC_UNLOAD_RATE_PER_SECOND = 4;
 export const REFINERY_MAX_CONCURRENT_DOCKS = 2;
 export const MAX_SHIP_PRODUCTION_QUEUE_SIZE = 5;
+
+/**
+ * 3-Pillar Expansion Economy Constants:
+ * 1. Finite Tiered Belt Depletion: Inner Homeworld Belt runs dry quickly (~5–6m), pushing Harvesters
+ *    to Mid/Outer starter pockets (~1,120–1,620u) and then through the wormhole into the Central Nexus.
+ * 2. Symmetrical Ore-Heavy / Crystal-Scarce Starter Systems: All 4 starter systems have identical
+ *    Ore (6,960 base) and scarce Crystal (1,160 base) reserves so capital fleets require expansion.
+ * 3. High-Yield Enriched Central Nexus Deposits: Central Nexus rocks extract at 1.6x speed (~7.8s for 40 cargo).
+ */
+export const STARTER_INNER_ORE_RESERVES = 120;
+export const STARTER_INNER_CRYSTAL_RESERVES = 80;
+export const STARTER_OUTER_ORE_RESERVES = 180;
+export const STARTER_OUTER_CRYSTAL_RESERVES = 120;
+export const CENTRAL_HUB_ROCK_RESERVES = 600;
+export const CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER = 1.6;
+
+export interface SystemResourceSummary {
+  readonly systemId: string;
+  readonly remainingOre: number;
+  readonly initialOre: number;
+  readonly remainingCrystal: number;
+  readonly initialCrystal: number;
+  readonly innerBeltRemaining: number;
+  readonly innerBeltInitial: number;
+  readonly extractionMultiplier: number;
+}
 
 export interface ShipQueueItem {
   readonly id: string;
@@ -84,9 +111,12 @@ export interface AsteroidMiningBeltNode {
   readonly id: string;
   readonly systemId: string;
   readonly resourceType: 'ore' | 'crystal';
+  readonly beltZone: AsteroidBeltZone;
+  readonly extractionMultiplier: number;
   readonly rock: AsteroidBeltRockInstance;
   position: Vector2D;
   worldY: number;
+  readonly initialReserves: number;
   remainingReserves: number;
 }
 
@@ -230,6 +260,46 @@ export class GameSimulation {
 
   public getMiningBeltsInSystem(systemId: string): readonly AsteroidMiningBeltNode[] {
     return this.miningBelts.filter((b) => b.systemId === systemId);
+  }
+
+  public getSystemResourceSummary(systemId: string): SystemResourceSummary {
+    const belts = this.getMiningBeltsInSystem(systemId);
+    let remainingOre = 0;
+    let initialOre = 0;
+    let remainingCrystal = 0;
+    let initialCrystal = 0;
+    let innerBeltRemaining = 0;
+    let innerBeltInitial = 0;
+
+    for (const b of belts) {
+      if (b.resourceType === 'ore') {
+        remainingOre += b.remainingReserves;
+        initialOre += b.initialReserves;
+      } else {
+        remainingCrystal += b.remainingReserves;
+        initialCrystal += b.initialReserves;
+      }
+      if (b.beltZone === 'inner') {
+        innerBeltRemaining += b.remainingReserves;
+        innerBeltInitial += b.initialReserves;
+      }
+    }
+
+    const extractionMultiplier =
+      systemId === 'system_central_hub'
+        ? CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER
+        : 1.0;
+
+    return {
+      systemId,
+      remainingOre: Math.round(remainingOre),
+      initialOre: Math.round(initialOre),
+      remainingCrystal: Math.round(remainingCrystal),
+      initialCrystal: Math.round(initialCrystal),
+      innerBeltRemaining: Math.round(innerBeltRemaining),
+      innerBeltInitial: Math.round(innerBeltInitial),
+      extractionMultiplier,
+    };
   }
 
   public setPlayerHarvestersCrossSystemMining(
@@ -387,19 +457,40 @@ export class GameSimulation {
     }
 
     for (const system of this.galaxy.systems) {
-      const reserveBase = Math.round(1200 * preset.asteroidReserveMultiplier);
       const layout = getSystemAsteroidLayout(system);
+      const extractionMultiplier = system.isCentralHub
+        ? CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER
+        : 1.0;
 
       for (const rock of layout.miningCandidates) {
         const initPos = getAsteroidWorldPosition(rock, 0);
+        let baseReserves: number;
+        if (system.isCentralHub) {
+          baseReserves = CENTRAL_HUB_ROCK_RESERVES;
+        } else if (rock.beltZone === 'inner') {
+          baseReserves =
+            rock.resourceType === 'ore'
+              ? STARTER_INNER_ORE_RESERVES
+              : STARTER_INNER_CRYSTAL_RESERVES;
+        } else {
+          baseReserves =
+            rock.resourceType === 'ore'
+              ? STARTER_OUTER_ORE_RESERVES
+              : STARTER_OUTER_CRYSTAL_RESERVES;
+        }
+        const reserves = Math.round(baseReserves * preset.asteroidReserveMultiplier);
+
         this.miningBelts.push({
           id: rock.id,
           systemId: system.id,
           resourceType: rock.resourceType,
+          beltZone: rock.beltZone,
+          extractionMultiplier,
           rock,
           position: { x: initPos.x, z: initPos.z },
           worldY: initPos.y,
-          remainingReserves: reserveBase,
+          initialReserves: reserves,
+          remainingReserves: reserves,
         });
       }
 
@@ -806,7 +897,7 @@ export class GameSimulation {
     }
 
     if (
-      harvester.mineCrossSystemHub &&
+      (harvester.mineCrossSystemHub || harvester.state === 'transiting_to_hub') &&
       harvester.currentSystemId !== 'system_central_hub' &&
       harvester.cargoAmount === 0
     ) {
@@ -844,8 +935,7 @@ export class GameSimulation {
           b.id === harvester.targetBeltId &&
           b.systemId === harvester.currentSystemId &&
           b.remainingReserves > 0 &&
-          (homeLookup?.structure.targetResource === 'auto' ||
-            b.resourceType === homeLookup?.structure.targetResource),
+          b.resourceType === harvester.cargoType,
       );
       if (!belt) {
         belt = this.selectBestBeltInSystem(harvester);
@@ -859,6 +949,16 @@ export class GameSimulation {
         }
       }
       if (!belt) {
+        // Local deposits of this resource are exhausted -> automatically venture into the Central Nexus via wormhole
+        if (
+          harvester.currentSystemId !== 'system_central_hub' &&
+          this.miningBelts.some(
+            (b) => b.systemId === 'system_central_hub' && b.remainingReserves > 0,
+          )
+        ) {
+          harvester.state = 'transiting_to_hub';
+          harvester.targetRockWorldPos = null;
+        }
         return;
       }
 
@@ -913,7 +1013,8 @@ export class GameSimulation {
         belt.position.z - harvester.position.z,
       );
 
-      const extractAmount = HARVESTER_MINING_RATE_PER_SECOND * deltaSeconds;
+      const extractAmount =
+        HARVESTER_MINING_RATE_PER_SECOND * belt.extractionMultiplier * deltaSeconds;
       harvester.cargoAmount = Math.min(
         harvester.cargoCapacity,
         harvester.cargoAmount + extractAmount,
@@ -1132,6 +1233,23 @@ export class GameSimulation {
       matchingResource.length > 0
         ? matchingResource
         : candidates.filter((b) => b.resourceType === harvester.cargoType);
+
+    if (pool.length === 0) {
+      // If the starter system has run out of this resource (e.g. Crystals), check if the Central Nexus has it;
+      // returning undefined triggers automatic wormhole transit into the Central Nexus.
+      const hubHasResource =
+        harvester.currentSystemId !== 'system_central_hub' &&
+        this.miningBelts.some(
+          (b) =>
+            b.systemId === 'system_central_hub' &&
+            b.resourceType === harvester.cargoType &&
+            b.remainingReserves > 0,
+        );
+      if (hubHasResource) {
+        return undefined;
+      }
+    }
+
     const finalPool = pool.length > 0 ? pool : candidates;
 
     let best = finalPool[0];

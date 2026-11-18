@@ -239,9 +239,12 @@ export function mountSystemHud(
     const systemButtonsHtml = galaxy.systems
       .map((sys) => {
         const isActive = sys.id === activeSystem.id;
+        const badgeText = sys.isCentralHub
+          ? '12-Slot Hub • 1.6x Yield'
+          : 'Ore Heavy • Scarce Crystal';
         return `<button class="hud-btn ${isActive ? 'active' : ''}" data-system-id="${sys.id}">
           ${sys.name}
-          <span class="hud-badge">${sys.isCentralHub ? '12-Slot Hub' : sys.resourceSkew.replace('_', ' ')}</span>
+          <span class="hud-badge">${badgeText}</span>
         </button>`;
       })
       .join('');
@@ -418,11 +421,21 @@ export function mountSystemHud(
       }
     }
 
+    const sysRes = sim.getSystemResourceSummary(activeSystem.id);
+    const innerPct =
+      sysRes.innerBeltInitial > 0
+        ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
+        : 0;
+    const yieldLabel =
+      sysRes.extractionMultiplier > 1.0
+        ? `${sysRes.extractionMultiplier}x Enriched Yield`
+        : '1.0x Standard Yield';
+
     mainBodyEl.innerHTML = `
       <div class="hud-header">
         <div>
           <h1>StarConquest — ${activeSystem.name}</h1>
-          <p class="hud-subtitle">${paletteInfo.displayName}</p>
+          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong>${sysRes.remainingOre}/${sysRes.initialOre} Ore</strong> & <strong>${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal</strong> (Inner Belt: ${innerPct}%)</p>
         </div>
         <button class="hud-btn overview-btn" data-action="overview">System Overview</button>
       </div>

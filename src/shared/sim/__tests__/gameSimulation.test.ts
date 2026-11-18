@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER,
   CNC_UNLOAD_RATE_PER_SECOND,
   GameSimulation,
   HARVESTER_CARGO_CAPACITY,
@@ -394,5 +395,79 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(
       sim.getAllHarvesters().filter((h) => h.ownerId === 'player_1'),
     ).toHaveLength(2);
+  });
+
+  it('enforces symmetrical Ore-heavy / Crystal-scarce starter systems, automatic wormhole expansion on Crystal depletion, and 1.6x Central Nexus yield', () => {
+    const sim = new GameSimulation('standard_tactical');
+
+    // 1. All 4 starter systems must have the exact same fair Ore-heavy / Crystal-scarce reserve totals
+    const s1 = sim.getSystemResourceSummary('system_starter_1');
+    const s2 = sim.getSystemResourceSummary('system_starter_2');
+    const s3 = sim.getSystemResourceSummary('system_starter_3');
+    const s4 = sim.getSystemResourceSummary('system_starter_4');
+    const hub = sim.getSystemResourceSummary('system_central_hub');
+
+    for (const starter of [s1, s2, s3, s4]) {
+      expect(starter.initialOre).toBe(s1.initialOre);
+      expect(starter.initialCrystal).toBe(s1.initialCrystal);
+      expect(starter.initialOre).toBeGreaterThan(starter.initialCrystal * 4);
+      expect(starter.extractionMultiplier).toBe(1.0);
+    }
+
+    expect(hub.initialCrystal).toBeGreaterThan(s1.initialCrystal * 15);
+    expect(hub.extractionMultiplier).toBe(CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER);
+    expect(CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER).toBe(1.6);
+
+    // 2. When starter system Crystals run dry, a Crystal-focused Harvester automatically transits to Central Nexus
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+    const cnc = homeworld.structures[0];
+    expect(cnc).toBeDefined();
+    if (!cnc) {
+      return;
+    }
+
+    sim.submitCommand({
+      type: 'SET_REFINERY_TARGET',
+      playerId: 'player_1',
+      structureId: cnc.id,
+      targetResource: 'crystal',
+    });
+
+    // Deplete all Crystal nodes in Starter System 1 (leaving Ore nodes intact)
+    for (const belt of sim.getMiningBeltsInSystem('system_starter_1')) {
+      if (belt.resourceType === 'crystal') {
+        belt.remainingReserves = 0;
+      }
+    }
+
+    const p1Harvester = sim.getAllHarvesters().find((h) => h.ownerId === 'player_1');
+    expect(p1Harvester).toBeDefined();
+    if (!p1Harvester) {
+      return;
+    }
+
+    sim.stepTick(0.5);
+    // Instead of mining Ore at home when Crystal is depleted, Harvester automatically heads to the wormhole!
+    expect(p1Harvester.state).toBe('transiting_to_hub');
+
+    // 3. Verify 1.6x enriched extraction speed in Central Nexus (40 cargo in ~7.8125s instead of 12.5s)
+    const hubCrystalBelt = sim
+      .getMiningBeltsInSystem('system_central_hub')
+      .find((b) => b.resourceType === 'crystal');
+    expect(hubCrystalBelt).toBeDefined();
+    if (!hubCrystalBelt) {
+      return;
+    }
+
+    p1Harvester.currentSystemId = 'system_central_hub';
+    p1Harvester.targetBeltId = hubCrystalBelt.id;
+    p1Harvester.cargoType = 'crystal';
+    p1Harvester.cargoAmount = 0;
+    p1Harvester.state = 'mining';
+
+    // After 7.9 seconds of mining in Central Nexus (< 12.5s starter duration), 40-unit bay is completely full!
+    sim.stepTick(7.9);
+    expect(p1Harvester.cargoAmount).toBe(40);
+    expect(p1Harvester.state).toBe('returning_to_dropoff');
   });
 });

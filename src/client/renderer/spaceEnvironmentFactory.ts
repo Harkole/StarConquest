@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  type AsteroidBeltRockInstance,
   BELT_ROTATION_SPEED_RAD_PER_SEC,
   createSeededRng,
   getSystemAsteroidLayout,
@@ -39,6 +40,13 @@ export interface SpaceEnvironmentHandle {
   readonly rootGroup: THREE.Group;
   readonly sunDirection: THREE.Vector3;
   readonly wormholes: readonly WormholeInstanceHandle[];
+  syncBeltDepletion?(
+    miningBelts: readonly {
+      readonly id: string;
+      readonly initialReserves: number;
+      readonly remainingReserves: number;
+    }[],
+  ): void;
   update(elapsedSeconds: number, deltaSeconds: number, simElapsedSeconds?: number): void;
   dispose(): void;
 }
@@ -174,6 +182,9 @@ export function createStarSystemEnvironment(
   disposables.push(oreInstanced, crystalInstanced);
 
   const dummy = new THREE.Object3D();
+  const oreByCandidateId = new Map<string, AsteroidBeltRockInstance[]>();
+  const crystalByCandidateId = new Map<string, AsteroidBeltRockInstance[]>();
+  const lastRatioByCandidateId = new Map<string, number>();
 
   beltLayout.oreRocks.forEach((rock, index) => {
     dummy.position.set(rock.localX, rock.localY, rock.localZ);
@@ -181,6 +192,10 @@ export function createStarSystemEnvironment(
     dummy.scale.set(rock.scaleX, rock.scaleY, rock.scaleZ);
     dummy.updateMatrix();
     oreInstanced.setMatrixAt(index, dummy.matrix);
+
+    const group = oreByCandidateId.get(rock.linkedCandidateId) ?? [];
+    group.push(rock);
+    oreByCandidateId.set(rock.linkedCandidateId, group);
   });
   oreInstanced.instanceMatrix.needsUpdate = true;
 
@@ -190,6 +205,10 @@ export function createStarSystemEnvironment(
     dummy.scale.set(rock.scaleX, rock.scaleY, rock.scaleZ);
     dummy.updateMatrix();
     crystalInstanced.setMatrixAt(index, dummy.matrix);
+
+    const group = crystalByCandidateId.get(rock.linkedCandidateId) ?? [];
+    group.push(rock);
+    crystalByCandidateId.set(rock.linkedCandidateId, group);
   });
   crystalInstanced.instanceMatrix.needsUpdate = true;
 
@@ -346,6 +365,62 @@ export function createStarSystemEnvironment(
     rootGroup,
     sunDirection,
     wormholes: wormholeStates.map((s) => s.handle),
+    syncBeltDepletion(miningBelts): void {
+      let oreDirty = false;
+      let crystalDirty = false;
+
+      for (const belt of miningBelts) {
+        const ratio =
+          belt.initialReserves > 0
+            ? Math.max(0, Math.min(1, belt.remainingReserves / belt.initialReserves))
+            : 0;
+        const prev = lastRatioByCandidateId.get(belt.id) ?? 1.0;
+        if (Math.abs(ratio - prev) < 0.01 && !(ratio === 0 && prev > 0)) {
+          continue;
+        }
+        lastRatioByCandidateId.set(belt.id, ratio);
+        const scaleFactor = ratio <= 0 ? 0 : 0.35 + 0.65 * ratio;
+
+        const oreGroup = oreByCandidateId.get(belt.id);
+        if (oreGroup) {
+          for (const rock of oreGroup) {
+            dummy.position.set(rock.localX, rock.localY, rock.localZ);
+            dummy.rotation.set(rock.rotX, rock.rotY, rock.rotZ);
+            dummy.scale.set(
+              rock.scaleX * scaleFactor,
+              rock.scaleY * scaleFactor,
+              rock.scaleZ * scaleFactor,
+            );
+            dummy.updateMatrix();
+            oreInstanced.setMatrixAt(rock.instanceIndex, dummy.matrix);
+          }
+          oreDirty = true;
+        }
+
+        const crystalGroup = crystalByCandidateId.get(belt.id);
+        if (crystalGroup) {
+          for (const rock of crystalGroup) {
+            dummy.position.set(rock.localX, rock.localY, rock.localZ);
+            dummy.rotation.set(rock.rotX, rock.rotY, rock.rotZ);
+            dummy.scale.set(
+              rock.scaleX * scaleFactor,
+              rock.scaleY * scaleFactor,
+              rock.scaleZ * scaleFactor,
+            );
+            dummy.updateMatrix();
+            crystalInstanced.setMatrixAt(rock.instanceIndex, dummy.matrix);
+          }
+          crystalDirty = true;
+        }
+      }
+
+      if (oreDirty) {
+        oreInstanced.instanceMatrix.needsUpdate = true;
+      }
+      if (crystalDirty) {
+        crystalInstanced.instanceMatrix.needsUpdate = true;
+      }
+    },
     update(
       elapsedSeconds: number,
       deltaSeconds: number,

@@ -88,8 +88,8 @@ Do not alter these core mechanics without explicit user direction:
    * Players do **not** micro-manage individual ships in combat.
    * Players control the war via **Dockyard production queues (with auto-repeat)**, **Rally Points**, **Patrol Routes**, and **Fleet Stances**. Fleets engage and prioritize targets automatically using combat AI.
 2. **5-System Hub-and-Spoke Galaxy**:
-   * **4 Starter Systems** (each with 1 guaranteed **Large** 10-slot Homeworld + randomized **Small** 6-slot / **Medium** 8-slot planets, and an asymmetric Ore/Crystal skew).
-   * **1 Central Neutral System** (anchored by 1 **Super-Earth** 12-slot planet + rich asteroid belts + 4 permanent open wormholes connecting to all 4 starter systems, even empty ones).
+   * **4 Starter Systems** (each with 1 guaranteed **Large** 10-slot Homeworld + randomized **Small** 6-slot / **Medium** 8-slot planets, and an identical balanced Ore-heavy / Crystal-scarce finite resource profile whose inner belt depletes quickly).
+   * **1 Central Neutral System** (anchored by 1 **Super-Earth** 12-slot planet + enriched `1.6x` high-yield asteroid belts + 4 permanent open wormholes connecting to all 4 starter systems, even empty ones).
 3. **Planetary Orbital Slots & Building Costs**:
    * **Planet Capacities**: Small = `6`, Medium = `8`, Large = `10`, Super-Earth = `12`.
    * **2-Slot Structures**: Command & Control (Unique Homeworld HQ; losing it = defeat), Orbital Dockyard (Shipyard), Heavy Orbital Defense Platform / Planetary Shield.
