@@ -306,6 +306,9 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
 * **Planned Fix**: Apply `harvestRateMultiplier` to platform unload rates in **Blitz Skirmish** so the overall economy scales closer to `1.5x–1.6x`. Also consider allowing two times more harvesters to dock at refineries, the CnC building is already allowing double.
 
+### Orbital Dockyard Slipway Hull Models (Replace Proxies with Approved Ship Designs)
+* **Planned Upgrade**: The **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard` in `src/client/renderer/stationModels.ts`) currently displays procedural proxy hulls inside **Slot 1: Primary Dreadnought Bay**, **Slot 2: Cruiser / Carrier Bay**, and the outer **Small-Craft Dry-Dock Alcoves**. Once the 5 combat ship 3D models (`fighter`, `destroyer`, `cruiser`, `carrier`, and `dreadnought`) are designed and approved in `docs/artstyle.md`, swap the slipway proxies for the real ship meshes so players see partially built versions of their actual ships under construction inside the bays.
+
 ### Outstanding 3D Platform Models (`src/client/renderer/stationModels.ts` & `docs/artstyle.md`)
 Each remaining orbital and deep-space platform will be designed, reviewed, and added to [docs/artstyle.md](./docs/artstyle.md) one at a time:
 1. **C&C Tech & Specialization Module (`tech_module`, 1 Orbital Slot)**: Orbital research and logistics expansion that unlocks Tier 2 Cruisers (1 module) and Tier 3 Carriers and Dreadnoughts (2 modules) while providing `+15` Fleet Supply. Currently uses a placeholder octahedron primitive (`techCrystalGeom`).
