@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/StarConquest/' : '/',
   server: {
     port: 5173,
     open: false,
@@ -9,4 +10,4 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
   },
-});
+}));

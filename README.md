@@ -278,8 +278,8 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Project Commands
 * `npm install` — Install dependencies (`three`, `postprocessing`, `vite`, `vitest`, `typescript`).
-* `npm run dev` — Start the Vite development server at `http://localhost:5173`.
-* `npm run build` — Run strict TypeScript typechecking (`tsc --noEmit`) and bundle for production (`vite build`).
+* `npm run dev` — Start the Vite development server at `http://localhost:5173` (`base: '/'`).
+* `npm run build` — Run strict TypeScript typechecking (`tsc --noEmit`) and bundle for production (`vite build`, using `base: '/StarConquest/'` in `vite.config.ts` for GitHub Pages static asset resolution).
 * `npm test` — Execute the Vitest unit and balance invariant test suite (`vitest run`).
 
 ### Git Branching & Pull Request Rules
