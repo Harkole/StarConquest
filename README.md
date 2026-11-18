@@ -319,6 +319,10 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **Quick Fix**: Replace the violet gun barrel material on the Aegis batteries and remote sentry turrets with **Steel Grey (`#64748b` / `steelTrimMat`)** so the barrels contrast cleanly against the darker Gunmetal (`#3e4652`) and Dark Charcoal (`#1e232a`) turret housings.
   * **Realism & Texturing Pass**: Explore procedural PBR hull-plating textures, normal/roughness micro-detail, panel seam lines, weathering gradients, and metallic barrel finishes so buildings and ships have realistic surface breakup instead of flat mono-colored meshes.
 
+### Aegis Remote Sentry Turret Orbital Standoff Clearance
+* **Known Issue**: The 3 remote vertical sentry turrets spawned by `buildAegisHeavyDefensePlatform` (`src/client/renderer/stationModels.ts`) currently sit at `orbitalRingRadius + 7.2u`, which is too close to the orbital ring and can intersect outward-projecting platforms on other slots (such as the **Titan Orbital Dockyard**, whose parallel slipways extend `~19u` outward from the ring).
+* **Planned Fix**: Increase `sentryStandoffRadius` beyond the largest orbital building's outward radial reach plus a safety clearance buffer (e.g., `orbitalRingRadius + 24u` or higher) so remote sentry turrets never intersect any orbital ring installation.
+
 ### Outstanding 3D Platform Models (`src/client/renderer/stationModels.ts` & `docs/artstyle.md`)
 All 6 planetary orbital ring structures and the Deep-Space Logistics Hub are now complete in `StationModelLibrary`. Only the 2 deep-space Defence Towers remain to be designed, reviewed, and added to [docs/artstyle.md](./docs/artstyle.md) one at a time:
 1. **Point Defence Tower (`point_defence_tower`, Deep Space)**: Fast-tracking turret platform (`0.95` tracking, `0.35s` reload, `18` alpha) built inside a Logistics Hub radius to shred Fighters and Destroyers.
