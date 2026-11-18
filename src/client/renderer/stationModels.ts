@@ -188,12 +188,6 @@ export class StationModelLibrary {
   private readonly aegisShieldEmitterPylonGeom = this.registerGeom(
     new THREE.CylinderGeometry(0.16, 0.28, 0.95, 6),
   );
-  private readonly aegisShieldDomeShellGeom = this.registerGeom(
-    new THREE.IcosahedronGeometry(6.35, 2),
-  );
-  private readonly aegisShieldDomeLatticeGeom = this.registerGeom(
-    new THREE.IcosahedronGeometry(6.39, 2),
-  );
   // Remote Vertical Sentry Turret geometries (Second Schematic)
   private readonly aegisSentrySpineGeom = this.registerGeom(
     new THREE.BoxGeometry(1.45, 4.4, 1.55),
@@ -1905,12 +1899,6 @@ export class StationModelLibrary {
     const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
     const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
     const plasmaMat = isComplete ? this.techQuantumVioletMat : this.buildingWireframeMat;
-    const shieldShellMat = isComplete
-      ? this.aegisShieldShellMat
-      : this.buildingWireframeMat;
-    const shieldLatticeMat = isComplete
-      ? this.aegisShieldLatticeMat
-      : this.buildingWireframeMat;
 
     const ringR = Math.max(18, orbitalRingRadius);
     const mainPlatformGroup = new THREE.Group();
@@ -1951,7 +1939,6 @@ export class StationModelLibrary {
     // 2. Twin Curved Octagonal Bastion Lobes (Slot 1: Primary Heavy Battery & Slot 2: Secondary Bombardment Array)
     const spinalTurrets: { readonly pivot: THREE.Group; readonly baseYaw: number }[] = [];
     const macroTurrets: { readonly pivot: THREE.Group; readonly baseYaw: number }[] = [];
-    const shieldShells: THREE.Group[] = [];
 
     const lobeScale = 1.35;
     const lobeArcOffset = 8.4; // Positions lobes at ±8.4u along the orbital arc (~33u total 2-slot span)
@@ -2053,17 +2040,6 @@ export class StationModelLibrary {
         );
         lobePivot.add(pylon);
       }
-
-      // Overlapping Figure-8 Planetary Shield Bubble Shell around each bastion lobe
-      const shieldBubbleGroup = new THREE.Group();
-      shieldBubbleGroup.scale.set(0.84, 0.42, 1.02);
-      shieldBubbleGroup.position.set(0.55, 0.65, 0);
-      shieldBubbleGroup.add(new THREE.Mesh(this.aegisShieldDomeShellGeom, shieldShellMat));
-      shieldBubbleGroup.add(
-        new THREE.Mesh(this.aegisShieldDomeLatticeGeom, shieldLatticeMat),
-      );
-      lobePivot.add(shieldBubbleGroup);
-      shieldShells.push(shieldBubbleGroup);
 
       mainPlatformGroup.add(lobePivot);
     }
@@ -2191,9 +2167,6 @@ export class StationModelLibrary {
       for (const [idx, item] of macroTurrets.entries()) {
         item.pivot.rotation.y =
           item.baseYaw + Math.cos(elapsedSeconds * 0.85 + idx * 1.7) * 0.35;
-      }
-      for (const [idx, shell] of shieldShells.entries()) {
-        shell.rotation.y = elapsedSeconds * 0.18 * (idx === 0 ? 1 : -1);
       }
       for (const item of sentryCrownTurrets) {
         item.pivot.rotation.y = Math.sin(elapsedSeconds * 0.75 + item.phase) * 0.55;

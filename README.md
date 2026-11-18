@@ -309,6 +309,9 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Orbital Dockyard Slipway, Tech Module Hologram & Logistics Hub Fighter Models
 * **Planned Upgrade**: The **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard`), **Minerva Tech & Specialization Module** (`buildMinervaTechModule`), and **Atlas Deep-Space Logistics Hub** (`buildAtlasLogisticsHub` in `src/client/renderer/stationModels.ts`) currently display procedural proxy hulls inside the Dockyard's dry-dock bays, the Tech Module's holographic R&D projection courts, and the Logistics Hub's 4 diagonal Fighter Hangar Bays. Once the 5 combat ship 3D models (`fighter`, `destroyer`, `cruiser`, `carrier`, and `dreadnought`) are designed and approved in `docs/artstyle.md`, swap those proxies for the real ship meshes.
 
+### Shield Visual Effects & Energized Hull Plating Art Pass
+* **Planned Art Pass**: Static always-on shield bubble meshes were removed from the **Aegis Heavy Orbital Defense Platform** so they do not obscure the station's industrial armor detail. Schedule a dedicated shield VFX art pass across all shielded platforms and capital ships to decide whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
+
 ### Outstanding 3D Platform Models (`src/client/renderer/stationModels.ts` & `docs/artstyle.md`)
 All 6 planetary orbital ring structures and the Deep-Space Logistics Hub are now complete in `StationModelLibrary`. Only the 2 deep-space Defence Towers remain to be designed, reviewed, and added to [docs/artstyle.md](./docs/artstyle.md) one at a time:
 1. **Point Defence Tower (`point_defence_tower`, Deep Space)**: Fast-tracking turret platform (`0.95` tracking, `0.35s` reload, `18` alpha) built inside a Logistics Hub radius to shred Fighters and Destroyers.
