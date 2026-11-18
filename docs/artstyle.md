@@ -183,3 +183,24 @@ Each ship and orbital platform is designed and locked in one at a time.
    * **Doctrine Integration & Calibration Lab (Starboard Court)**: Projects a floating **5-ship miniature fleet delta formation hologram** above a tactical calibration table.
 4. **Cruciform Modular R&D Lab Modules (Inset Detail) & Fleet Logistics Supply Core**:
    * Mid-bay courts house **4-wing Cruciform Modular R&D Lab Modules** (each topped by an Integrated Quantum Sensor Array) alongside stacked ochre and cyan **Fleet Logistics & Supply Core** cargo modules (`+15` Fleet Supply).
+
+---
+
+### 07. Heavy Orbital Defense Platform & Remote Sentry Turrets — Star-Station "Aegis"
+
+* **Main Platform Orthographic Blueprint**: ![Aegis Heavy Orbital Defense Platform Orthographic Reference](./defense-aegis-orthographic.jpg)
+* **Remote Sentry Turret Blueprint**: ![Aegis Remote Vertical Sentry Turret Reference](./defense-aegis-remote-turret.jpg)
+* **Renderer Implementation**: [stationModels.ts](../src/client/renderer/stationModels.ts) (used by [planetFactory.ts](../src/client/renderer/planetFactory.ts))
+
+#### Anatomical Breakdown, 2-Slot Figure-8 Bastion & 360° Remote Sentry Coverage
+1. **Twin Joined Octagonal Weapon Bastions Across 2 Orbital Slots (`aegis_main_platform`)**:
+   * **Central Fire-Control & Shield-Generation Core**: Anchored at the midpoint between the two occupied orbital slots, topped by a stepped ochre fire-control tower and a glowing geodesic sensor dome.
+   * **Slot 1 (Primary Heavy Battery) & Slot 2 (Secondary Bombardment Array)**: Twin stepped octagonal armored bastions (`1.35x` scale at `±8.4u` along the curved orbital arc, `~33u` total span) equipped with glowing copper-orange **Coolant System Radiators**, vertical **Ammunition Hoist Systems**, and **Planetary Shield Emitter Pylons**.
+2. **Articulated Triple-Barrel Spinal-Mount Heavy Plasma Cannons & Macro-Turrets (Inset Detail)**:
+   * Each bastion lobe mounts a massive swiveling **Spinal-Mount Heavy Plasma Cannon Battery** with rear ochre ammunition feed drums and **three parallel glowing violet-blue plasma barrels** (`#c084fc`), flanked by a twin-barrel **Turreted Macro-Cannon Battery** (`65` Heavy DPS + `45` Point Defence DPS).
+3. **Overlapping Figure-8 Planetary Shield Bubble Shells**:
+   * Each bastion lobe projects a translucent cyan geodesic/hexagonal **Planetary Shield Shell** (`opacity: 0.24` with a rotating `#7dd3fc` wireframe lattice) that overlaps at the central fire-control bridge to form the signature figure-8 energy barrier.
+4. **3 Remote-Controlled Vertical Sentry Turrets (`aegis_remote_sentry_turrets`)**:
+   * Built simultaneously with the main platform at `theta = -108°`, `180°` (far opposite side of the planet), and `+108°` just outside the orbital ring (`orbitalRingRadius + 7.2u`), ensuring visual line-of-sight coverage against hostile fleets approaching from behind the planet.
+   * Purely cosmetic extension of the main platform: as long as any turret or battery has line of sight, the full DPS of the platform applies, and destroying the main platform automatically destroys all three remote sentry turrets.
+   * Each remote turret features a tall armored **Vertical Sentry Gun Spine** (`4.4u` height) with dark structural rib collars and copper-orange power conduits, a flared upper crown mounting a rotating **Heavy Plasma Sentry Turret**, **3 vertically stacked rotating Point-Defense (`PDx2`) Turrets** down its outward face, and a lower **Reactor & Power Core Access Base** with twin rear station-keeping thrusters.

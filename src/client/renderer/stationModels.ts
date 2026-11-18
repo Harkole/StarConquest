@@ -110,6 +110,22 @@ export class StationModelLibrary {
     transparent: true,
     opacity: 0.58,
   });
+  private readonly aegisShieldShellMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.45,
+    metalness: 0.15,
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.24,
+    side: THREE.DoubleSide,
+  });
+  private readonly aegisShieldLatticeMat = new THREE.MeshBasicMaterial({
+    color: 0x7dd3fc,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.48,
+  });
 
   // Wireframe & Baseline Materials
   private readonly buildingWireframeMat = new THREE.MeshBasicMaterial({
@@ -118,22 +134,85 @@ export class StationModelLibrary {
     transparent: true,
     opacity: 0.75,
   });
-  private readonly baselineStationMat = new THREE.MeshStandardMaterial({
-    color: 0xe2e8f0,
-    emissive: 0x0284c7,
-    emissiveIntensity: 0.55,
-    metalness: 0.82,
-    roughness: 0.25,
-  });
 
   private readonly geometries: THREE.BufferGeometry[] = [];
 
-  // Baseline geometries for remaining structures (to be upgraded one-by-one)
-  private readonly defenseBastionGeom = this.registerGeom(
-    new THREE.CylinderGeometry(3.8, 4.4, 4.2, 8),
+  // Aegis 2-Slot Heavy Orbital Defense Platform & Remote Vertical Sentry Turrets reusable geometries
+  private readonly aegisCentralBridgeGeom = this.registerGeom(
+    new THREE.BoxGeometry(4.2, 1.35, 4.6),
   );
-  private readonly defenseWingGeom = this.registerGeom(
-    new THREE.BoxGeometry(3.2, 1.4, 14),
+  private readonly aegisFireControlBaseGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.55, 1.95, 1.15, 8),
+  );
+  private readonly aegisLobeLowerDeckGeom = this.registerGeom(
+    new THREE.CylinderGeometry(5.1, 5.6, 0.95, 8).rotateY(Math.PI / 8),
+  );
+  private readonly aegisLobeMidTierGeom = this.registerGeom(
+    new THREE.CylinderGeometry(3.75, 4.45, 1.05, 8).rotateY(Math.PI / 8),
+  );
+  private readonly aegisLobeUpperMountGeom = this.registerGeom(
+    new THREE.CylinderGeometry(2.35, 2.95, 0.85, 8).rotateY(Math.PI / 8),
+  );
+  private readonly aegisLobeVentralHullGeom = this.registerGeom(
+    new THREE.CylinderGeometry(3.8, 1.85, 1.15, 8).rotateY(Math.PI / 8),
+  );
+  private readonly aegisRadiatorBankGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.65, 0.36, 0.85),
+  );
+  private readonly aegisAmmoHoistPipeGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.18, 0.18, 2.35, 8),
+  );
+  private readonly aegisSpinalBreechGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.15, 1.15, 2.45),
+  );
+  private readonly aegisSpinalAmmoFeedGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.55, 0.82, 1.15),
+  );
+  private readonly aegisSpinalPlasmaBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.18, 0.24, 3.1, 8),
+  );
+  private readonly aegisSpinalMuzzleCollarGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.26, 0.26, 0.34, 8),
+  );
+  private readonly aegisMacroTurretHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.05, 0.62, 1.25),
+  );
+  private readonly aegisMacroBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.09, 0.12, 1.65, 8),
+  );
+  private readonly aegisShieldEmitterPylonGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.16, 0.28, 0.95, 6),
+  );
+  private readonly aegisShieldDomeShellGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(6.35, 2),
+  );
+  private readonly aegisShieldDomeLatticeGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(6.39, 2),
+  );
+  // Remote Vertical Sentry Turret geometries (Second Schematic)
+  private readonly aegisSentrySpineGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.45, 4.4, 1.55),
+  );
+  private readonly aegisSentryRibCollarGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.62, 0.28, 1.72),
+  );
+  private readonly aegisSentryConduitStripGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.16, 4.2, 0.22),
+  );
+  private readonly aegisSentryCrownCollarGeom = this.registerGeom(
+    new THREE.CylinderGeometry(1.42, 1.18, 0.62, 8),
+  );
+  private readonly aegisSentryTopTurretGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.15, 0.68, 1.45),
+  );
+  private readonly aegisSentryReactorBaseGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.75, 1.15, 2.35),
+  );
+  private readonly aegisSentryThrusterNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.16, 0.22, 0.78, 8),
+  );
+  private readonly aegisSentryPdBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.055, 0.07, 0.82, 6),
   );
 
   // Minerva C&C Tech & Specialization Module reusable geometries (1-slot curved R&D platform)
@@ -449,33 +528,20 @@ export class StationModelLibrary {
     isComplete: boolean,
     orbitalRingRadius = 42.56,
   ): THREE.Group {
-    if (structureId === 'command_and_control') {
-      return this.buildPrometheusCommandAndControl(isComplete, orbitalRingRadius);
-    }
-    if (structureId === 'refinery') {
-      return this.buildHephaesRefinery(isComplete, orbitalRingRadius);
-    }
-    if (structureId === 'planetary_outpost') {
-      return this.buildVanguardPlanetaryOutpost(isComplete, orbitalRingRadius);
-    }
-    if (structureId === 'orbital_dockyard') {
-      return this.buildTitanOrbitalDockyard(isComplete, orbitalRingRadius);
-    }
-    if (structureId === 'tech_module') {
-      return this.buildMinervaTechModule(isComplete, orbitalRingRadius);
-    }
-
-    const group = new THREE.Group();
-    const mat = !isComplete ? this.buildingWireframeMat : this.baselineStationMat;
-
     switch (structureId) {
-      case 'heavy_defense_platform': {
-        group.add(new THREE.Mesh(this.defenseBastionGeom, mat));
-        group.add(new THREE.Mesh(this.defenseWingGeom, mat));
-        break;
-      }
+      case 'command_and_control':
+        return this.buildPrometheusCommandAndControl(isComplete, orbitalRingRadius);
+      case 'refinery':
+        return this.buildHephaesRefinery(isComplete, orbitalRingRadius);
+      case 'planetary_outpost':
+        return this.buildVanguardPlanetaryOutpost(isComplete, orbitalRingRadius);
+      case 'orbital_dockyard':
+        return this.buildTitanOrbitalDockyard(isComplete, orbitalRingRadius);
+      case 'tech_module':
+        return this.buildMinervaTechModule(isComplete, orbitalRingRadius);
+      case 'heavy_defense_platform':
+        return this.buildAegisHeavyDefensePlatform(isComplete, orbitalRingRadius);
     }
-    return group;
   }
 
   public updateStationAnimation(
@@ -513,8 +579,9 @@ export class StationModelLibrary {
     this.techHoloWireframeMat.dispose();
     this.techHoloSurfaceMat.dispose();
     this.techTranslucentDomeMat.dispose();
+    this.aegisShieldShellMat.dispose();
+    this.aegisShieldLatticeMat.dispose();
     this.buildingWireframeMat.dispose();
-    this.baselineStationMat.dispose();
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
@@ -1730,6 +1797,339 @@ export class StationModelLibrary {
         const pulse = 0.85 + 0.3 * Math.sin(elapsedSeconds * 3.2 + item.phase);
         item.mesh.scale.setScalar(pulse);
         item.mesh.rotation.y = elapsedSeconds * 1.2 + item.phase;
+      }
+    };
+
+    return root;
+  }
+
+  /**
+   * Builds the "Aegis" 2-Slot Heavy Orbital Defense Platform & Remote Vertical Sentry Turrets (docs/artstyle.md #07).
+   * - Main 2-Slot Double-Bastion Fortress (`aegis_main_platform`):
+   *   - Central Fire-Control & Shield-Generation Core bridge topped by a geodesic fire-control sensor dome.
+   *   - Twin curved octagonal weapon bastions (**Slot 1: Primary Heavy Battery** & **Slot 2: Secondary Bombardment Array**)
+   *     curving along the host planet's `orbitalRingRadius` (`~33u` tangential span).
+   *   - Each bastion mounts an **Articulated Triple-Barrel Spinal-Mount Heavy Plasma Cannon** (with glowing violet-blue
+   *     plasma barrels and ochre ammunition feed drums), a secondary **Turreted Macro-Cannon Battery**, a perimeter
+   *     **Point-Defense Grid**, **Coolant System Radiators**, **Ammunition Hoists**, and an overlapping figure-8
+   *     **Planetary Shield Emitter Bubble Shell**.
+   * - 3 Remote-Controlled Vertical Sentry Turrets (`aegis_remote_sentry_turrets`):
+   *   - Built simultaneously and tethered to the main platform's lifecycle (destroyed automatically if the main platform
+   *     is destroyed), stationed around the flanks and far opposite side of the planet (`-108°`, `180°`, `+108°`) so at
+   *     least one battery always has direct line of sight to hostile fleets approaching from behind the planet.
+   *   - Each remote turret features a tall armored **Vertical Sentry Gun Spine**, an upper rotating **Heavy Plasma Crown
+   *     Turret**, 3 vertically stacked rotating **Point-Defense (`PDx2`) Turrets**, and a lower **Reactor & Power Core
+   *     Access Base** with twin rear station-keeping thrusters.
+   */
+  private buildAegisHeavyDefensePlatform(
+    isComplete: boolean,
+    orbitalRingRadius: number,
+  ): THREE.Group {
+    const root = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
+    const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
+    const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
+    const plasmaMat = isComplete ? this.techQuantumVioletMat : this.buildingWireframeMat;
+    const shieldShellMat = isComplete
+      ? this.aegisShieldShellMat
+      : this.buildingWireframeMat;
+    const shieldLatticeMat = isComplete
+      ? this.aegisShieldLatticeMat
+      : this.buildingWireframeMat;
+
+    const ringR = Math.max(18, orbitalRingRadius);
+    const mainPlatformGroup = new THREE.Group();
+    mainPlatformGroup.name = 'aegis_main_platform';
+    root.add(mainPlatformGroup);
+
+    // 1. Central Fire-Control & Shield-Generation Core Bridge (at midpoint between the 2 occupied slots)
+    const centerCoreGroup = new THREE.Group();
+    centerCoreGroup.scale.setScalar(1.3);
+
+    const centralBridge = new THREE.Mesh(this.aegisCentralBridgeGeom, hullMat);
+    centralBridge.position.set(0, 0.15, 0);
+    centerCoreGroup.add(centralBridge);
+
+    const ventralCore = new THREE.Mesh(this.outpostVentralHullGeom, frameMat);
+    ventralCore.position.set(0, -0.78, 0);
+    centerCoreGroup.add(ventralCore);
+
+    const fireControlBase = new THREE.Mesh(this.aegisFireControlBaseGeom, ochreMat);
+    fireControlBase.position.set(0, 1.15, 0);
+    centerCoreGroup.add(fireControlBase);
+
+    const fireControlWin = new THREE.Mesh(this.refControlWindowGeom, cabinMat);
+    fireControlWin.scale.set(1.85, 1.0, 1.85);
+    fireControlWin.position.set(0, 1.38, 0);
+    centerCoreGroup.add(fireControlWin);
+
+    const domeCore = new THREE.Mesh(this.outpostSensorDomeCoreGeom, obsMat);
+    domeCore.position.set(0, 2.15, 0);
+    centerCoreGroup.add(domeCore);
+
+    const domeLattice = new THREE.Mesh(this.outpostSensorDomeLatticeGeom, latticeMat);
+    domeLattice.position.set(0, 2.15, 0);
+    centerCoreGroup.add(domeLattice);
+
+    mainPlatformGroup.add(centerCoreGroup);
+
+    // 2. Twin Curved Octagonal Bastion Lobes (Slot 1: Primary Heavy Battery & Slot 2: Secondary Bombardment Array)
+    const spinalTurrets: { readonly pivot: THREE.Group; readonly baseYaw: number }[] = [];
+    const macroTurrets: { readonly pivot: THREE.Group; readonly baseYaw: number }[] = [];
+    const shieldShells: THREE.Group[] = [];
+
+    const lobeScale = 1.35;
+    const lobeArcOffset = 8.4; // Positions lobes at ±8.4u along the orbital arc (~33u total 2-slot span)
+    const lobeR = ringR + 1.15;
+
+    for (const side of [-1, 1]) {
+      const theta = (side * lobeArcOffset) / ringR;
+      const lobePivot = new THREE.Group();
+      lobePivot.position.set(
+        lobeR * Math.cos(theta) - ringR,
+        0,
+        lobeR * Math.sin(theta),
+      );
+      lobePivot.rotation.y = -theta;
+      lobePivot.scale.setScalar(lobeScale);
+
+      // Stepped Octagonal Bastion Hull + Ventral Reactor Keel
+      const lowerDeck = new THREE.Mesh(this.aegisLobeLowerDeckGeom, hullMat);
+      lobePivot.add(lowerDeck);
+
+      const ventralHull = new THREE.Mesh(this.aegisLobeVentralHullGeom, frameMat);
+      ventralHull.position.set(0, -0.95, 0);
+      lobePivot.add(ventralHull);
+
+      const midTier = new THREE.Mesh(this.aegisLobeMidTierGeom, frameMat);
+      midTier.position.set(0, 0.88, 0);
+      lobePivot.add(midTier);
+
+      const upperMount = new THREE.Mesh(this.aegisLobeUpperMountGeom, hullMat);
+      upperMount.position.set(-0.35, 1.68, -side * 0.35);
+      lobePivot.add(upperMount);
+
+      // Glowing Copper-Orange Coolant System Radiators & Vertical Ammunition Hoist Pipes (Side View)
+      for (const radAngle of [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2]) {
+        const rad = new THREE.Mesh(this.aegisRadiatorBankGeom, heatMat);
+        rad.position.set(Math.cos(radAngle) * 4.15, 0.55, Math.sin(radAngle) * 4.15);
+        rad.rotation.y = -radAngle;
+        lobePivot.add(rad);
+      }
+
+      for (const hoistZ of [-1.85, 1.85]) {
+        const hoist = new THREE.Mesh(this.aegisAmmoHoistPipeGeom, ochreMat);
+        hoist.position.set(-2.35, 0.95, hoistZ);
+        lobePivot.add(hoist);
+      }
+
+      // Articulated Spinal-Mount Heavy Plasma Cannon Battery (Inset Detail: Triple Violet-Blue Plasma Barrels)
+      const spinalBaseYaw = -side * 0.42; // Converge slightly toward the outward central firing sector
+      const spinalTurret = new THREE.Group();
+      spinalTurret.position.set(-0.25, 2.42, -side * 0.35);
+      spinalTurret.rotation.y = spinalBaseYaw;
+
+      const breech = new THREE.Mesh(this.aegisSpinalBreechGeom, hullMat);
+      spinalTurret.add(breech);
+
+      const ammoFeed = new THREE.Mesh(this.aegisSpinalAmmoFeedGeom, ochreMat);
+      ammoFeed.position.set(-1.35, -0.08, 0);
+      spinalTurret.add(ammoFeed);
+
+      // 3 Parallel Glowing Violet-Blue Heavy Plasma Barrels extending forward (+X outward)
+      for (const barrelZ of [-0.62, 0, 0.62]) {
+        const barrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, plasmaMat);
+        barrel.rotation.z = -Math.PI / 2.15; // Slight upward elevation matching Side View
+        barrel.position.set(2.15, 0.25, barrelZ);
+        spinalTurret.add(barrel);
+
+        const collar = new THREE.Mesh(this.aegisSpinalMuzzleCollarGeom, trimMat);
+        collar.rotation.z = -Math.PI / 2.15;
+        collar.position.set(1.1, 0.14, barrelZ);
+        spinalTurret.add(collar);
+      }
+
+      lobePivot.add(spinalTurret);
+      spinalTurrets.push({ pivot: spinalTurret, baseYaw: spinalBaseYaw });
+
+      // Secondary Turreted Macro-Cannon Battery on the outer bastion shoulder
+      const macroBaseYaw = side * 0.55;
+      const macroTurret = new THREE.Group();
+      macroTurret.position.set(1.15, 1.55, side * 2.35);
+      macroTurret.rotation.y = macroBaseYaw;
+
+      macroTurret.add(new THREE.Mesh(this.aegisMacroTurretHousingGeom, trimMat));
+      for (const mbZ of [-0.28, 0.28]) {
+        const mb = new THREE.Mesh(this.aegisMacroBarrelGeom, plasmaMat);
+        mb.rotation.z = -Math.PI / 2.2;
+        mb.position.set(1.15, 0.12, mbZ);
+        macroTurret.add(mb);
+      }
+      lobePivot.add(macroTurret);
+      macroTurrets.push({ pivot: macroTurret, baseYaw: macroBaseYaw });
+
+      // Perimeter Point-Defense Grid & 4 Planetary Shield Emitter Pylons
+      for (const emitterYaw of [0.4, 1.9, 3.5, 5.1]) {
+        const pylon = new THREE.Mesh(this.aegisShieldEmitterPylonGeom, trimMat);
+        pylon.position.set(
+          Math.cos(emitterYaw) * 4.65,
+          0.85,
+          Math.sin(emitterYaw) * 4.65,
+        );
+        lobePivot.add(pylon);
+      }
+
+      // Overlapping Figure-8 Planetary Shield Bubble Shell around each bastion lobe
+      const shieldBubbleGroup = new THREE.Group();
+      shieldBubbleGroup.scale.set(0.84, 0.42, 1.02);
+      shieldBubbleGroup.position.set(0.55, 0.65, 0);
+      shieldBubbleGroup.add(new THREE.Mesh(this.aegisShieldDomeShellGeom, shieldShellMat));
+      shieldBubbleGroup.add(
+        new THREE.Mesh(this.aegisShieldDomeLatticeGeom, shieldLatticeMat),
+      );
+      lobePivot.add(shieldBubbleGroup);
+      shieldShells.push(shieldBubbleGroup);
+
+      mainPlatformGroup.add(lobePivot);
+    }
+
+    // 3. Three Remote-Controlled Vertical Sentry Turrets (Second Schematic Image)
+    // Stationed around the flanks and far opposite side of the planet so hostile fleets never have a blind spot.
+    const remoteTurretsGroup = new THREE.Group();
+    remoteTurretsGroup.name = 'aegis_remote_sentry_turrets';
+    root.add(remoteTurretsGroup);
+
+    const sentryCrownTurrets: { readonly pivot: THREE.Group; readonly phase: number }[] =
+      [];
+    const sentryPdTurrets: { readonly pivot: THREE.Group; readonly phase: number }[] = [];
+
+    const buildRemoteSentryTurret = (sentryIndex: number): THREE.Group => {
+      const sentryRoot = new THREE.Group();
+      sentryRoot.scale.setScalar(1.15);
+
+      // Vertical Sentry Gun Spine
+      const spine = new THREE.Mesh(this.aegisSentrySpineGeom, hullMat);
+      sentryRoot.add(spine);
+
+      for (const ribY of [-1.45, -0.25, 0.95, 1.95]) {
+        const rib = new THREE.Mesh(this.aegisSentryRibCollarGeom, frameMat);
+        rib.position.set(0, ribY, 0);
+        sentryRoot.add(rib);
+      }
+
+      for (const cz of [-0.62, 0.62]) {
+        const conduit = new THREE.Mesh(this.aegisSentryConduitStripGeom, heatMat);
+        conduit.position.set(0.74, 0, cz);
+        sentryRoot.add(conduit);
+      }
+
+      // Lower Reactor & Power Core Access Base + Rear Station-Keeping Thruster Assembly (-X rear side)
+      const reactorBase = new THREE.Mesh(this.aegisSentryReactorBaseGeom, frameMat);
+      reactorBase.position.set(-0.35, -2.35, 0);
+      sentryRoot.add(reactorBase);
+
+      const reactorAccent = new THREE.Mesh(this.outpostSupplyCrateGeom, ochreMat);
+      reactorAccent.position.set(-0.35, -2.35, 0);
+      sentryRoot.add(reactorAccent);
+
+      for (const ty of [-2.12, -2.56]) {
+        const thruster = new THREE.Mesh(this.aegisSentryThrusterNozzleGeom, plasmaMat);
+        thruster.rotation.z = Math.PI / 2;
+        thruster.position.set(-1.55, ty, 0);
+        sentryRoot.add(thruster);
+      }
+
+      // Flared Upper Collar & Rotating Top Heavy Plasma Turret
+      const crownCollar = new THREE.Mesh(this.aegisSentryCrownCollarGeom, hullMat);
+      crownCollar.rotation.y = Math.PI / 8;
+      crownCollar.position.set(0, 2.45, 0);
+      sentryRoot.add(crownCollar);
+
+      const topTurretPivot = new THREE.Group();
+      topTurretPivot.position.set(0, 2.98, 0);
+
+      const topHousing = new THREE.Mesh(this.aegisSentryTopTurretGeom, ochreMat);
+      topTurretPivot.add(topHousing);
+
+      const topBarrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, plasmaMat);
+      topBarrel.scale.set(0.78, 0.68, 0.78);
+      topBarrel.rotation.z = -Math.PI / 2;
+      topBarrel.position.set(1.45, 0.06, 0);
+      topTurretPivot.add(topBarrel);
+
+      sentryRoot.add(topTurretPivot);
+      sentryCrownTurrets.push({ pivot: topTurretPivot, phase: sentryIndex * 2.1 });
+
+      // 3 Vertically Stacked Rotating Point-Defense (PDx2) Turrets along the outward (+X) face of the spine
+      for (const [pdIdx, pdY] of [1.35, 0.15, -1.05].entries()) {
+        const pdPivot = new THREE.Group();
+        pdPivot.position.set(0.82, pdY, 0);
+
+        const pdHousing = new THREE.Mesh(this.outpostPdHousingGeom, hullMat);
+        pdPivot.add(pdHousing);
+
+        const pdAmmo = new THREE.Mesh(this.outpostPdAmmoDrumGeom, ochreMat);
+        pdAmmo.position.set(0, -0.26, 0);
+        pdPivot.add(pdAmmo);
+
+        for (const bz of [-0.14, 0.14]) {
+          const pdBarrel = new THREE.Mesh(this.aegisSentryPdBarrelGeom, plasmaMat);
+          pdBarrel.rotation.z = -Math.PI / 2;
+          pdBarrel.position.set(0.62, 0.04, bz);
+          pdPivot.add(pdBarrel);
+        }
+
+        sentryRoot.add(pdPivot);
+        sentryPdTurrets.push({
+          pivot: pdPivot,
+          phase: sentryIndex * 1.4 + pdIdx * 1.1,
+        });
+      }
+
+      return sentryRoot;
+    };
+
+    const sentryStandoffRadius = ringR + 7.2;
+    const sentryAngles = [-Math.PI * 0.6, Math.PI, Math.PI * 0.6];
+    sentryAngles.forEach((theta, idx) => {
+      const sentryTower = buildRemoteSentryTurret(idx);
+      // Map onto circular perimeter around the host planet center (-ringR, 0, 0)
+      sentryTower.position.set(
+        sentryStandoffRadius * Math.cos(theta) - ringR,
+        0,
+        sentryStandoffRadius * Math.sin(theta),
+      );
+      sentryTower.rotation.y = -theta;
+      remoteTurretsGroup.add(sentryTower);
+    });
+
+    // Live turret tracking & planetary shield ripple animation hook
+    root.userData.animateStation = (elapsedSeconds: number): void => {
+      if (!isComplete) {
+        return;
+      }
+
+      for (const [idx, item] of spinalTurrets.entries()) {
+        item.pivot.rotation.y =
+          item.baseYaw + Math.sin(elapsedSeconds * 0.55 + idx * 2.2) * 0.24;
+      }
+      for (const [idx, item] of macroTurrets.entries()) {
+        item.pivot.rotation.y =
+          item.baseYaw + Math.cos(elapsedSeconds * 0.85 + idx * 1.7) * 0.35;
+      }
+      for (const [idx, shell] of shieldShells.entries()) {
+        shell.rotation.y = elapsedSeconds * 0.18 * (idx === 0 ? 1 : -1);
+      }
+      for (const item of sentryCrownTurrets) {
+        item.pivot.rotation.y = Math.sin(elapsedSeconds * 0.75 + item.phase) * 0.55;
+      }
+      for (const item of sentryPdTurrets) {
+        item.pivot.rotation.y = Math.sin(elapsedSeconds * 1.45 + item.phase) * 0.42;
       }
     };
 

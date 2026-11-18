@@ -319,4 +319,34 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     library.updateStationAnimation(techGroup, 2.75, null);
     library.dispose();
   });
+
+  it('constructs the 2-slot Aegis Heavy Orbital Defense Platform and its 3 remote vertical sentry turrets around the planet', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const defenseGroup = library.buildStationMesh(
+      'heavy_defense_platform',
+      true,
+      ringRadius,
+    );
+
+    const mainPlatform = defenseGroup.getObjectByName('aegis_main_platform');
+    const remoteTurrets = defenseGroup.getObjectByName('aegis_remote_sentry_turrets');
+    expect(mainPlatform).toBeDefined();
+    expect(remoteTurrets).toBeDefined();
+    expect(remoteTurrets?.children).toHaveLength(3);
+
+    if (mainPlatform && remoteTurrets) {
+      const mainBbox = new THREE.Box3().setFromObject(mainPlatform);
+      // Main 2-slot double-bastion spans > 28u tangentially and stays clear of the planet's 11.06u atmosphere
+      expect(mainBbox.max.z - mainBbox.min.z).toBeGreaterThan(28);
+      expect(Math.abs(mainBbox.min.x)).toBeLessThan(10.5);
+
+      // Middle remote sentry turret (idx 1, theta = PI) is stationed on the far opposite side of the planet
+      const farSideSentry = remoteTurrets.children[1];
+      expect(farSideSentry?.position.x).toBeLessThan(-ringRadius * 1.8);
+    }
+
+    library.updateStationAnimation(defenseGroup, 5.0, null);
+    library.dispose();
+  });
 });

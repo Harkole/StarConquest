@@ -95,7 +95,7 @@ Structures are built in a visible **orbital ring** around planets. Each planet c
 | **Orbital Dockyard (Shipyard)** | **2 Slots** | Constructs combat ships via manual queues or **toggleable auto-repeat**. Players set rally points or patrol routes directly from Dockyards. Initial Dockyards only build basic craft until expanded via Tech Modules. |
 | **Refinery** | **1 Slot** | Local drop-off and processing center for Ore and Crystals. Spawns 1 free Harvester on completion and can queue additional Harvesters. |
 | **Tech / Specialization Module** | **1 Slot** | Orbital expansion modules that unlock advanced ship hulls (Cruisers, Carriers, Dreadnoughts), increase **Fleet Supply**, or grant doctrine bonuses (e.g., enhanced fighter bays, heavy siege calibration, shield boosters). |
-| **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries and planetary shielding to protect orbital infrastructure against enemy fleets. |
+| **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries, figure-8 planetary shielding, and **3 remote-controlled perimeter sentry turrets** stationed around the far sides of the planet so hostile fleets never have a line-of-sight blind spot (if any gun has line of sight, full platform DPS applies; destroying the main platform destroys its remote sentry turrets). |
 
 ---
 
@@ -310,8 +310,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * **Planned Upgrade**: The **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard`) and **Minerva Tech & Specialization Module** (`buildMinervaTechModule` in `src/client/renderer/stationModels.ts`) currently display procedural proxy hulls inside the Dockyard's dry-dock bays and the Tech Module's holographic R&D projection courts. Once the 5 combat ship 3D models (`fighter`, `destroyer`, `cruiser`, `carrier`, and `dreadnought`) are designed and approved in `docs/artstyle.md`, swap those proxies for the real ship meshes.
 
 ### Outstanding 3D Platform Models (`src/client/renderer/stationModels.ts` & `docs/artstyle.md`)
-Each remaining orbital and deep-space platform will be designed, reviewed, and added to [docs/artstyle.md](./docs/artstyle.md) one at a time:
-1. **Heavy Orbital Defense Platform (`heavy_defense_platform`, 2 Orbital Slots)**: Heavily armed planetary fortress spanning 2 orbital slots with `2,200` shields, `3,500` hull, rapid Point Defence batteries (`45` DPS), and heavy anti-capital turrets (`65` DPS). Currently uses a placeholder cylinder-and-box cross (`defenseBastionGeom` and `defenseWingGeom`).
-2. **Logistics Hub (`logistics_hub`, Deep Space)**: Forward deep-space support station placed near wormholes or asteroid belts; projects a `180`-unit build radius for Defence Towers, stages Fighter Squadrons, and adds `+15` Fleet Supply.
-3. **Point Defence Tower (`point_defence_tower`, Deep Space)**: Fast-tracking turret platform (`0.95` tracking, `0.35s` reload, `18` alpha) built inside a Logistics Hub radius to shred Fighters and Destroyers.
-4. **Hull Breaker Tower (`hull_breaker_tower`, Deep Space)**: Heavy anti-capital weapon platform (`320` alpha, `3.5s` reload, `0.15` tracking) built inside a Logistics Hub radius to punish slow Cruisers, Carriers, and Dreadnoughts.
+All 6 planetary orbital ring structures (`command_and_control`, `refinery`, `planetary_outpost`, `orbital_dockyard`, `tech_module`, and `heavy_defense_platform`) are now complete in `StationModelLibrary`. Each remaining deep-space platform will be designed, reviewed, and added to [docs/artstyle.md](./docs/artstyle.md) one at a time:
+1. **Logistics Hub (`logistics_hub`, Deep Space)**: Forward deep-space support station placed near wormholes or asteroid belts; projects a `180`-unit build radius for Defence Towers, stages Fighter Squadrons, and adds `+15` Fleet Supply.
+2. **Point Defence Tower (`point_defence_tower`, Deep Space)**: Fast-tracking turret platform (`0.95` tracking, `0.35s` reload, `18` alpha) built inside a Logistics Hub radius to shred Fighters and Destroyers.
+3. **Hull Breaker Tower (`hull_breaker_tower`, Deep Space)**: Heavy anti-capital weapon platform (`320` alpha, `3.5s` reload, `0.15` tracking) built inside a Logistics Hub radius to punish slow Cruisers, Carriers, and Dreadnoughts.
