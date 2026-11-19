@@ -41,10 +41,11 @@ export interface MainPanelSignatureParams {
 }
 
 /**
- * Computes a deterministic snapshot signature for every live telemetry field rendered inside the
- * main tactical HUD panel (planet ownership/slots, orbital build progress & completion, Harvester
- * production queues, active/queued docks, deep-space build progress, wormholes, and system reserves).
- * Used by the 250ms HUD poll so final completion transitions and live dock/reserve changes always render.
+ * Computes a deterministic structural snapshot signature for the main tactical HUD panel.
+ * Only structural transitions (selection, ownership, build completion, queue membership,
+ * assigned Harvester membership, deep-space completion, wormhole state) change this signature.
+ * Continuous progress bars, percentages, timers, dock counts, and reserves are patched in-place
+ * via `textContent` so DOM buttons are never destroyed or recreated while the player clicks/hovers.
  */
 export function computeMainPanelSignature(
   sim: GameSimulation,
@@ -61,17 +62,8 @@ export function computeMainPanelSignature(
   const selectedPlanetState = sim.getPlanetState(params.selectedPlanetId);
   const structSig = selectedPlanetState.structures
     .map((s) => {
-      const pct = s.isComplete
-        ? 100
-        : Math.floor((s.buildProgressSeconds / Math.max(1, s.totalBuildTimeSeconds)) * 100);
-      const remSec = s.isComplete
-        ? 0
-        : Math.ceil(s.totalBuildTimeSeconds - s.buildProgressSeconds);
-      const head = s.productionQueue[0];
-      const queueHeadSig = head
-        ? `${head.id}:${Math.max(0, Math.ceil(head.buildTimeSeconds - head.progressSeconds))}`
-        : 'empty';
-      return `${s.id}:${s.isComplete ? 1 : 0}:${pct}:${remSec}:${s.targetResource}:${s.activeDockingHarvesterIds.length}:${s.queuedDockingHarvesterIds.length}:${s.productionQueue.length}:${queueHeadSig}`;
+      const queueIds = s.productionQueue.map((q) => q.id).join(',');
+      return `${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${queueIds}`;
     })
     .join(';');
 
@@ -82,29 +74,18 @@ export function computeMainPanelSignature(
     ? sim
         .getAllHarvesters()
         .filter((h) => h.homeStructureId === selectedStruct.id)
-        .map((h) => {
-          const pct = Math.round((h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100);
-          return `${h.id}:${h.cargoType}:${pct}`;
-        })
+        .map((h) => h.id)
         .join(',')
     : 'none';
 
   const deepSpaceSig = sim
     .getDeepSpaceStructuresInSystem(params.activeSystemId)
-    .map((ds) => {
-      const pct = ds.isComplete
-        ? 100
-        : Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100);
-      return `${ds.id}:${ds.isComplete ? 1 : 0}:${pct}`;
-    })
+    .map((ds) => `${ds.id}:${ds.isComplete ? 1 : 0}`)
     .join(';');
 
   const wormholeSig = params.wormholeStates
     .map((wh) => `${wh.id}:${wh.isOpen ? 1 : 0}`)
     .join(',');
-
-  const sysRes = sim.getSystemResourceSummary(params.activeSystemId);
-  const resSig = `${Math.round(sysRes.remainingOre)}:${Math.round(sysRes.remainingCrystal)}:${Math.round(sysRes.innerBeltRemaining)}`;
 
   return [
     params.activeSystemId,
@@ -118,7 +99,6 @@ export function computeMainPanelSignature(
     assignedHarvesterSig,
     deepSpaceSig,
     wormholeSig,
-    resSig,
   ].join('|');
 }
 
@@ -167,71 +147,93 @@ export function mountSystemHud(
   container.innerHTML = '';
   container.append(topBarEl, harvesterInspectorEl, mainBodyEl);
 
+  // Mount Top Economy Bar DOM once and patch numeric text/classes in-place so buttons never pulse or drop clicks
+  topBarEl.innerHTML = `
+    <div class="econ-metrics">
+      <div class="econ-pill ore">
+        <span class="econ-label">ORE</span>
+        <strong id="econ-ore-val">0</strong>
+      </div>
+      <div class="econ-pill crystal">
+        <span class="econ-label">CRYSTAL</span>
+        <strong id="econ-crystal-val">0</strong>
+      </div>
+      <div class="econ-pill supply">
+        <span class="econ-label">SUPPLY</span>
+        <strong id="econ-supply-val">0 / 0</strong>
+      </div>
+      <div class="econ-pill harvesters">
+        <span class="econ-label">HARVESTERS</span>
+        <strong id="econ-harvesters-val">0</strong>
+      </div>
+    </div>
+    <div class="econ-actions">
+      <button class="hud-btn" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
+        Mining: Local System
+      </button>
+      <button class="hud-btn" data-speed="1">1x</button>
+      <button class="hud-btn" data-speed="2">2x</button>
+      <button class="hud-btn" data-speed="4">4x</button>
+    </div>
+  `;
+
+  const econOreEl = topBarEl.querySelector<HTMLElement>('#econ-ore-val');
+  const econCrystalEl = topBarEl.querySelector<HTMLElement>('#econ-crystal-val');
+  const econSupplyEl = topBarEl.querySelector<HTMLElement>('#econ-supply-val');
+  const econHarvestersEl = topBarEl.querySelector<HTMLElement>('#econ-harvesters-val');
+  const hubMiningBtnEl = topBarEl.querySelector<HTMLButtonElement>(
+    '[data-action="toggle-hub-mining"]',
+  );
+  const speedBtnEls = Array.from(
+    topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
+  );
+
+  hubMiningBtnEl?.addEventListener('click', () => {
+    crossSystemMiningEnabled = !crossSystemMiningEnabled;
+    sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
+    renderEconomyBar();
+  });
+
+  for (const btn of speedBtnEls) {
+    btn.addEventListener('click', () => {
+      const spd = Number(btn.dataset.speed ?? '1');
+      simAdapter.simSpeedMultiplier = spd;
+      renderEconomyBar();
+    });
+  }
+
   function renderEconomyBar(): void {
     const pState = sim.getPlayerState(playerId);
     const playerHarvesters = sim
       .getAllHarvesters()
       .filter((h) => h.ownerId === playerId);
 
-    topBarEl.innerHTML = `
-      <div class="econ-metrics">
-        <div class="econ-pill ore">
-          <span class="econ-label">ORE</span>
-          <strong id="econ-ore-val">${pState.ore}</strong>
-        </div>
-        <div class="econ-pill crystal">
-          <span class="econ-label">CRYSTAL</span>
-          <strong id="econ-crystal-val">${pState.crystal}</strong>
-        </div>
-        <div class="econ-pill supply">
-          <span class="econ-label">SUPPLY</span>
-          <strong>${pState.supplyUsed} / ${pState.supplyCap}</strong>
-        </div>
-        <div class="econ-pill harvesters">
-          <span class="econ-label">HARVESTERS</span>
-          <strong>${playerHarvesters.length}</strong>
-        </div>
-      </div>
-      <div class="econ-actions">
-        <button class="hud-btn ${crossSystemMiningEnabled ? 'active' : ''}" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
-          ${crossSystemMiningEnabled ? 'Mining: Central Hub' : 'Mining: Local System'}
-        </button>
-        <button class="hud-btn ${simAdapter.simSpeedMultiplier === 1 ? 'active' : ''}" data-speed="1">1x</button>
-        <button class="hud-btn ${simAdapter.simSpeedMultiplier === 2 ? 'active' : ''}" data-speed="2">2x</button>
-        <button class="hud-btn ${simAdapter.simSpeedMultiplier === 4 ? 'active' : ''}" data-speed="4">4x</button>
-      </div>
-    `;
-
-    topBarEl
-      .querySelector<HTMLButtonElement>('[data-action="toggle-hub-mining"]')
-      ?.addEventListener('click', () => {
-        crossSystemMiningEnabled = !crossSystemMiningEnabled;
-        sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
-        renderEconomyBar();
-      });
-
-    topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const spd = Number(btn.dataset.speed ?? '1');
-        simAdapter.simSpeedMultiplier = spd;
-        renderEconomyBar();
-      });
-    });
+    if (econOreEl) econOreEl.textContent = `${pState.ore}`;
+    if (econCrystalEl) econCrystalEl.textContent = `${pState.crystal}`;
+    if (econSupplyEl) econSupplyEl.textContent = `${pState.supplyUsed} / ${pState.supplyCap}`;
+    if (econHarvestersEl) econHarvestersEl.textContent = `${playerHarvesters.length}`;
+    if (hubMiningBtnEl) {
+      hubMiningBtnEl.classList.toggle('active', crossSystemMiningEnabled);
+      hubMiningBtnEl.textContent = crossSystemMiningEnabled
+        ? 'Mining: Central Hub'
+        : 'Mining: Local System';
+    }
+    for (const btn of speedBtnEls) {
+      const spd = Number(btn.dataset.speed ?? '1');
+      btn.classList.toggle('active', simAdapter.simSpeedMultiplier === spd);
+    }
   }
 
-  function renderHarvesterInspector(): void {
+  let lastInspectedHarvesterId: string | null = null;
+
+  function patchHarvesterInspectorLive(): void {
     const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
     const selectedHarvester = selectedHarvesterId
       ? sim.getHarvesterById(selectedHarvesterId)
       : undefined;
-
     if (!selectedHarvester) {
-      harvesterInspectorEl.innerHTML = '';
-      harvesterInspectorEl.style.display = 'none';
       return;
     }
-
-    harvesterInspectorEl.style.display = '';
 
     const pct = Math.min(
       100,
@@ -245,38 +247,116 @@ export function mountSystemHud(
       selectedHarvester.cargoType === 'ore'
         ? 'Ore Deposit (Silicate/Iron Boulder)'
         : 'Crystal Deposit (Pale Ice-Blue Cluster)';
-
     const homeLookup = sim.getStructureById(selectedHarvester.homeStructureId);
     const homeLabel = homeLookup
       ? `${ORBITAL_STRUCTURES[homeLookup.structure.structureId].displayName} (${homeLookup.planetState.planet.name})`
       : 'Reassigning...';
+
+    const stateEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-state"]',
+    );
+    if (stateEl) {
+      stateEl.textContent = formatHarvesterState(
+        selectedHarvester.state,
+        selectedHarvester.cargoType,
+      );
+    }
+    const targetEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-target"]',
+    );
+    if (targetEl) targetEl.textContent = targetResourceLabel;
+
+    const homeEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-home"]',
+    );
+    if (homeEl) homeEl.textContent = homeLabel;
+
+    const speedEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-speed"]',
+    );
+    if (speedEl) speedEl.textContent = `${selectedHarvester.currentSpeed.toFixed(1)} u/s`;
+
+    const cargoLabelEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-cargo-label"]',
+    );
+    if (cargoLabelEl) {
+      cargoLabelEl.textContent = `Mined Cargo (${selectedHarvester.cargoType.toUpperCase()})`;
+    }
+
+    const cargoValEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-cargo-val"]',
+    );
+    if (cargoValEl) {
+      cargoValEl.textContent = `${selectedHarvester.cargoAmount.toFixed(1)} / ${selectedHarvester.cargoCapacity} (${pct}%)`;
+    }
+
+    const cargoFillEl = harvesterInspectorEl.querySelector<HTMLElement>(
+      '[data-hud-field="harvester-cargo-fill"]',
+    );
+    if (cargoFillEl) {
+      cargoFillEl.className = `telemetry-progress-fill ${selectedHarvester.cargoType}`;
+      cargoFillEl.style.width = `${pct}%`;
+    }
+
+    const repinBtn = harvesterInspectorEl.querySelector<HTMLButtonElement>(
+      '[data-action="repin-harvester"]',
+    );
+    if (repinBtn) {
+      repinBtn.classList.toggle('active', isCameraPinned);
+      repinBtn.textContent = isCameraPinned
+        ? 'Camera Pinned (Pan to Break)'
+        : 'Pin Camera to Follow';
+    }
+  }
+
+  function renderHarvesterInspector(): void {
+    const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
+    const selectedHarvester = selectedHarvesterId
+      ? sim.getHarvesterById(selectedHarvesterId)
+      : undefined;
+
+    if (!selectedHarvester) {
+      if (lastInspectedHarvesterId !== null) {
+        lastInspectedHarvesterId = null;
+        harvesterInspectorEl.innerHTML = '';
+      }
+      harvesterInspectorEl.style.display = 'none';
+      return;
+    }
+
+    harvesterInspectorEl.style.display = '';
+
+    // If the same Harvester is already rendered, patch live fields in-place without rebuilding buttons
+    if (lastInspectedHarvesterId === selectedHarvester.id) {
+      patchHarvesterInspectorLive();
+      return;
+    }
+    lastInspectedHarvesterId = selectedHarvester.id;
 
     harvesterInspectorEl.innerHTML = `
       <div class="harvester-telemetry-card">
         <div class="telemetry-row">
           <div>
             <strong>Selected: ${selectedHarvester.id.replace('_', ' #')}</strong>
-            <span class="hud-badge">${formatHarvesterState(selectedHarvester.state, selectedHarvester.cargoType)}</span>
+            <span class="hud-badge" data-hud-field="harvester-state"></span>
           </div>
           <div class="telemetry-actions">
-            <button class="hud-btn ${isCameraPinned ? 'active' : ''}" data-action="repin-harvester">
-              ${isCameraPinned ? 'Camera Pinned (Pan to Break)' : 'Pin Camera to Follow'}
-            </button>
+            <button class="hud-btn" data-action="repin-harvester"></button>
             <button class="hud-btn" data-action="deselect-harvester">Close</button>
           </div>
         </div>
         <div class="telemetry-meta">
-          <span><strong>Target:</strong> ${targetResourceLabel}</span>
-          <span><strong>Home:</strong> ${homeLabel}</span>
-          <span><strong>Speed:</strong> ${selectedHarvester.currentSpeed.toFixed(1)} u/s</span>
+          <span><strong>Target:</strong> <span data-hud-field="harvester-target"></span></span>
+          <span><strong>Home:</strong> <span data-hud-field="harvester-home"></span></span>
+          <span><strong>Speed:</strong> <span data-hud-field="harvester-speed"></span></span>
         </div>
         <div class="telemetry-progress-wrap">
           <div class="telemetry-progress-label">
-            <span>Mined Cargo (${selectedHarvester.cargoType.toUpperCase()})</span>
-            <strong>${selectedHarvester.cargoAmount.toFixed(1)} / ${selectedHarvester.cargoCapacity} (${pct}%)</strong>
+            <span data-hud-field="harvester-cargo-label"></span>
+            <strong data-hud-field="harvester-cargo-val"></strong>
           </div>
           <div class="telemetry-progress-bar">
-            <div class="telemetry-progress-fill ${selectedHarvester.cargoType}" style="width: ${pct}%;"></div>
+            <div class="telemetry-progress-fill" data-hud-field="harvester-cargo-fill"></div>
           </div>
         </div>
       </div>
@@ -297,6 +377,8 @@ export function mountSystemHud(
         sceneManager.selectAndPinHarvester(null);
         renderHarvesterInspector();
       });
+
+    patchHarvesterInspectorLive();
   }
 
   let lastMainPanelSignature = '';
@@ -391,7 +473,7 @@ export function mountSystemHud(
         const pct = occupyingStruct.isComplete
           ? 'Ready'
           : `${Math.floor((occupyingStruct.buildProgressSeconds / Math.max(1, occupyingStruct.totalBuildTimeSeconds)) * 100)}%`;
-        label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (${pct})`;
+        label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (<span data-slot-pct="${idx}">${pct}</span>)`;
         stateClass = occupyingStruct.isComplete ? 'occupied' : 'building';
       }
       return `<button class="slot-pill ${stateClass} ${isSelectedSlot ? 'selected' : ''}" data-slot-index="${idx}">
@@ -459,7 +541,7 @@ export function mountSystemHud(
                       );
                       return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-harvester="${h.id}" title="Click to inspect and follow this Harvester">
                         Harvester #${idx + 1}
-                        <span class="hud-badge">${h.cargoType.toUpperCase()} ${pct}%</span>
+                        <span class="hud-badge" data-harvester-badge="${h.id}">${h.cargoType.toUpperCase()} ${pct}%</span>
                       </button>`;
                     })
                     .join('')
@@ -483,7 +565,7 @@ export function mountSystemHud(
                   const label =
                     idx === 0 ? `Harvester (${rem}s)` : `Harvester #${idx + 1}`;
                   return `<button class="hud-btn" data-cancel-queue="${item.id}" data-cancel-struct="${selectedStruct.id}" title="Click to cancel and refund ${hCost.ore} Ore / ${hCost.crystal} Crystal">
-                    ${label} ✕
+                    <span data-queue-label="${item.id}">${label}</span> ✕
                   </button>`;
                 })
                 .join('')}
@@ -495,7 +577,7 @@ export function mountSystemHud(
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
             <div>
               <strong>${cfg.displayName}</strong> (${cfg.slotCost} Slot${cfg.slotCost > 1 ? 's' : ''})
-              — ${selectedStruct.isComplete ? (isDropoffPlatform ? dockStatusText : 'Operational') : `Constructing (${Math.ceil(selectedStruct.totalBuildTimeSeconds - selectedStruct.buildProgressSeconds)}s left)`}
+              — <span data-hud-field="struct-status">${selectedStruct.isComplete ? (isDropoffPlatform ? dockStatusText : 'Operational') : `Constructing (${Math.ceil(selectedStruct.totalBuildTimeSeconds - selectedStruct.buildProgressSeconds)}s left)`}</span>
             </div>
             ${
               isDropoffPlatform
@@ -582,7 +664,7 @@ export function mountSystemHud(
                   : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
                 return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
                   ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
-                  <span class="hud-badge">${statusText}</span>
+                  <span class="hud-badge" data-deepspace-badge="${ds.id}">${statusText}</span>
                 </button>`;
               })
               .join('')}
@@ -593,7 +675,7 @@ export function mountSystemHud(
       <div class="hud-header">
         <div>
           <h1>StarConquest — ${activeSystem.name}</h1>
-          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong>${sysRes.remainingOre}/${sysRes.initialOre} Ore</strong> & <strong>${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal</strong> (Inner Belt: ${innerPct}%)</p>
+          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong data-hud-field="system-reserves-ore">${sysRes.remainingOre}/${sysRes.initialOre} Ore</strong> & <strong data-hud-field="system-reserves-crystal">${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal</strong> <span data-hud-field="system-reserves-inner">(Inner Belt: ${innerPct}%)</span></p>
         </div>
         <button class="hud-btn overview-btn" data-action="overview">System Overview</button>
       </div>
@@ -851,12 +933,125 @@ export function mountSystemHud(
   renderHarvesterInspector();
   renderMainPanel();
 
+  function patchMainPanelLiveTelemetry(): void {
+    const activeSystem = sceneManager.getActiveSystem();
+    const selectedPlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
+
+    // 1. System resource reserves
+    const sysRes = sim.getSystemResourceSummary(activeSystem.id);
+    const innerPct =
+      sysRes.innerBeltInitial > 0
+        ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
+        : 0;
+    const oreResEl = mainBodyEl.querySelector<HTMLElement>(
+      '[data-hud-field="system-reserves-ore"]',
+    );
+    if (oreResEl) oreResEl.textContent = `${sysRes.remainingOre}/${sysRes.initialOre} Ore`;
+    const crystalResEl = mainBodyEl.querySelector<HTMLElement>(
+      '[data-hud-field="system-reserves-crystal"]',
+    );
+    if (crystalResEl) {
+      crystalResEl.textContent = `${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal`;
+    }
+    const innerResEl = mainBodyEl.querySelector<HTMLElement>(
+      '[data-hud-field="system-reserves-inner"]',
+    );
+    if (innerResEl) innerResEl.textContent = `(Inner Belt: ${innerPct}%)`;
+
+    // 2. Orbital slot pill construction percentages
+    for (const s of selectedPlanetState.structures) {
+      const pctText = s.isComplete
+        ? 'Ready'
+        : `${Math.floor((s.buildProgressSeconds / Math.max(1, s.totalBuildTimeSeconds)) * 100)}%`;
+      for (const slotIdx of s.occupiedSlots) {
+        const slotPctEl = mainBodyEl.querySelector<HTMLElement>(
+          `[data-slot-pct="${slotIdx}"]`,
+        );
+        if (slotPctEl) slotPctEl.textContent = pctText;
+      }
+    }
+
+    // 3. Selected structure status (construction countdown or live dock counts), queue timers & assigned Harvesters
+    const selectedStruct = selectedPlanetState.structures.find((s) =>
+      s.occupiedSlots.includes(selectedSlotIndex),
+    );
+    if (selectedStruct) {
+      const isDropoffPlatform =
+        selectedStruct.isComplete &&
+        selectedStruct.ownerId === playerId &&
+        (selectedStruct.structureId === 'refinery' ||
+          selectedStruct.structureId === 'command_and_control');
+      const statusEl = mainBodyEl.querySelector<HTMLElement>(
+        '[data-hud-field="struct-status"]',
+      );
+      if (statusEl) {
+        if (!selectedStruct.isComplete) {
+          statusEl.textContent = `Constructing (${Math.ceil(selectedStruct.totalBuildTimeSeconds - selectedStruct.buildProgressSeconds)}s left)`;
+        } else if (isDropoffPlatform) {
+          const unloadRate = sim.getPlatformUnloadRatePerSecond(selectedStruct);
+          const unloadRateLabel = Number.isInteger(unloadRate)
+            ? `${unloadRate}`
+            : unloadRate.toFixed(1);
+          const maxDocks = sim.getMaxConcurrentDocks(selectedStruct);
+          statusEl.textContent = `Unload: ${unloadRateLabel}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${maxDocks} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`;
+        } else {
+          statusEl.textContent = 'Operational';
+        }
+      }
+
+      selectedStruct.productionQueue.forEach((item, idx) => {
+        const labelEl = mainBodyEl.querySelector<HTMLElement>(
+          `[data-queue-label="${item.id}"]`,
+        );
+        if (labelEl) {
+          const rem = Math.max(
+            0,
+            Math.ceil(item.buildTimeSeconds - item.progressSeconds),
+          );
+          labelEl.textContent =
+            idx === 0 ? `Harvester (${rem}s)` : `Harvester #${idx + 1}`;
+        }
+      });
+
+      if (isDropoffPlatform) {
+        const assignedHarvesters = sim
+          .getAllHarvesters()
+          .filter(
+            (h) => h.ownerId === playerId && h.homeStructureId === selectedStruct.id,
+          );
+        for (const h of assignedHarvesters) {
+          const badgeEl = mainBodyEl.querySelector<HTMLElement>(
+            `[data-harvester-badge="${h.id}"]`,
+          );
+          if (badgeEl) {
+            const pct = Math.round((h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100);
+            badgeEl.textContent = `${h.cargoType.toUpperCase()} ${pct}%`;
+          }
+        }
+      }
+    }
+
+    // 4. Deep-space installation construction percentages
+    for (const ds of sim.getDeepSpaceStructuresInSystem(activeSystem.id)) {
+      const badgeEl = mainBodyEl.querySelector<HTMLElement>(
+        `[data-deepspace-badge="${ds.id}"]`,
+      );
+      if (badgeEl) {
+        badgeEl.textContent = ds.isComplete
+          ? 'Operational'
+          : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
+      }
+    }
+  }
+
   window.setInterval(() => {
     renderEconomyBar();
     renderHarvesterInspector();
     const nextSignature = getCurrentMainPanelSignature();
     if (nextSignature !== lastMainPanelSignature) {
       renderMainPanel();
+    } else {
+      patchMainPanelLiveTelemetry();
     }
   }, 250);
 }

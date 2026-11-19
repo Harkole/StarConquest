@@ -87,7 +87,7 @@ describe('systemHud — computeMainPanelSignature', () => {
     expect(finishedHubSig).not.toBe(almostDoneHubSig);
   });
 
-  it('updates signature when assigned Harvesters on the selected platform change cargo or count', () => {
+  it('keeps structural signature stable during continuous progress/cargo ticks so buttons are not recreated, and updates when Harvester membership changes', () => {
     const sim = new GameSimulation('standard_tactical');
     const homeworld = sim.getPlanetState('system_starter_1_homeworld');
     const cnc = homeworld.structures[0];
@@ -115,9 +115,28 @@ describe('systemHud — computeMainPanelSignature', () => {
       return;
     }
 
-    // Cargo progress on a Harvester belonging to the selected C&C changes the panel signature
+    // Continuous cargo progress ticks must NOT trigger a full DOM innerHTML rebuild
     assigned.cargoAmount = 20;
-    const updatedCargoSig = computeMainPanelSignature(sim, cncParams);
-    expect(updatedCargoSig).not.toBe(initialSig);
+    expect(computeMainPanelSignature(sim, cncParams)).toBe(initialSig);
+
+    // Mid-build countdown progress on a queued Harvester must NOT trigger a full DOM rebuild either
+    expect(
+      sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: cnc.id,
+        shipClassId: 'harvester',
+        autoRepeat: false,
+      }).ok,
+    ).toBe(true);
+    const queuedSig = computeMainPanelSignature(sim, cncParams);
+    expect(queuedSig).not.toBe(initialSig);
+
+    sim.stepTick(3.0);
+    expect(computeMainPanelSignature(sim, cncParams)).toBe(queuedSig);
+
+    // Once the queued Harvester finishes and joins assigned Harvesters, structural signature MUST change
+    sim.stepTick(6.5);
+    expect(computeMainPanelSignature(sim, cncParams)).not.toBe(queuedSig);
   });
 });
