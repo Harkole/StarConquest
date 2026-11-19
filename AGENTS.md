@@ -125,6 +125,7 @@ Every agent must strictly follow this source-control workflow when making code c
 2. **Pre-Commit Build & Test Gate**:
    * **Code must build and pass all unit tests before every commit.**
    * Prior to running `git commit` on the working branch, the agent **must** run the project build (`npm run build` / typecheck) and unit test suite (`npm test` / `vitest run`) and verify zero errors.
+   * **Documentation-Only Exception**: Changes that only modify `.md` files (such as `README.md`, `AGENTS.md`, or `docs/artstyle.md`) do **not** require running `npm run build` or `npm test` before committing.
 3. **Human-Only Pull Request Approval**:
    * All completed branch work must be submitted via Pull Request (or presented ready for PR review).
    * **Every PR must be approved by a human (the user).** The agent must **never** merge a PR or merge a working branch into `main` without explicit human instruction and approval.
