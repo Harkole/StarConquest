@@ -240,3 +240,25 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Crowns the vertical column with the heavy anti-capital spinal plasma cannon mount (`320` alpha, `3.5s` reload, slow `0.15` tracking).
 3. **Point Defence Tower (`point_defence_tower`, `1.30x` Scale)**:
    * Replaces the heavy crown cannon with a compact, rapid-tracking **Quad-Barrel Point-Defence Gatling Crown Turret** (Steel Grey `#64748b` barrels and twin Weathered Ochre `#c27d2c` side ammo drums) paired with a dorsal targeting sensor mast (`18` alpha, `0.35s` reload, rapid `0.95` tracking).
+
+---
+
+### 11. Light Fighter — Carrier/Hub Interceptor "Stinger"
+
+* **Concept Reference**: ![Stinger Light Fighter Concept Art](./fighter-stinger-concept.jpg)
+* **Orthographic Blueprint**: ![Stinger Light Fighter Orthographic Reference](./fighter-stinger-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildStingerFighterMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also staged inside Atlas Logistics Hub bays via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Stinger" Class — Smallest Ship in Game)
+1. **Tiny Carrier/Hub-Borne Scale (`~1.22u` Length × `~1.04u` Wingspan × `~0.50u` Height)**:
+   * Deliberately the smallest combat craft in StarConquest (~38% the length of the Prospector Mining Frigate), sized to fit `2x3` launch catapult formations inside the **Atlas Deep-Space Logistics Hub** and future **Carrier** hangars.
+   * Always operates tethered to a Carrier or Logistics Hub.
+2. **Faceted Multi-Pane Cockpit Canopy (`+Z` Nose) & Signature Weathered Ochre Band**:
+   * Prominent sloped armored glass canopy framed by Dark Charcoal (`#1e232a`) structural mullions atop a rounded gunmetal chin housing.
+   * Chunky procedural PBR Gunmetal Slate (`#46505e`) mid-fuselage wrapped in a vertical **Weathered Ochre (`#cd8734`)** industrial band immediately aft of the cockpit, topped by a small dorsal sensor blister.
+3. **Chin-Mounted Gimbaled Twin-Barrel Autocannon & Cheek Pods**:
+   * Ventral chin gimbal turret mounting **twin parallel machined steel grey (`#8492a6`) barrels** projecting forward past the nose, flanked by paired cylindrical nose-cheek weapon/sensor pods.
+4. **Stacked Outboard Engine Cluster Pods (`x4`) + Upper Dorsal Shoulder Pods (`x2`) + Quad Rear Thrusters**:
+   * Short armored stub wings carry vertically stacked upper/lower cylindrical engine pods (`4` outboard pods total), complemented by `2` upper dorsal shoulder pods and a `2x2` quad rear main thruster bell cluster with Ion Blue-White (`#7dd3fc`) exhaust cores when airborne.
+5. **Hangar-Staged Variant (`staged: true`)**:
+   * Deploys compact twin ventral landing skids and powers down engine exhaust cores when parked on Atlas Logistics Hub or Carrier launch decks.

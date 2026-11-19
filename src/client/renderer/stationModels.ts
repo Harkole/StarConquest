@@ -4,6 +4,7 @@ import type {
   OrbitalStructureId,
 } from '../../shared/config/index.ts';
 import { createProceduralHullTextures } from './proceduralHullTextures.ts';
+import { ShipModelLibrary } from './shipModels.ts';
 
 export type StationOrDeepSpaceStructureId = OrbitalStructureId | DeepSpaceStructureId;
 
@@ -19,6 +20,7 @@ export const AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET = 28;
  */
 export class StationModelLibrary {
   private readonly hullTextures = createProceduralHullTextures();
+  private readonly shipModels = new ShipModelLibrary();
 
   // Standardized PBR Materials with procedural industrial hull textures per docs/artstyle.md
   private readonly primaryHullMat = new THREE.MeshStandardMaterial({
@@ -268,12 +270,6 @@ export class StationModelLibrary {
   );
   private readonly hubHangarPortalGeom = this.registerGeom(
     new THREE.BoxGeometry(0.24, 0.82, 3.2),
-  );
-  private readonly hubFighterBodyGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.26, 0.92, 4),
-  );
-  private readonly hubFighterWingGeom = this.registerGeom(
-    new THREE.BoxGeometry(0.24, 0.06, 0.86),
   );
   private readonly hubSpireTrunkGeom = this.registerGeom(
     new THREE.CylinderGeometry(1.95, 2.75, 5.4, 12),
@@ -664,6 +660,7 @@ export class StationModelLibrary {
     this.techTranslucentDomeMat.dispose();
     this.buildingWireframeMat.dispose();
     this.hullTextures.dispose();
+    this.shipModels.dispose();
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
@@ -2343,14 +2340,13 @@ export class StationModelLibrary {
 
     // 2. Four Diagonal Fighter Hangar Bays & Launch Catapult Systems (45°, 135°, 225°, 315°)
     const buildStagedFighterMesh = (): THREE.Group => {
-      const fighter = new THREE.Group();
-      const body = new THREE.Mesh(this.hubFighterBodyGeom, trimMat);
-      body.rotation.z = -Math.PI / 2;
-      fighter.add(body);
-
-      const wing = new THREE.Mesh(this.hubFighterWingGeom, ochreMat);
-      wing.position.set(-0.1, 0, 0);
-      fighter.add(wing);
+      const fighter = this.shipModels.buildStingerFighterMesh({
+        wireframe: !isComplete,
+        staged: true,
+        scale: 0.92,
+      });
+      // Rotate +Z fighter nose to point outward along the bay's +X launch catapult track
+      fighter.rotation.y = Math.PI / 2;
       return fighter;
     };
 

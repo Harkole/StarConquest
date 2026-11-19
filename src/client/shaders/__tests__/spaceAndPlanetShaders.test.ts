@@ -7,6 +7,7 @@ import {
 } from '../../renderer/planetFactory.ts';
 import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
 import { createProceduralHullTextures } from '../../renderer/proceduralHullTextures.ts';
+import { ShipModelLibrary } from '../../renderer/shipModels.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from '../../renderer/stationModels.ts';
 import {
@@ -559,5 +560,61 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     const volcanicBody = volcanicHandle.rootGroup.children[0] as THREE.Group;
     expect(volcanicBody.children).toHaveLength(2);
     volcanicHandle.dispose();
+  });
+
+  it('constructs the tiny Stinger Light Fighter with machined steel chin barrels, procedural PBR hull, and stages 24 on Atlas Logistics Hub', () => {
+    const ships = new ShipModelLibrary();
+    const airborneFighter = ships.buildShipMesh('fighter');
+    const stagedFighter = ships.buildStingerFighterMesh({ staged: true });
+
+    expect(airborneFighter.name).toBe('ship_fighter_stinger');
+    expect(airborneFighter.getObjectByName('stinger_chin_turret')).toBeDefined();
+
+    const bbox = new THREE.Box3().setFromObject(airborneFighter);
+    const lengthZ = bbox.max.z - bbox.min.z;
+    const widthX = bbox.max.x - bbox.min.x;
+    const heightY = bbox.max.y - bbox.min.y;
+
+    // Smallest ship in the game (~1.2u long x ~1.0u wide x ~0.5u tall)
+    expect(lengthZ).toBeGreaterThan(1.0);
+    expect(lengthZ).toBeLessThan(1.6);
+    expect(widthX).toBeGreaterThan(0.85);
+    expect(widthX).toBeLessThan(1.3);
+    expect(heightY).toBeGreaterThan(0.35);
+    expect(heightY).toBeLessThan(0.75);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    airborneFighter.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    expect(greyBarrelCount).toBe(2);
+    expect(texturedHullCount).toBeGreaterThan(10);
+    expect(violetCount).toBe(0);
+
+    // Staged fighter deploys landing skids (lower min.y) and turns off engine exhaust cores
+    const stagedBox = new THREE.Box3().setFromObject(stagedFighter);
+    expect(stagedBox.min.y).toBeLessThan(bbox.min.y);
+    ships.dispose();
+
+    // Verify Atlas Deep-Space Logistics Hub stages 24 approved Stinger Light Fighters across its 4 bays
+    const stations = new StationModelLibrary();
+    const hub = stations.buildStationMesh('logistics_hub', true);
+    let stagedStingerCount = 0;
+    hub.traverse((obj) => {
+      if (obj.name === 'ship_fighter_stinger') {
+        stagedStingerCount += 1;
+      }
+    });
+    expect(stagedStingerCount).toBe(24);
+    stations.dispose();
   });
 });
