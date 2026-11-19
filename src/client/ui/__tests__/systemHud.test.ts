@@ -139,4 +139,72 @@ describe('systemHud — computeMainPanelSignature', () => {
     sim.stepTick(6.5);
     expect(computeMainPanelSignature(sim, cncParams)).not.toBe(queuedSig);
   });
+
+  it('updates structural signature when Dockyard Rally Point or combat fleet membership changes', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 2000;
+    p1.crystal = 1000;
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'orbital_dockyard',
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(31);
+    const dockyard = homeworld.structures.find(
+      (s) => s.structureId === 'orbital_dockyard',
+    );
+    expect(dockyard).toBeDefined();
+    if (!dockyard) return;
+
+    const dockParams: MainPanelSignatureParams = {
+      activeSystemId: 'system_starter_1',
+      selectedPlanetId: homeworld.planet.id,
+      selectedSlotIndex: 2,
+      selectedHarvesterId: null,
+      pendingDeepSpace: null,
+      statusBannerMessage: '',
+      wormholeStates: [{ id: 'wh_1', isOpen: false }],
+    };
+
+    const sigBeforeRally = computeMainPanelSignature(sim, dockParams);
+    expect(
+      sim.submitCommand({
+        type: 'SET_RALLY_POINT',
+        playerId: 'player_1',
+        dockyardId: dockyard.id,
+        targetSystemId: 'system_central_hub',
+        targetPosition: { x: 200, z: 120 },
+        stance: 'aggressive_push',
+      }).ok,
+    ).toBe(true);
+    const sigAfterRally = computeMainPanelSignature(sim, dockParams);
+    expect(sigAfterRally).not.toBe(sigBeforeRally);
+
+    expect(
+      sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: dockyard.id,
+        shipClassId: 'destroyer',
+        autoRepeat: false,
+      }).ok,
+    ).toBe(true);
+    const sigQueued = computeMainPanelSignature(sim, dockParams);
+    expect(sigQueued).not.toBe(sigAfterRally);
+
+    // Mid-build countdown tick must keep structural signature stable
+    sim.stepTick(5.0);
+    expect(computeMainPanelSignature(sim, dockParams)).toBe(sigQueued);
+
+    // Ship launch changes structural signature
+    sim.stepTick(7.5);
+    expect(computeMainPanelSignature(sim, dockParams)).not.toBe(sigQueued);
+  });
 });
