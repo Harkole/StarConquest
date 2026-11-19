@@ -324,3 +324,12 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
   * **Live Data-Driven Unit & Structure Reference**: Automatically pulls costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/` so stats never drift out of sync with balance changes.
   * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
+
+### Fleet & Shipyard HUD Polish
+* **Click-to-Focus on Fleets**: Clicking a fleet in the Fleet Command HUD should jump/focus the camera directly to that fleet's current location (switching systems if needed).
+* **Collapsible Fleet Manager Panel**: Add a collapse/expand toggle to the Fleet Command window so having many active fleets does not consume excessive screen space.
+* **Simplified Orbital Dockyard Panel**: Replace the legacy per-ship queue, rally/patrol, stance, and individual ship list inside the selected Orbital Dockyard panel with a concise description of the dockyard and a single **Fleet Building: Enabled / Disabled** toggle (defaulting to **Enabled** so the dockyard automatically participates in supplying active fleet templates).
+
+### Fleet Rally Form-Up Bug
+* **Known Issue**: While a fleet is being constructed, not all newly built ships travel to the fleet's green rally point to form up — the first ship reaches the rally point, while subsequent ships stop and gather near the asteroid belt instead of flying to the rally formation.
+* **Planned Fix**: Trace newly spawned fleet ships' target/formation coordinates and `arrivalRadius` / planetary avoidance steering in `src/shared/sim/gameSimulation.ts` so every ship built for a fleet reliably travels to the fleet's active rally/anchor point.
