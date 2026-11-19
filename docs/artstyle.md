@@ -275,7 +275,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 | **Resource Harvester "Prospector"** | `300` | `~3.0u` | `2.5x` |
 | **Destroyer "Havoc"** | `420` | `~4.8u` | `4.0x` |
 | **Cruiser** | `750` | `~7.5u` | `6.2x` |
-| **Fleet Carrier** *(upcoming)* | `1,100` | `~10.5u` | `8.7x` |
+| **Fleet Carrier "Vanguard"** | `1,100` | `~10.5u` | `8.7x` |
 | **Dreadnought "Imperator"** | `2,400` | `~14.5u` | `12.0x` |
 
 ---
@@ -332,3 +332,22 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
    * **3 stepped dorsal twin-barrel Heavy Turrets** (`imperator_dorsal_turret_1..3`), **6 broadside twin-barrel turrets** (3 port, 3 starboard), and **2 ventral turrets** (22 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
 4. **Colossal Quad Outboard Engine Cluster Pods & 6-Nozzle Stern Bank**:
    * Four massive tapered outboard engine pods (`2x2` port/starboard) with dark rib collars and blazing Ion Blue-White (`#7dd3fc`) exhaust cores flanking a `3x2` stern main thruster bank.
+
+---
+
+### 15. Fleet Carrier — Mobile Airbase "Vanguard"
+
+* **Concept Reference**: ![Vanguard Fleet Carrier Concept Art](./carrier-vanguard-concept.jpg)
+* **Orthographic Blueprint**: ![Vanguard Fleet Carrier Orthographic Reference](./carrier-vanguard-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildVanguardCarrierMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also projected on Minerva Tech Module's Port R&D holo-table via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Vanguard" Class — `~10.5u` Length, `~8.7x` Stinger)
+1. **Expansive Flat-Top Flight Deck Module & Under-Deck Launch Hangar (`+Z` Bow)**:
+   * Wide flat-topped forward flight deck (`carrier_flight_deck`, `~6.2u` × `~2.9u`) in Dark Charcoal (`#1e232a`) tarmac framed by Gunmetal Slate (`#46505e`) deck edges, twin **Weathered Ochre (`#cd8734`)** runway border stripes, and Steel Grey centerline markings, staging **4 parked Stinger Light Fighters** right on deck.
+   * Under-deck bow launch hangar mouth with glowing cyan-blue (`#38bdf8`) containment strip.
+2. **Aft Command Bridge Island & Dorsal Geodesic Radar Sphere**:
+   * Multi-tier aft flight-control island (`carrier_command_island`) with warm-amber (`#fbbf24`) panoramic windows, crowned by a prominent **Dorsal Geodesic Radar Sphere** (`290` sensor range) and tall communications mast, backed by Weathered Ochre stern deck armor.
+3. **Defensive Point-Defence Grid (4 Twin-Barrel PD Turrets)**:
+   * 1 forward-island dorsal, 2 broadside, and 1 aft twin-barrel Point-Defence turret (8 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
+4. **Six Vertically Stacked Outboard Engine Cluster Pods (`3` Port + `3` Starboard)**:
+   * Three stacked cylindrical engine pods per stern flank (`6` total) with glowing cyan-blue forward intakes and Ion Blue-White (`#7dd3fc`) exhaust cores.

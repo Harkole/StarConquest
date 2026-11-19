@@ -773,4 +773,52 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(bay1ImperatorCount).toBe(2);
     stations.dispose();
   });
+
+  it('constructs the Vanguard Fleet Carrier at ~10.5u scale with flight deck, 4 staged Stingers, radar sphere, and projects it on Minerva', () => {
+    const ships = new ShipModelLibrary();
+    const cruiser = ships.buildShipMesh('cruiser');
+    const carrier = ships.buildShipMesh('carrier');
+    const dreadnought = ships.buildShipMesh('dreadnought');
+
+    expect(carrier.name).toBe('ship_carrier_vanguard');
+    expect(carrier.getObjectByName('carrier_flight_deck')).toBeDefined();
+    expect(carrier.getObjectByName('carrier_command_island')).toBeDefined();
+    expect(carrier.userData.turretPivots).toBeDefined();
+
+    const cruiserLen =
+      new THREE.Box3().setFromObject(cruiser).max.z -
+      new THREE.Box3().setFromObject(cruiser).min.z;
+    const carrierBox = new THREE.Box3().setFromObject(carrier);
+    const carrierLen = carrierBox.max.z - carrierBox.min.z;
+    const dreadLen =
+      new THREE.Box3().setFromObject(dreadnought).max.z -
+      new THREE.Box3().setFromObject(dreadnought).min.z;
+
+    // Carrier (~10.5u) sits cleanly between Cruiser (~7.5u) and Imperator Dreadnought (~14.5u)
+    expect(carrierLen).toBeGreaterThan(cruiserLen * 1.2);
+    expect(carrierLen).toBeLessThan(dreadLen * 0.85);
+
+    let deckStingerCount = 0;
+    let greyBarrelCount = 0;
+    let violetCount = 0;
+    carrier.traverse((obj) => {
+      if (obj.name === 'ship_fighter_stinger') deckStingerCount += 1;
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    expect(deckStingerCount).toBe(4);
+    // 8 Carrier PD barrels + 8 chin barrels on the 4 deck-staged Stingers = 16
+    expect(greyBarrelCount).toBe(16);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Minerva Tech Module projects the wireframe Vanguard Carrier hologram
+    const stations = new StationModelLibrary();
+    const techModule = stations.buildStationMesh('tech_module', true, 42.56);
+    expect(techModule.getObjectByName('ship_carrier_vanguard')).toBeDefined();
+    stations.dispose();
+  });
 });

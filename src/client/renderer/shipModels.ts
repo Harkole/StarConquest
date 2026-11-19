@@ -407,6 +407,74 @@ export class ShipModelLibrary {
     new THREE.BoxGeometry(0.95, 0.55, 1.95),
   );
 
+  // Fleet Carrier "Vanguard" reusable geometries (canonical ~10.5u length x ~4.4u width x ~3.2u height)
+  private readonly carrierFlightDeckGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.9, 0.28, 6.2),
+  );
+  private readonly carrierTarmacGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.35, 0.04, 6.05),
+  );
+  private readonly carrierRunwayOchreGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.14, 0.055, 5.95),
+  );
+  private readonly carrierRunwayCenterGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.1, 0.055, 5.85),
+  );
+  private readonly carrierLowerHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.45, 1.15, 7.2),
+  );
+  private readonly carrierUnderHangarGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.85, 0.48, 0.65),
+  );
+  private readonly carrierHangarGlowGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.65, 0.14, 0.12),
+  );
+  private readonly carrierAftHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.65, 1.38, 3.6),
+  );
+  private readonly carrierAftOchreDeckGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.55, 0.12, 2.2),
+  );
+  private readonly carrierElevatorHouseGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.45, 0.56, 1.95),
+  );
+  private readonly carrierIslandTier1Geom = this.registerGeom(
+    new THREE.BoxGeometry(1.65, 0.54, 2.05),
+  );
+  private readonly carrierIslandTier2Geom = this.registerGeom(
+    new THREE.BoxGeometry(1.25, 0.44, 1.45),
+  );
+  private readonly carrierIslandWinGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.72, 0.14, 1.85),
+  );
+  private readonly carrierRadarSphereGeom = this.registerGeom(
+    new THREE.IcosahedronGeometry(0.38, 1),
+  );
+  private readonly carrierRadarMastGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.03, 0.055, 1.05, 6),
+  );
+  private readonly carrierPodMainGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.34, 0.39, 2.35, 12).rotateX(Math.PI / 2),
+  );
+  private readonly carrierPodCollarGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.42, 0.42, 0.18, 12).rotateX(Math.PI / 2),
+  );
+  private readonly carrierPodIntakeRimGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.24, 0.34, 0.28, 12).rotateX(Math.PI / 2),
+  );
+  private readonly carrierPodIntakeGlowGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.2, 0.2, 0.05, 12).rotateX(Math.PI / 2),
+  );
+  private readonly carrierPodNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.25, 0.32, 0.44, 12).rotateX(Math.PI / 2),
+  );
+  private readonly carrierExhaustCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.2, 0.2, 0.07, 12).rotateX(Math.PI / 2),
+  );
+  private readonly carrierPodPylonGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.65, 1.45, 1.45),
+  );
+
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
     this.geometries.push(geom);
     return geom;
@@ -443,11 +511,10 @@ export class ShipModelLibrary {
         return this.buildHavocDestroyerMesh(options);
       case 'cruiser':
         return this.buildCruiserMesh(options);
+      case 'carrier':
+        return this.buildVanguardCarrierMesh(options);
       case 'dreadnought':
         return this.buildImperatorDreadnoughtMesh(options);
-      default:
-        // Remaining 1 combat ship class (carrier) will be added next
-        return this.buildCruiserMesh({ ...options, scale: options.scale ?? 1.0 });
     }
   }
 
@@ -1262,6 +1329,205 @@ export class ShipModelLibrary {
           core.position.set(side * 0.72, rowY, -6.92);
           root.add(core);
         }
+      }
+    }
+
+    if (scale !== 1.0) {
+      root.scale.setScalar(scale);
+    }
+
+    return root;
+  }
+
+  /**
+   * Builds the Fleet Carrier "Vanguard" (docs/artstyle.md #15):
+   * - Mobile airbase capital (~10.5u long x ~4.4u wide x ~3.2u tall, ~8.7x Stinger, ~1.4x Cruiser).
+   * - Wide flat-top forward Flight Deck Module (+Z) with dark charcoal tarmac, twin weathered
+   *   ochre runway border stripes, steel centerline markings, under-deck bow launch hangar mouth,
+   *   and 4 staged Stinger Light Fighters ready on deck.
+   * - Aft multi-tier Command Bridge Island (`carrier_command_island`) crowned by a prominent
+   *   Dorsal Geodesic Radar Sphere (`290` sensor range) and tall communications mast.
+   * - Defensive Point-Defence Grid: 4 twin-barrel PD turrets (8 machined steel grey barrels total).
+   * - 6 vertically stacked outboard Engine Cluster Pods (3 port + 3 starboard) with glowing cyan
+   *   intakes and Ion Blue-White exhaust cores.
+   */
+  public buildVanguardCarrierMesh(options: ShipModelBuildOptions = {}): THREE.Group {
+    const wireframe = options.wireframe ?? false;
+    const staged = options.staged ?? false;
+    const scale = options.scale ?? 1.0;
+
+    const root = new THREE.Group();
+    root.name = 'ship_carrier_vanguard';
+
+    const hullMat = wireframe ? this.buildingWireframeMat : this.primaryHullMat;
+    const ochreMat = wireframe ? this.buildingWireframeMat : this.accentOchreMat;
+    const frameMat = wireframe ? this.buildingWireframeMat : this.darkFrameMat;
+    const trimMat = wireframe ? this.buildingWireframeMat : this.steelTrimMat;
+    const barrelMat = wireframe ? this.buildingWireframeMat : this.turretBarrelMat;
+    const cabinMat = wireframe ? this.buildingWireframeMat : this.warmCabinMat;
+    const intakeMat = wireframe ? this.buildingWireframeMat : this.intakeCyanMat;
+    const exhaustMat = wireframe ? this.buildingWireframeMat : this.engineCoreMat;
+
+    // 1. Expansive Flat-Top Forward Flight Deck Module & Under-Deck Launch Hangar (+Z Bow)
+    const flightDeckGroup = new THREE.Group();
+    flightDeckGroup.name = 'carrier_flight_deck';
+
+    const deckPlate = new THREE.Mesh(this.carrierFlightDeckGeom, hullMat);
+    deckPlate.position.set(0, 0.42, 2.05);
+    flightDeckGroup.add(deckPlate);
+
+    const tarmac = new THREE.Mesh(this.carrierTarmacGeom, frameMat);
+    tarmac.position.set(0, 0.57, 2.08);
+    flightDeckGroup.add(tarmac);
+
+    for (const side of [-1, 1]) {
+      const ochreStripe = new THREE.Mesh(this.carrierRunwayOchreGeom, ochreMat);
+      ochreStripe.position.set(side * 0.96, 0.585, 2.08);
+      flightDeckGroup.add(ochreStripe);
+    }
+
+    const centerLine = new THREE.Mesh(this.carrierRunwayCenterGeom, trimMat);
+    centerLine.position.set(0, 0.585, 2.1);
+    flightDeckGroup.add(centerLine);
+
+    // 4 Staged Stinger Light Fighters parked on the flight deck ready to scramble
+    const deckFighterSpots: readonly { readonly x: number; readonly z: number }[] = [
+      { x: -0.52, z: 3.65 },
+      { x: 0.52, z: 3.15 },
+      { x: -0.48, z: 1.95 },
+      { x: 0.52, z: 1.45 },
+    ];
+    for (const spot of deckFighterSpots) {
+      const stinger = this.buildStingerFighterMesh({
+        wireframe,
+        staged: true,
+        scale: 0.48,
+      });
+      stinger.position.set(spot.x, 0.72, spot.z);
+      flightDeckGroup.add(stinger);
+    }
+
+    root.add(flightDeckGroup);
+
+    // Lower armored hull & Under-Deck Bow Launch Hangar Aperture
+    const lowerHull = new THREE.Mesh(this.carrierLowerHullGeom, hullMat);
+    lowerHull.position.set(0, -0.25, 1.05);
+    root.add(lowerHull);
+
+    const underHangar = new THREE.Mesh(this.carrierUnderHangarGeom, frameMat);
+    underHangar.position.set(0, -0.18, 4.72);
+    root.add(underHangar);
+
+    const hangarGlow = new THREE.Mesh(this.carrierHangarGlowGeom, intakeMat);
+    hangarGlow.position.set(0, -0.1, 5.02);
+    root.add(hangarGlow);
+
+    // 2. Aft Hull, Weathered Ochre Stern Deck & Multi-Tier Command Bridge Island + Dorsal Radar Sphere
+    const aftHull = new THREE.Mesh(this.carrierAftHullGeom, hullMat);
+    aftHull.position.set(0, 0.05, -3.15);
+    root.add(aftHull);
+
+    const aftOchreDeck = new THREE.Mesh(this.carrierAftOchreDeckGeom, ochreMat);
+    aftOchreDeck.position.set(0, 0.78, -3.65);
+    root.add(aftOchreDeck);
+
+    const elevatorHouse = new THREE.Mesh(this.carrierElevatorHouseGeom, hullMat);
+    elevatorHouse.position.set(0, 0.82, -0.45);
+    root.add(elevatorHouse);
+
+    const islandGroup = new THREE.Group();
+    islandGroup.name = 'carrier_command_island';
+    islandGroup.position.set(0, 0.85, -1.95);
+
+    const tier1 = new THREE.Mesh(this.carrierIslandTier1Geom, hullMat);
+    tier1.position.set(0, 0.27, 0);
+    islandGroup.add(tier1);
+
+    const tier1Win = new THREE.Mesh(this.carrierIslandWinGeom, cabinMat);
+    tier1Win.position.set(0, 0.34, 0.08);
+    islandGroup.add(tier1Win);
+
+    const tier2 = new THREE.Mesh(this.carrierIslandTier2Geom, frameMat);
+    tier2.position.set(0, 0.74, -0.08);
+    islandGroup.add(tier2);
+
+    const tier2Win = new THREE.Mesh(this.carrierIslandWinGeom, cabinMat);
+    tier2Win.scale.set(0.76, 0.85, 0.76);
+    tier2Win.position.set(0, 0.78, -0.04);
+    islandGroup.add(tier2Win);
+
+    // Prominent Dorsal Geodesic Radar Sphere & Tall Communications Mast
+    const radarSphere = new THREE.Mesh(this.carrierRadarSphereGeom, trimMat);
+    radarSphere.position.set(0, 1.38, -0.12);
+    islandGroup.add(radarSphere);
+
+    const radarMast = new THREE.Mesh(this.carrierRadarMastGeom, frameMat);
+    radarMast.position.set(0.32, 1.48, -0.32);
+    islandGroup.add(radarMast);
+
+    root.add(islandGroup);
+
+    // 3. Defensive Point-Defence Grid (4 Twin-Barrel PD Turrets = 8 Machined Steel Barrels)
+    const pdTurretPivots: THREE.Group[] = [];
+    const pdSpecs: readonly { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number }[] = [
+      { x: 0, y: 1.16, z: 0.42, yaw: 0 },
+      { x: -1.32, y: 0.1, z: 1.85, yaw: -Math.PI / 2 },
+      { x: 1.32, y: 0.1, z: 1.85, yaw: Math.PI / 2 },
+      { x: 0, y: 0.92, z: -4.45, yaw: Math.PI },
+    ];
+    for (const spec of pdSpecs) {
+      const pd = new THREE.Group();
+      pd.position.set(spec.x, spec.y, spec.z);
+      pd.rotation.y = spec.yaw;
+      pd.add(new THREE.Mesh(this.havocPdHousingGeom, frameMat));
+      for (const bx of [-0.035, 0.035]) {
+        const b = new THREE.Mesh(this.havocPdBarrelGeom, barrelMat);
+        b.position.set(bx, 0.02, 0.17);
+        pd.add(b);
+      }
+      root.add(pd);
+      pdTurretPivots.push(pd);
+    }
+
+    root.userData.turretPivots = {
+      pdTurretPivots,
+    };
+
+    // 4. Six Vertically Stacked Outboard Engine Cluster Pods (3 Port + 3 Starboard)
+    for (const side of [-1, 1]) {
+      const pylon = new THREE.Mesh(this.carrierPodPylonGeom, frameMat);
+      pylon.position.set(side * 1.42, 0.0, -3.55);
+      root.add(pylon);
+
+      for (const podY of [0.76, 0.0, -0.76]) {
+        const pod = new THREE.Group();
+        pod.position.set(side * 1.82, podY, -3.65);
+
+        pod.add(new THREE.Mesh(this.carrierPodMainGeom, hullMat));
+
+        const collar = new THREE.Mesh(this.carrierPodCollarGeom, frameMat);
+        collar.position.set(0, 0, -0.15);
+        pod.add(collar);
+
+        const intakeRim = new THREE.Mesh(this.carrierPodIntakeRimGeom, frameMat);
+        intakeRim.position.set(0, 0, 1.24);
+        pod.add(intakeRim);
+
+        const intakeGlow = new THREE.Mesh(this.carrierPodIntakeGlowGeom, intakeMat);
+        intakeGlow.position.set(0, 0, 1.38);
+        pod.add(intakeGlow);
+
+        const nozzle = new THREE.Mesh(this.carrierPodNozzleGeom, frameMat);
+        nozzle.position.set(0, 0, -1.35);
+        pod.add(nozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.carrierExhaustCoreGeom, exhaustMat);
+          core.position.set(0, 0, -1.58);
+          pod.add(core);
+        }
+
+        root.add(pod);
       }
     }
 

@@ -312,18 +312,6 @@ export class StationModelLibrary {
   private readonly techHoloTableGeom = this.registerGeom(
     new THREE.BoxGeometry(1.75, 0.08, 1.55),
   );
-  private readonly techHoloHullMainGeom = this.registerGeom(
-    new THREE.BoxGeometry(0.68, 0.34, 1.35),
-  );
-  private readonly techHoloHullBowGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.38, 0.78, 5),
-  );
-  private readonly techHoloHullWingGeom = this.registerGeom(
-    new THREE.BoxGeometry(1.32, 0.08, 0.58),
-  );
-  private readonly techHoloMiniShipGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.14, 0.42, 4),
-  );
 
   // Titan Orbital Dockyard reusable geometries (2-slot curved fabrication core + twin outward slipways)
   private readonly dockRearCoreSegGeom = this.registerGeom(
@@ -1751,47 +1739,56 @@ export class StationModelLibrary {
           }
         }
       } else if (i === 1) {
-        // 3. Advanced Hull Development Bay (Floating 3D Cyan Wireframe Prototype Ship Hologram)
+        // 3. Advanced Hull Development Bay (Floating 3D Cyan Wireframe Vanguard Fleet Carrier Hologram)
         const holoPad = new THREE.Mesh(this.techHoloTableGeom, holoSurfMat);
         holoPad.position.set(0, 0.28, 0);
         segPivot.add(holoPad);
 
-        const holoShip = new THREE.Group();
+        const holoShip = this.shipModels.buildVanguardCarrierMesh({
+          wireframe: true,
+          staged: true,
+          scale: 0.22,
+        });
+        holoShip.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.material = holoWireMat;
+          }
+        });
         holoShip.position.set(0, 0.92, 0);
-
-        const hullBody = new THREE.Mesh(this.techHoloHullMainGeom, holoWireMat);
-        holoShip.add(hullBody);
-
-        const hullBow = new THREE.Mesh(this.techHoloHullBowGeom, holoWireMat);
-        hullBow.rotation.x = Math.PI / 2;
-        hullBow.position.set(0, 0, 1.05);
-        holoShip.add(hullBow);
-
-        const hullWings = new THREE.Mesh(this.techHoloHullWingGeom, holoWireMat);
-        hullWings.position.set(0, -0.04, -0.15);
-        holoShip.add(hullWings);
 
         segPivot.add(holoShip);
         holoPrototypeShipGroup = holoShip;
       } else if (i === 5) {
-        // 4. Doctrine Integration & Calibration Lab (Tactical Fleet Formation Holo-Table)
+        // 4. Doctrine Integration & Calibration Lab (Tactical Fleet Formation Holo-Table with real ship models)
         const holoTable = new THREE.Mesh(this.techHoloTableGeom, holoSurfMat);
         holoTable.position.set(0, 0.28, 0);
         segPivot.add(holoTable);
 
         const fleetFormation = new THREE.Group();
         fleetFormation.position.set(0, 0.72, 0);
-        const shipOffsets: readonly [number, number, number][] = [
-          [0, 0.14, 0.48],
-          [-0.44, 0.04, 0.05],
-          [0.44, 0.04, 0.05],
-          [-0.68, -0.06, -0.42],
-          [0.68, -0.06, -0.42],
+        const formationSpecs: readonly {
+          readonly ship: 'cruiser' | 'destroyer' | 'fighter';
+          readonly scale: number;
+          readonly pos: readonly [number, number, number];
+        }[] = [
+          { ship: 'cruiser', scale: 0.085, pos: [0, 0.14, 0.42] },
+          { ship: 'destroyer', scale: 0.09, pos: [-0.46, 0.04, 0.04] },
+          { ship: 'destroyer', scale: 0.09, pos: [0.46, 0.04, 0.04] },
+          { ship: 'fighter', scale: 0.18, pos: [-0.68, -0.04, -0.42] },
+          { ship: 'fighter', scale: 0.18, pos: [0.68, -0.04, -0.42] },
         ];
-        for (const [fx, fy, fz] of shipOffsets) {
-          const miniShip = new THREE.Mesh(this.techHoloMiniShipGeom, holoWireMat);
-          miniShip.rotation.x = Math.PI / 2;
-          miniShip.position.set(fx, fy, fz);
+        for (const spec of formationSpecs) {
+          const miniShip = this.shipModels.buildShipMesh(spec.ship, {
+            wireframe: true,
+            staged: true,
+            scale: spec.scale,
+          });
+          miniShip.traverse((obj) => {
+            if (obj instanceof THREE.Mesh) {
+              obj.material = holoWireMat;
+            }
+          });
+          miniShip.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
           fleetFormation.add(miniShip);
         }
         segPivot.add(fleetFormation);
