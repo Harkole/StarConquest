@@ -318,6 +318,95 @@ export class ShipModelLibrary {
     new THREE.BoxGeometry(0.46, 0.26, 0.96),
   );
 
+  // Dreadnought "Imperator" reusable geometries (canonical ~14.5u length x ~5.1u width x ~3.8u height)
+  private readonly imperatorJawUpperGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.45, 0.56, 4.4),
+  );
+  private readonly imperatorJawLowerGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.3, 0.48, 4.25),
+  );
+  private readonly imperatorSpinalCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.44, 0.48, 3.85, 12).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorSpinalRingGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.62, 0.62, 0.16, 12).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorSpinalMuzzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.68, 0.58, 0.48, 12).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorForeHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.75, 1.72, 5.2),
+  );
+  private readonly imperatorOchreStripeGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.84, 0.26, 7.6),
+  );
+  private readonly imperatorCitadelFlareGeom = this.registerGeom(
+    new THREE.CylinderGeometry(2.55, 2.75, 1.85, 6),
+  );
+  private readonly imperatorAftHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.85, 1.75, 4.4),
+  );
+  private readonly imperatorAftOchreDeckGeom = this.registerGeom(
+    new THREE.BoxGeometry(2.7, 0.14, 1.85),
+  );
+  private readonly imperatorBridgeTier1Geom = this.registerGeom(
+    new THREE.BoxGeometry(2.25, 0.68, 2.55),
+  );
+  private readonly imperatorBridgeTier2Geom = this.registerGeom(
+    new THREE.BoxGeometry(1.75, 0.58, 1.95),
+  );
+  private readonly imperatorBridgeTier3Geom = this.registerGeom(
+    new THREE.BoxGeometry(1.25, 0.48, 1.35),
+  );
+  private readonly imperatorBridgeCrownGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.76, 0.36, 0.85),
+  );
+  private readonly imperatorBridgeWindowGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.82, 0.14, 2.02),
+  );
+  private readonly imperatorBridgeMastGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.03, 0.055, 0.85, 6),
+  );
+  private readonly imperatorTurretBaseGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.54, 0.66, 0.28, 10),
+  );
+  private readonly imperatorTurretHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.76, 0.4, 0.92),
+  );
+  private readonly imperatorTurretBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.068, 0.082, 1.55, 8).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorBroadsideHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.36, 0.26, 0.46),
+  );
+  private readonly imperatorBroadsideBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.036, 0.044, 0.65, 6).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorPodMainGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.62, 0.72, 3.15, 14).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorPodCollarGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.77, 0.77, 0.24, 14).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorPodIntakeGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.42, 0.62, 0.42, 14).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorPodNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.46, 0.58, 0.62, 14).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorExhaustCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.38, 0.38, 0.1, 14).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorSternNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.32, 0.42, 0.65, 12).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorSternCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.26, 0.26, 0.09, 12).rotateX(Math.PI / 2),
+  );
+  private readonly imperatorPodPylonGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.95, 0.55, 1.95),
+  );
+
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
     this.geometries.push(geom);
     return geom;
@@ -354,8 +443,10 @@ export class ShipModelLibrary {
         return this.buildHavocDestroyerMesh(options);
       case 'cruiser':
         return this.buildCruiserMesh(options);
+      case 'dreadnought':
+        return this.buildImperatorDreadnoughtMesh(options);
       default:
-        // Remaining 2 combat ship classes (carrier, dreadnought) will be added next
+        // Remaining 1 combat ship class (carrier) will be added next
         return this.buildCruiserMesh({ ...options, scale: options.scale ?? 1.0 });
     }
   }
@@ -931,6 +1022,244 @@ export class ShipModelLibrary {
         if (!staged) {
           const core = new THREE.Mesh(this.cruiserSternCoreGeom, exhaustMat);
           core.position.set(side * 0.42, rowY, -3.64);
+          root.add(core);
+        }
+      }
+    }
+
+    if (scale !== 1.0) {
+      root.scale.setScalar(scale);
+    }
+
+    return root;
+  }
+
+  /**
+   * Builds the Dreadnought "Imperator" (docs/artstyle.md #14):
+   * - Colossal siege capital (~14.5u long x ~5.1u wide x ~3.8u tall, ~12x Stinger, ~3x Havoc).
+   * - Split armored jaw prow (+Z) housing the Integrated Glowing Spinal Siege Battery
+   *   (ice-blue HDR accelerator core wrapped in dark containment rib rings & muzzle crown).
+   * - 3 stepped dorsal superfiring twin-barrel Heavy Turrets (`imperator_dorsal_turret_1..3`),
+   *   6 broadside twin-barrel turrets, and 2 ventral turrets (22 machined steel grey barrels).
+   * - Wide diamond-flared mid-aft armored citadel supporting a towering 4-tier Command Bridge
+   *   Superstructure with glowing panoramic window bands and twin communications masts.
+   * - 4 colossal outboard Engine Cluster Pods (2x2 port/starboard) + 6-nozzle stern main bank.
+   */
+  public buildImperatorDreadnoughtMesh(options: ShipModelBuildOptions = {}): THREE.Group {
+    const wireframe = options.wireframe ?? false;
+    const staged = options.staged ?? false;
+    const scale = options.scale ?? 1.0;
+
+    const root = new THREE.Group();
+    root.name = 'ship_dreadnought_imperator';
+
+    const hullMat = wireframe ? this.buildingWireframeMat : this.primaryHullMat;
+    const ochreMat = wireframe ? this.buildingWireframeMat : this.accentOchreMat;
+    const frameMat = wireframe ? this.buildingWireframeMat : this.darkFrameMat;
+    const trimMat = wireframe ? this.buildingWireframeMat : this.steelTrimMat;
+    const barrelMat = wireframe ? this.buildingWireframeMat : this.turretBarrelMat;
+    const cabinMat = wireframe ? this.buildingWireframeMat : this.warmCabinMat;
+    const intakeMat = wireframe ? this.buildingWireframeMat : this.intakeCyanMat;
+    const exhaustMat = wireframe ? this.buildingWireframeMat : this.engineCoreMat;
+
+    // 1. Split Armored Jaw Prow & Integrated Glowing Spinal Siege Battery (+Z Bow)
+    const upperJaw = new THREE.Mesh(this.imperatorJawUpperGeom, hullMat);
+    upperJaw.position.set(0, 0.74, 4.95);
+    root.add(upperJaw);
+
+    const lowerJaw = new THREE.Mesh(this.imperatorJawLowerGeom, hullMat);
+    lowerJaw.position.set(0, -0.7, 4.88);
+    root.add(lowerJaw);
+
+    const spinalGroup = new THREE.Group();
+    spinalGroup.name = 'imperator_spinal_siege_battery';
+    const spinalCore = new THREE.Mesh(
+      this.imperatorSpinalCoreGeom,
+      staged ? intakeMat : exhaustMat,
+    );
+    spinalCore.position.set(0, 0.02, 4.75);
+    spinalGroup.add(spinalCore);
+
+    for (const ringZ of [3.55, 4.25, 4.95, 5.65]) {
+      const ring = new THREE.Mesh(this.imperatorSpinalRingGeom, frameMat);
+      ring.position.set(0, 0.02, ringZ);
+      spinalGroup.add(ring);
+    }
+
+    const spinalMuzzle = new THREE.Mesh(this.imperatorSpinalMuzzleGeom, frameMat);
+    spinalMuzzle.position.set(0, 0.02, 6.45);
+    spinalGroup.add(spinalMuzzle);
+    root.add(spinalGroup);
+
+    // 2. Massive Forward Hull, Diamond-Flared Mid-Aft Citadel & Aft Hull
+    const foreHull = new THREE.Mesh(this.imperatorForeHullGeom, hullMat);
+    foreHull.position.set(0, 0.04, 1.55);
+    root.add(foreHull);
+
+    const ochreStripe = new THREE.Mesh(this.imperatorOchreStripeGeom, ochreMat);
+    ochreStripe.position.set(0, 0.42, 2.95);
+    root.add(ochreStripe);
+
+    const citadelFlare = new THREE.Mesh(this.imperatorCitadelFlareGeom, hullMat);
+    citadelFlare.position.set(0, 0.06, -1.85);
+    root.add(citadelFlare);
+
+    const aftHull = new THREE.Mesh(this.imperatorAftHullGeom, hullMat);
+    aftHull.position.set(0, 0.04, -4.25);
+    root.add(aftHull);
+
+    const aftOchreDeck = new THREE.Mesh(this.imperatorAftOchreDeckGeom, ochreMat);
+    aftOchreDeck.position.set(0, 0.96, -4.85);
+    root.add(aftOchreDeck);
+
+    // 3. Towering 4-Tier Battleship Command Bridge Superstructure
+    const bridgeGroup = new THREE.Group();
+    bridgeGroup.name = 'imperator_command_citadel';
+    bridgeGroup.position.set(0, 0.98, -1.85);
+
+    const tier1 = new THREE.Mesh(this.imperatorBridgeTier1Geom, hullMat);
+    tier1.position.set(0, 0.34, 0);
+    bridgeGroup.add(tier1);
+
+    const tier1Win = new THREE.Mesh(this.imperatorBridgeWindowGeom, cabinMat);
+    tier1Win.scale.set(1.26, 1.0, 1.28);
+    tier1Win.position.set(0, 0.44, 0);
+    bridgeGroup.add(tier1Win);
+
+    const tier2 = new THREE.Mesh(this.imperatorBridgeTier2Geom, frameMat);
+    tier2.position.set(0, 0.96, -0.08);
+    bridgeGroup.add(tier2);
+
+    const tier2Win = new THREE.Mesh(this.imperatorBridgeWindowGeom, intakeMat);
+    tier2Win.position.set(0, 1.04, -0.08);
+    bridgeGroup.add(tier2Win);
+
+    const tier3 = new THREE.Mesh(this.imperatorBridgeTier3Geom, hullMat);
+    tier3.position.set(0, 1.48, -0.14);
+    bridgeGroup.add(tier3);
+
+    const tier3Win = new THREE.Mesh(this.imperatorBridgeWindowGeom, intakeMat);
+    tier3Win.scale.set(0.72, 0.85, 0.72);
+    tier3Win.position.set(0, 1.56, -0.14);
+    bridgeGroup.add(tier3Win);
+
+    const crown = new THREE.Mesh(this.imperatorBridgeCrownGeom, ochreMat);
+    crown.position.set(0, 1.88, -0.18);
+    bridgeGroup.add(crown);
+
+    for (const mastX of [-0.22, 0.22]) {
+      const mast = new THREE.Mesh(this.imperatorBridgeMastGeom, trimMat);
+      mast.position.set(mastX, 2.42, -0.24);
+      bridgeGroup.add(mast);
+    }
+
+    root.add(bridgeGroup);
+
+    // 4. Three Stepped Dorsal Heavy Turrets + Six Broadside & Two Ventral Secondary Turrets
+    const dorsalTurretPivots: THREE.Group[] = [];
+    const dorsalSpecs: readonly { readonly name: string; readonly y: number; readonly z: number }[] = [
+      { name: 'imperator_dorsal_turret_1', y: 1.08, z: 3.1 },
+      { name: 'imperator_dorsal_turret_2', y: 1.16, z: 1.45 },
+      { name: 'imperator_dorsal_turret_3', y: 1.24, z: -0.15 },
+    ];
+    for (const spec of dorsalSpecs) {
+      const base = new THREE.Mesh(this.imperatorTurretBaseGeom, frameMat);
+      base.position.set(0, spec.y - 0.14, spec.z);
+      root.add(base);
+
+      const pivot = new THREE.Group();
+      pivot.name = spec.name;
+      pivot.position.set(0, spec.y + 0.1, spec.z);
+      pivot.add(new THREE.Mesh(this.imperatorTurretHousingGeom, hullMat));
+
+      for (const bx of [-0.14, 0.14]) {
+        const barrel = new THREE.Mesh(this.imperatorTurretBarrelGeom, barrelMat);
+        barrel.position.set(bx, 0.04, 1.05);
+        pivot.add(barrel);
+      }
+      root.add(pivot);
+      dorsalTurretPivots.push(pivot);
+    }
+
+    const broadsideTurretPivots: THREE.Group[] = [];
+    for (const side of [-1, 1]) {
+      for (const zPos of [3.2, 1.55, -0.15]) {
+        const bTurret = new THREE.Group();
+        bTurret.position.set(side * 1.45, -0.05, zPos);
+        bTurret.rotation.y = side * (Math.PI / 2);
+        bTurret.add(new THREE.Mesh(this.imperatorBroadsideHousingGeom, frameMat));
+        for (const bx of [-0.075, 0.075]) {
+          const barrel = new THREE.Mesh(this.imperatorBroadsideBarrelGeom, barrelMat);
+          barrel.position.set(bx, 0.02, 0.42);
+          bTurret.add(barrel);
+        }
+        root.add(bTurret);
+        broadsideTurretPivots.push(bTurret);
+      }
+    }
+
+    for (const zPos of [2.45, 0.45]) {
+      const vTurret = new THREE.Group();
+      vTurret.position.set(0, -0.92, zPos);
+      vTurret.add(new THREE.Mesh(this.imperatorBroadsideHousingGeom, frameMat));
+      for (const bx of [-0.075, 0.075]) {
+        const barrel = new THREE.Mesh(this.imperatorBroadsideBarrelGeom, barrelMat);
+        barrel.position.set(bx, -0.02, 0.42);
+        vTurret.add(barrel);
+      }
+      root.add(vTurret);
+      broadsideTurretPivots.push(vTurret);
+    }
+
+    root.userData.turretPivots = {
+      dorsalTurretPivots,
+      broadsideTurretPivots,
+    };
+
+    // 5. Colossal Quad Outboard Engine Cluster Pods (2x2 Port/Starboard) + 6-Nozzle Stern Main Bank
+    for (const side of [-1, 1]) {
+      const pylon = new THREE.Mesh(this.imperatorPodPylonGeom, frameMat);
+      pylon.position.set(side * 1.68, 0.0, -4.55);
+      root.add(pylon);
+
+      for (const podY of [0.76, -0.72]) {
+        const pod = new THREE.Group();
+        pod.position.set(side * 2.15, podY, -4.65);
+
+        pod.add(new THREE.Mesh(this.imperatorPodMainGeom, hullMat));
+
+        const collar = new THREE.Mesh(this.imperatorPodCollarGeom, frameMat);
+        collar.position.set(0, 0, -0.25);
+        pod.add(collar);
+
+        const intake = new THREE.Mesh(this.imperatorPodIntakeGeom, frameMat);
+        intake.position.set(0, 0, 1.65);
+        pod.add(intake);
+
+        const nozzle = new THREE.Mesh(this.imperatorPodNozzleGeom, frameMat);
+        nozzle.position.set(0, 0, -1.82);
+        pod.add(nozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.imperatorExhaustCoreGeom, exhaustMat);
+          core.position.set(0, 0, -2.14);
+          pod.add(core);
+        }
+
+        root.add(pod);
+      }
+    }
+
+    // 3x2 Rear Stern Main Thruster Bank
+    for (const side of [-1, 1]) {
+      for (const rowY of [-0.55, 0.05, 0.65]) {
+        const sternNozzle = new THREE.Mesh(this.imperatorSternNozzleGeom, frameMat);
+        sternNozzle.position.set(side * 0.72, rowY, -6.58);
+        root.add(sternNozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.imperatorSternCoreGeom, exhaustMat);
+          core.position.set(side * 0.72, rowY, -6.92);
           root.add(core);
         }
       }

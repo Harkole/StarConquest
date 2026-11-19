@@ -721,4 +721,56 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(stagedCruiserCount).toBe(1);
     stations.dispose();
   });
+
+  it('constructs the Imperator Dreadnought at ~14.5u scale with spinal siege battery, 4-tier citadel, and stages it in Titan Dockyard Slot 1', () => {
+    const ships = new ShipModelLibrary();
+    const cruiser = ships.buildShipMesh('cruiser');
+    const dreadnought = ships.buildShipMesh('dreadnought');
+
+    expect(dreadnought.name).toBe('ship_dreadnought_imperator');
+    expect(dreadnought.getObjectByName('imperator_spinal_siege_battery')).toBeDefined();
+    expect(dreadnought.getObjectByName('imperator_command_citadel')).toBeDefined();
+    expect(dreadnought.userData.turretPivots).toBeDefined();
+
+    const cBox = new THREE.Box3().setFromObject(cruiser);
+    const dBox = new THREE.Box3().setFromObject(dreadnought);
+    const cruiserLen = cBox.max.z - cBox.min.z;
+    const dreadLen = dBox.max.z - dBox.min.z;
+
+    // Colossal capital ship (~14.5u long, ~1.9x Cruiser)
+    expect(dreadLen).toBeGreaterThan(13.2);
+    expect(dreadLen).toBeLessThan(15.8);
+    expect(dreadLen).toBeGreaterThan(cruiserLen * 1.75);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    dreadnought.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    // 6 dorsal heavy barrels + 16 broadside/ventral barrels = 22
+    expect(greyBarrelCount).toBe(22);
+    expect(texturedHullCount).toBeGreaterThan(20);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Titan Orbital Dockyard Slot 1 fabricates the approved Imperator Dreadnought (wireframe + solid pair)
+    const stations = new StationModelLibrary();
+    const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    let bay1ImperatorCount = 0;
+    dockyard.traverse((obj) => {
+      if (obj.name === 'ship_dreadnought_imperator') {
+        bay1ImperatorCount += 1;
+      }
+    });
+    expect(bay1ImperatorCount).toBe(2);
+    stations.dispose();
+  });
 });

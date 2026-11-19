@@ -276,7 +276,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 | **Destroyer "Havoc"** | `420` | `~4.8u` | `4.0x` |
 | **Cruiser** | `750` | `~7.5u` | `6.2x` |
 | **Fleet Carrier** *(upcoming)* | `1,100` | `~10.5u` | `8.7x` |
-| **Dreadnought** *(upcoming)* | `2,400` | `~14.5u` | `12.0x` |
+| **Dreadnought "Imperator"** | `2,400` | `~14.5u` | `12.0x` |
 
 ---
 
@@ -314,3 +314,21 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
    * **6 broadside** (3 port, 3 starboard), **2 ventral**, and **1 bow dorsal** twin-barrel Point-Defence turrets (22 machined steel barrels total, exposed via `userData.turretPivots`) built to shred Fighter swarms.
 4. **Heavy Quad Outboard Engine Cluster Pods & Quad Stern Thrusters**:
    * Four heavy cylindrical outboard engine pods (`2x2` port/starboard) with glowing cyan-blue (`#38bdf8`) forward intakes and Ion Blue-White (`#7dd3fc`) exhaust cores, backed by a `2x2` stern main thruster cluster.
+
+---
+
+### 14. Dreadnought — Heavy Siege Capital "Imperator"
+
+* **Concept Reference**: ![Imperator Dreadnought Concept Art](./dreadnought-imperator-concept.jpg)
+* **Orthographic Blueprint**: ![Imperator Dreadnought Orthographic Reference](./dreadnought-imperator-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildImperatorDreadnoughtMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also progressively fabricated inside Titan Orbital Dockyard Slot 1 via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Imperator" Class — `~14.5u` Length, `~12x` Stinger)
+1. **Split Armored Jaw Prow & Integrated Glowing Spinal Siege Battery (`+Z` Bow)**:
+   * Colossal upper and lower armored bow jaws framing the **Integrated Spinal Siege Battery** (`imperator_spinal_siege_battery`) — a glowing ice-blue HDR accelerator core (`#7dd3fc`) wrapped in dark charcoal containment rib rings and a heavy muzzle crown.
+2. **Towering 4-Tier Battleship Command Citadel & Diamond-Flared Mid-Aft Hull**:
+   * Wide hexagonal/diamond-flared mid-aft armored hull anchoring a 4-tier stepped **Command Bridge Citadel** (`imperator_command_citadel`) with warm-amber and cyan-white panoramic window bands, weathered ochre crown cap, and twin communications masts.
+3. **Superfiring Dorsal Heavy Turrets & Broadside Secondary Batteries**:
+   * **3 stepped dorsal twin-barrel Heavy Turrets** (`imperator_dorsal_turret_1..3`), **6 broadside twin-barrel turrets** (3 port, 3 starboard), and **2 ventral turrets** (22 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
+4. **Colossal Quad Outboard Engine Cluster Pods & 6-Nozzle Stern Bank**:
+   * Four massive tapered outboard engine pods (`2x2` port/starboard) with dark rib collars and blazing Ion Blue-White (`#7dd3fc`) exhaust cores flanking a `3x2` stern main thruster bank.

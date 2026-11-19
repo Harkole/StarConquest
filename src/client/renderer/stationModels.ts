@@ -398,18 +398,6 @@ export class StationModelLibrary {
   private readonly dockWeldingFlareGeom = this.registerGeom(
     new THREE.SphereGeometry(0.22, 8, 8),
   );
-  private readonly dockDreadHullSternGeom = this.registerGeom(
-    new THREE.BoxGeometry(3.4, 1.15, 2.55),
-  );
-  private readonly dockDreadHullMidGeom = this.registerGeom(
-    new THREE.BoxGeometry(4.2, 1.05, 2.25),
-  );
-  private readonly dockDreadHullBowGeom = this.registerGeom(
-    new THREE.ConeGeometry(1.38, 3.4, 6),
-  );
-  private readonly dockDreadBridgeGeom = this.registerGeom(
-    new THREE.BoxGeometry(2.1, 0.72, 1.35),
-  );
   private readonly dockLaserScannerPlaneGeom = this.registerGeom(
     new THREE.BoxGeometry(0.16, 2.1, 4.4),
   );
@@ -1467,39 +1455,23 @@ export class StationModelLibrary {
       }
     }
 
-    // 5. Progressive 3D Fleet Hull Assemblies Inside Slot 1 (Dreadnought Bay) & Slot 2 (Cruiser Bay)
-    const buildDreadnoughtHullAssembly = (mat: THREE.Material, accent: THREE.Material): THREE.Group => {
-      const shipGroup = new THREE.Group();
-      const stern = new THREE.Mesh(this.dockDreadHullSternGeom, mat);
-      stern.position.set(4.1, 0.25, 0);
-      shipGroup.add(stern);
-
-      const mid = new THREE.Mesh(this.dockDreadHullMidGeom, mat);
-      mid.position.set(7.6, 0.22, 0);
-      shipGroup.add(mid);
-
-      const bow = new THREE.Mesh(this.dockDreadHullBowGeom, accent);
-      bow.rotation.z = -Math.PI / 2;
-      bow.position.set(11.1, 0.18, 0);
-      shipGroup.add(bow);
-
-      const bridge = new THREE.Mesh(this.dockDreadBridgeGeom, accent);
-      bridge.position.set(5.4, 0.98, 0);
-      shipGroup.add(bridge);
-
+    // 5. Progressive 3D Fleet Hull Assemblies Inside Slot 1 (Imperator Dreadnought Bay) & Slot 2 (Cruiser Bay)
+    const buildStagedImperatorAssembly = (wireframe: boolean): THREE.Group => {
+      const shipGroup = this.shipModels.buildImperatorDreadnoughtMesh({
+        wireframe,
+        staged: true,
+        scale: 0.72,
+      });
+      shipGroup.rotation.y = Math.PI / 2;
+      shipGroup.position.set(7.6, 0.35, bay1Z);
       return shipGroup;
     };
 
-    // Slot 1 (Bay 1): Wireframe skeletal cradle + solid armored hull that progressive-fills + laser scanner plane
-    const bay1WireframeHull = buildDreadnoughtHullAssembly(
-      this.buildingWireframeMat,
-      this.buildingWireframeMat,
-    );
-    bay1WireframeHull.position.set(0, 0, bay1Z);
+    // Slot 1 (Bay 1): Wireframe skeletal cradle + solid armored Imperator hull that progressive-fills + laser scanner plane
+    const bay1WireframeHull = buildStagedImperatorAssembly(true);
     slipwaysGroup.add(bay1WireframeHull);
 
-    const bay1SolidHull = buildDreadnoughtHullAssembly(hullMat, ochreMat);
-    bay1SolidHull.position.set(0, 0, bay1Z);
+    const bay1SolidHull = buildStagedImperatorAssembly(!isComplete);
     slipwaysGroup.add(bay1SolidHull);
 
     const laserScannerPlane = new THREE.Mesh(
