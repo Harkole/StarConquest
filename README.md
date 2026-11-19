@@ -329,15 +329,5 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * **Known Issue**: Inside the **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard` in `src/client/renderer/stationModels.ts`), the **Imperator Dreadnought** staged in Slot 1 (`Primary Dreadnought Bay`) protrudes out the rear bulkhead of the dockyard.
 * **Planned Fix**: Extend the Dreadnought dry-dock slipway length (and shift the fabrication cradle forward) so the full Imperator Dreadnought hull fits cleanly inside the bay with clearance on both stern and bow.
 
-### Dynamic Empty-When-Idle Dockyard Slipways & Dual-Bay Parallel Ship Construction
-* **Planned Design Change**:
-  * **Empty Slipways When Idle**: Titan Orbital Dockyard bays should **not** display any static ship models when nothing is queued. When a ship is queued, each active slipway should dynamically render the exact queued ship class model (`fighter`, `destroyer`, `cruiser`, `carrier`, or `dreadnought`) being progressively fabricated under the gantry cranes and laser scanner.
-  * **Dual-Bay Parallel Construction**: Upgrade Orbital Dockyards in `src/shared/sim/gameSimulation.ts` to construct **2 ships simultaneously** (one per dry-dock slipway), maximizing the visual and tactical utility of both bays.
-
-### Fleet Management, Template Production, Auto-Resupply & Fleet-Wide Right-Click Orders
-* **Planned Feature**: Upgrade the Step 3 prototype Dockyard controls to the canonical **Fleet-First Command System** (Section 6):
-  * **Fleet Manager UI**: Create fleets (with initial Rally Point), configure desired counts of `Destroyer / Cruiser / Carrier / Dreadnought`, toggle **Auto-Resupply (`ON`/`OFF`)**, set stance (**Aggressive**, **Hold the Line**, **Passive**), and **split / merge** fleets.
-  * **Distributed Smallest-First Shipyard Scheduler**: Completed Orbital Dockyards automatically build missing fleet hulls smallest-first (`Destroyer → Cruiser → Carrier → Dreadnought`) and dispatch replacements straight to the live fleet's position (or Rally Point if empty).
-  * **Whole-Fleet Selection & Right-Click Orders**: Clicking any ship selects its entire fleet; short right-click taps issue fleet-wide **Move** or **Attack** orders (distinguished from right-drag camera orbit), alongside fleet-level **Patrol Routes**.
-  * **Formation Cruise Speed**: Fleets match their slowest ship while cruising and break to individual hull speeds once in combat range.
-  * **Automatic Fighter Wings**: Fighters are auto-built and launched automatically by Carriers and Logistics Hubs rather than manually queued in Fleet Templates.
+### Dynamic Empty-When-Idle Dockyard Slipways
+* **Planned Design Change**: Orbital Dockyards already construct **2 ships simultaneously** in `src/shared/sim/gameSimulation.ts` (`DOCKYARD_MAX_PARALLEL_BAYS = 2`). Update the 3D `buildTitanOrbitalDockyard` renderer in `src/client/renderer/stationModels.ts` so both dry-dock slipways stay empty when idle and dynamically render the exact queued ship class model being fabricated in each active bay.
