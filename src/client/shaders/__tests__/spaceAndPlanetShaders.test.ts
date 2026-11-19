@@ -515,4 +515,49 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     library.dispose();
   });
+
+  it('omits atmospheric halo and rim haze on airless barren_rock planets while keeping them on terran and volcanic worlds', () => {
+    expect(PLANET_SHADER_THEME_PARAMS.barren_rock.hasAtmosphere).toBe(false);
+    expect(PLANET_SHADER_THEME_PARAMS.barren_rock.atmosphereIntensity).toBe(0);
+    expect(PLANET_SHADER_THEME_PARAMS.barren_rock.atmosphereColor).toEqual([0, 0, 0]);
+    expect(PLANET_SHADER_THEME_PARAMS.terran.hasAtmosphere).toBe(true);
+    expect(PLANET_SHADER_THEME_PARAMS.super_earth.hasAtmosphere).toBe(true);
+    expect(PLANET_SHADER_THEME_PARAMS.volcanic_lava.hasAtmosphere).toBe(true);
+
+    const sunDir = new THREE.Vector3(1, 0.3, 0.5).normalize();
+    const barrenHandle = createLivingPlanetGroup(
+      {
+        id: 'test_barren',
+        systemId: 'system_starter_1',
+        name: 'Test Barren',
+        planetClass: 'small',
+        visualTheme: 'barren_rock',
+        orbitalSlots: 6,
+        position: { x: 0, z: 0 },
+        ownerId: null,
+      },
+      sunDir,
+    );
+    // bodyGroup is the first child of rootGroup: airless barren_rock should only have the 1 surface sphere mesh
+    const barrenBody = barrenHandle.rootGroup.children[0] as THREE.Group;
+    expect(barrenBody.children).toHaveLength(1);
+    barrenHandle.dispose();
+
+    const volcanicHandle = createLivingPlanetGroup(
+      {
+        id: 'test_volcanic',
+        systemId: 'system_starter_1',
+        name: 'Test Volcanic',
+        planetClass: 'medium',
+        visualTheme: 'volcanic_lava',
+        orbitalSlots: 8,
+        position: { x: 0, z: 0 },
+        ownerId: null,
+      },
+      sunDir,
+    );
+    const volcanicBody = volcanicHandle.rootGroup.children[0] as THREE.Group;
+    expect(volcanicBody.children).toHaveLength(2);
+    volcanicHandle.dispose();
+  });
 });

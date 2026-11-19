@@ -159,29 +159,31 @@ export function createLivingPlanetGroup(
     bodyGroup.add(cloudMesh);
   }
 
-  // 3. Outer Fresnel Atmospheric Halo Shell
-  const atmosphereGeometry = new THREE.SphereGeometry(radius * 1.125, 48, 48);
-  disposables.push(atmosphereGeometry);
+  // 3. Outer Fresnel Atmospheric Halo Shell (omitted on airless barren_rock worlds)
+  if (themeParams.hasAtmosphere && themeParams.atmosphereIntensity > 0) {
+    const atmosphereGeometry = new THREE.SphereGeometry(radius * 1.125, 48, 48);
+    disposables.push(atmosphereGeometry);
 
-  const atmosphereMaterial = new THREE.ShaderMaterial({
-    vertexShader: PLANET_COMMON_VERTEX_SHADER,
-    fragmentShader: ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
-    uniforms: {
-      uSunDirection: { value: sunDirection.clone().normalize() },
-      uAtmosphereColor: {
-        value: new THREE.Color(...themeParams.atmosphereColor),
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: PLANET_COMMON_VERTEX_SHADER,
+      fragmentShader: ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uSunDirection: { value: sunDirection.clone().normalize() },
+        uAtmosphereColor: {
+          value: new THREE.Color(...themeParams.atmosphereColor),
+        },
+        uAtmosphereIntensity: { value: themeParams.atmosphereIntensity },
       },
-      uAtmosphereIntensity: { value: themeParams.atmosphereIntensity },
-    },
-  });
-  disposables.push(atmosphereMaterial);
+    });
+    disposables.push(atmosphereMaterial);
 
-  const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-  bodyGroup.add(atmosphereMesh);
+    const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    bodyGroup.add(atmosphereMesh);
+  }
 
   // 4. Orbital Ring Track & Dynamic Slot Stations (6, 8, 10, or 12 slots)
   const orbitalGroup = new THREE.Group();

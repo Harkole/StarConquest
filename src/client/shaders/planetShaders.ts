@@ -2,6 +2,7 @@ import type { PlanetVisualTheme } from '../../shared/config/index.ts';
 
 export interface PlanetShaderThemeParams {
   readonly theme: PlanetVisualTheme;
+  readonly hasAtmosphere: boolean;
   readonly hasDriftingClouds: boolean;
   readonly cloudDriftSpeed: number;
   readonly cloudCoverage: number;
@@ -14,6 +15,7 @@ export interface PlanetShaderThemeParams {
 export const PLANET_SHADER_THEME_PARAMS: Readonly<Record<PlanetVisualTheme, PlanetShaderThemeParams>> = {
   terran: {
     theme: 'terran',
+    hasAtmosphere: true,
     hasDriftingClouds: true,
     cloudDriftSpeed: 0.038,
     cloudCoverage: 0.48,
@@ -24,6 +26,7 @@ export const PLANET_SHADER_THEME_PARAMS: Readonly<Record<PlanetVisualTheme, Plan
   },
   super_earth: {
     theme: 'super_earth',
+    hasAtmosphere: true,
     hasDriftingClouds: true,
     cloudDriftSpeed: 0.045,
     cloudCoverage: 0.54,
@@ -34,6 +37,7 @@ export const PLANET_SHADER_THEME_PARAMS: Readonly<Record<PlanetVisualTheme, Plan
   },
   volcanic_lava: {
     theme: 'volcanic_lava',
+    hasAtmosphere: true,
     hasDriftingClouds: false,
     cloudDriftSpeed: 0.0,
     cloudCoverage: 0.0,
@@ -44,11 +48,12 @@ export const PLANET_SHADER_THEME_PARAMS: Readonly<Record<PlanetVisualTheme, Plan
   },
   barren_rock: {
     theme: 'barren_rock',
+    hasAtmosphere: false,
     hasDriftingClouds: false,
     cloudDriftSpeed: 0.0,
     cloudCoverage: 0.0,
-    atmosphereColor: [0.55, 0.64, 0.78],
-    atmosphereIntensity: 0.55,
+    atmosphereColor: [0.0, 0.0, 0.0],
+    atmosphereIntensity: 0.0,
     lavaEmissionStrength: 0.0,
     oceanLevel: 0.0,
   },
