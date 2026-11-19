@@ -26,6 +26,10 @@ import {
   type GalaxyTopology,
   type PlanetNode,
 } from './galaxy.ts';
+import {
+  type PlanetaryObstacle,
+  computeObstacleAwareStep,
+} from './navigation.ts';
 
 export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
 
@@ -1568,29 +1572,37 @@ export class GameSimulation {
     return undefined;
   }
 
+  public getPlanetaryObstaclesInSystem(systemId: string): readonly PlanetaryObstacle[] {
+    const system = this.galaxy.systems.find((s) => s.id === systemId);
+    if (!system) {
+      return [];
+    }
+    return system.planets.map((p) => ({
+      id: p.id,
+      position: p.position,
+      // 1.24x clears the 1.125x atmosphere halo while remaining inside the 1.52x orbital ring
+      avoidRadius: PLANET_CLASSES[p.planetClass].radiusUnits * 1.24,
+    }));
+  }
+
   private movePositionTowards(
     harvester: HarvesterUnitState,
     target: Vector2D,
     maxStep: number,
     arrivalRadius = 2.0,
   ): boolean {
-    const dx = target.x - harvester.position.x;
-    const dz = target.z - harvester.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist <= arrivalRadius + maxStep) {
-      harvester.position = {
-        x: target.x - (dx / Math.max(0.001, dist)) * arrivalRadius,
-        z: target.z - (dz / Math.max(0.001, dist)) * arrivalRadius,
-      };
-      return true;
+    const obstacles = this.getPlanetaryObstaclesInSystem(harvester.currentSystemId);
+    const step = computeObstacleAwareStep(
+      harvester.position,
+      target,
+      maxStep,
+      obstacles,
+      arrivalRadius,
+    );
+    harvester.position = step.position;
+    if (step.movedDistance > 1e-5) {
+      harvester.headingRadians = step.headingRadians;
     }
-    const nx = dx / dist;
-    const nz = dz / dist;
-    harvester.headingRadians = Math.atan2(nx, nz);
-    harvester.position = {
-      x: harvester.position.x + nx * maxStep,
-      z: harvester.position.z + nz * maxStep,
-    };
-    return false;
+    return step.arrived;
   }
 }
