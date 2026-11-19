@@ -300,10 +300,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * **Timing & Rationale**: Intentionally deferred to the upcoming **Fleet Navigation & Movement** branch so Harvesters, combat fleets, rally points, and patrol routes all share one unified 2D planetary obstacle-avoidance / tangential-arc steering solver in `src/shared/sim/` instead of implementing a throwaway Harvester-only workaround.
 * **Planned Fix**: Build a shared planetary obstacle avoidance and tangential waypoint steering helper around planet radii (plus atmospheric clearance) and apply it to both Harvesters and combat ships.
 
-### Blitz Skirmish Economy Multiplier Scaling
-* **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
-* **Planned Fix**: Apply `harvestRateMultiplier` to platform unload rates in **Blitz Skirmish** so the overall economy scales closer to `1.5x–1.6x`. Also consider allowing two times more harvesters to dock at refineries, the CnC building is already allowing double.
-
 ### Orbital Dockyard Slipway, Tech Module Hologram & Logistics Hub Fighter Models
 * **Planned Upgrade**: The **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard`), **Minerva Tech & Specialization Module** (`buildMinervaTechModule`), and **Atlas Deep-Space Logistics Hub** (`buildAtlasLogisticsHub` in `src/client/renderer/stationModels.ts`) currently display procedural proxy hulls inside the Dockyard's dry-dock bays, the Tech Module's holographic R&D projection courts, and the Logistics Hub's 4 diagonal Fighter Hangar Bays. Once the 5 combat ship 3D models (`fighter`, `destroyer`, `cruiser`, `carrier`, and `dreadnought`) are designed and approved in `docs/artstyle.md`, swap those proxies for the real ship meshes.
 

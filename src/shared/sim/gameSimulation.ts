@@ -1382,7 +1382,8 @@ export class GameSimulation {
       const struct = homeLookup.structure;
       const homePos = this.getStructureWorldPosition(homeLookup.planetState, struct);
       const dockIdx = Math.max(0, struct.activeDockingHarvesterIds.indexOf(harvester.id));
-      const dockOffset = dockIdx === 0 ? -3.2 : 3.2;
+      const activeCount = Math.max(1, struct.activeDockingHarvesterIds.length);
+      const dockOffset = (dockIdx - (activeCount - 1) * 0.5) * 3.2;
       harvester.position = {
         x: homePos.x + dockOffset,
         z: homePos.z + 4.5,
@@ -1392,10 +1393,7 @@ export class GameSimulation {
         homePos.z - harvester.position.z,
       );
 
-      const unloadRate =
-        struct.structureId === 'refinery'
-          ? REFINERY_UNLOAD_RATE_PER_SECOND
-          : CNC_UNLOAD_RATE_PER_SECOND;
+      const unloadRate = this.getPlatformUnloadRatePerSecond(struct);
       const unloadAmount = Math.min(harvester.cargoAmount, unloadRate * deltaSeconds);
       harvester.cargoAmount = Math.max(0, harvester.cargoAmount - unloadAmount);
       harvester.depositAccumulator += unloadAmount;
@@ -1431,9 +1429,20 @@ export class GameSimulation {
     }
   }
 
+  public getPlatformUnloadRatePerSecond(structure: OrbitalStructureInstance): number {
+    const multiplier = MATCH_PRESETS[this.presetId].harvestRateMultiplier;
+    if (structure.structureId === 'refinery') {
+      return REFINERY_UNLOAD_RATE_PER_SECOND * multiplier;
+    }
+    if (structure.structureId === 'command_and_control') {
+      return CNC_UNLOAD_RATE_PER_SECOND * multiplier;
+    }
+    return 0;
+  }
+
   public getMaxConcurrentDocks(structure: OrbitalStructureInstance): number {
     if (structure.structureId === 'refinery') {
-      return REFINERY_MAX_CONCURRENT_DOCKS;
+      return MATCH_PRESETS[this.presetId].refineryMaxConcurrentDocks;
     }
     if (structure.structureId === 'command_and_control') {
       return MATCH_PRESETS[this.presetId].cncMaxConcurrentDocks;

@@ -11,6 +11,7 @@ export interface MatchPresetConfig {
   readonly harvestRateMultiplier: number;
   readonly asteroidReserveMultiplier: number;
   readonly cncMaxConcurrentDocks: number;
+  readonly refineryMaxConcurrentDocks: number;
   readonly fogOfWarMode: FogOfWarMode;
   readonly lastCommandAndControlStandingWins: boolean;
   readonly centralSuperEarthKingOfTheHillSeconds: number | null;
@@ -26,6 +27,7 @@ export const MATCH_PRESETS: Readonly<Record<MatchPresetId, MatchPresetConfig>> =
     harvestRateMultiplier: 1.6,
     asteroidReserveMultiplier: 1.0,
     cncMaxConcurrentDocks: 2,
+    refineryMaxConcurrentDocks: 4,
     fogOfWarMode: 'open_occupied_systems',
     lastCommandAndControlStandingWins: true,
     centralSuperEarthKingOfTheHillSeconds: null,
@@ -39,6 +41,7 @@ export const MATCH_PRESETS: Readonly<Record<MatchPresetId, MatchPresetConfig>> =
     harvestRateMultiplier: 1.0,
     asteroidReserveMultiplier: 1.25,
     cncMaxConcurrentDocks: 1,
+    refineryMaxConcurrentDocks: 2,
     fogOfWarMode: 'sensor_range',
     lastCommandAndControlStandingWins: true,
     centralSuperEarthKingOfTheHillSeconds: null,
@@ -52,6 +55,7 @@ export const MATCH_PRESETS: Readonly<Record<MatchPresetId, MatchPresetConfig>> =
     harvestRateMultiplier: 1.0,
     asteroidReserveMultiplier: 2.0,
     cncMaxConcurrentDocks: 1,
+    refineryMaxConcurrentDocks: 2,
     fogOfWarMode: 'sensor_range',
     lastCommandAndControlStandingWins: true,
     centralSuperEarthKingOfTheHillSeconds: 600, // 10 minutes continuous control

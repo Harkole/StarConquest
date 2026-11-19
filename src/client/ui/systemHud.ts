@@ -9,11 +9,9 @@ import {
 import type { ResourceTargetFocus } from '../../shared/protocol/commands.ts';
 import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
 import {
-  CNC_UNLOAD_RATE_PER_SECOND,
   type GameSimulation,
   type HarvesterActivityState,
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
-  REFINERY_UNLOAD_RATE_PER_SECOND,
 } from '../../shared/sim/gameSimulation.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
@@ -424,12 +422,12 @@ export function mountSystemHud(
         (selectedStruct.structureId === 'refinery' ||
           selectedStruct.structureId === 'command_and_control');
       const hCost = SHIP_CLASSES.harvester.cost;
-      const unloadRate =
-        selectedStruct.structureId === 'refinery'
-          ? REFINERY_UNLOAD_RATE_PER_SECOND
-          : CNC_UNLOAD_RATE_PER_SECOND;
+      const unloadRate = sim.getPlatformUnloadRatePerSecond(selectedStruct);
+      const unloadRateLabel = Number.isInteger(unloadRate)
+        ? `${unloadRate}`
+        : unloadRate.toFixed(1);
       const maxDocks = sim.getMaxConcurrentDocks(selectedStruct);
-      const dockStatusText = `Unload: ${unloadRate}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${maxDocks} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`;
+      const dockStatusText = `Unload: ${unloadRateLabel}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${maxDocks} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`;
 
       const focusControlsHtml = isDropoffPlatform
         ? `<div class="hud-btn-row" style="margin-top: 6px;">

@@ -166,8 +166,11 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(p1.ore + p1.crystal).toBeGreaterThan(initialTotalResources);
   });
 
-  it('limits a Refinery to 2 simultaneous unloading Harvesters (queueing the 3rd), supports resource focus, and reassigns on platform loss', () => {
-    const sim = new GameSimulation('blitz_skirmish');
+  it('limits a Refinery to 2 simultaneous unloading Harvesters in Standard Tactical (queueing the 3rd), supports resource focus, and reassigns on platform loss', () => {
+    const sim = new GameSimulation('standard_tactical');
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 800;
+    p1.crystal = 400;
     const homeworldId = 'system_starter_1_homeworld';
     const homeworld = sim.getPlanetState(homeworldId);
     const cnc = homeworld.structures.find(
@@ -741,5 +744,90 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(isolatedRes.ok).toBe(false);
     expect(isolatedRes.reason).toContain('slot 4');
     expect(isolatedRes.reason).toContain('slots 3 and 5');
+  });
+
+  it('scales C&C and Refinery unload rates by harvestRateMultiplier and doubles Refinery concurrent docks to 4 in Blitz Skirmish', () => {
+    const blitzSim = new GameSimulation('blitz_skirmish');
+    const p1 = blitzSim.getPlayerState('player_1');
+    p1.ore = 3000;
+    p1.crystal = 1500;
+
+    const homeworld = blitzSim.getPlanetState('system_starter_1_homeworld');
+    const cnc = homeworld.structures[0];
+    expect(cnc).toBeDefined();
+    if (!cnc) {
+      return;
+    }
+
+    // Build a Refinery on slot 2
+    expect(
+      blitzSim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'refinery',
+      }).ok,
+    ).toBe(true);
+    blitzSim.stepTick(25);
+
+    const refinery = homeworld.structures.find((s) => s.structureId === 'refinery');
+    expect(refinery).toBeDefined();
+    if (!refinery) {
+      return;
+    }
+
+    // 1. Verify scaled unload rates (1.6x) and doubled dock caps (C&C: 2, Refinery: 4)
+    expect(blitzSim.getPlatformUnloadRatePerSecond(cnc)).toBeCloseTo(
+      CNC_UNLOAD_RATE_PER_SECOND * 1.6,
+      5,
+    );
+    expect(blitzSim.getPlatformUnloadRatePerSecond(refinery)).toBeCloseTo(
+      REFINERY_UNLOAD_RATE_PER_SECOND * 1.6,
+      5,
+    );
+    expect(blitzSim.getMaxConcurrentDocks(cnc)).toBe(2);
+    expect(blitzSim.getMaxConcurrentDocks(refinery)).toBe(4);
+
+    // 2. Queue 4 more Harvesters at the Refinery (5 total assigned to this Refinery)
+    for (let i = 0; i < 4; i++) {
+      expect(
+        blitzSim.submitCommand({
+          type: 'QUEUE_SHIP',
+          playerId: 'player_1',
+          dockyardOrRefineryId: refinery.id,
+          shipClassId: 'harvester',
+          autoRepeat: false,
+        }).ok,
+      ).toBe(true);
+    }
+    for (let i = 0; i < 4; i++) {
+      blitzSim.stepTick(9);
+    }
+
+    const refHarvesters = blitzSim
+      .getAllHarvesters()
+      .filter((h) => h.homeStructureId === refinery.id);
+    expect(refHarvesters).toHaveLength(5);
+
+    // 3. Dock all 5 full Harvesters simultaneously -> 4 unload in parallel, 5th queues
+    const refPos = blitzSim.getStructureWorldPosition(homeworld, refinery);
+    for (const h of refHarvesters) {
+      h.position = { x: refPos.x, z: refPos.z };
+      h.cargoAmount = 40;
+      h.cargoType = 'ore';
+      h.state = 'returning_to_dropoff';
+    }
+    blitzSim.stepTick(0.5);
+    expect(refinery.activeDockingHarvesterIds).toHaveLength(4);
+    expect(refinery.queuedDockingHarvesterIds).toHaveLength(1);
+
+    // 4. At 16/s (40 cargo in 2.5s), after 2.5s total (5 more 0.5s ticks), all 4 finish and the 5th enters dock
+    const waiting = refHarvesters.find((h) => h.state === 'waiting_to_unload');
+    expect(waiting).toBeDefined();
+    for (let i = 0; i < 5; i++) {
+      blitzSim.stepTick(0.5);
+    }
+    expect(waiting?.state).toBe('unloading');
   });
 });
