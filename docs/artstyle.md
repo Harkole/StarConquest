@@ -328,8 +328,8 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
    * Colossal upper and lower armored bow jaws framing the **Integrated Spinal Siege Battery** (`imperator_spinal_siege_battery`) — a glowing ice-blue HDR accelerator core (`#7dd3fc`) wrapped in dark charcoal containment rib rings and a heavy muzzle crown.
 2. **Towering 4-Tier Battleship Command Citadel & Diamond-Flared Mid-Aft Hull**:
    * Wide hexagonal/diamond-flared mid-aft armored hull anchoring a 4-tier stepped **Command Bridge Citadel** (`imperator_command_citadel`) with warm-amber and cyan-white panoramic window bands, weathered ochre crown cap, and twin communications masts.
-3. **Superfiring Dorsal Heavy Turrets & Broadside Secondary Batteries**:
-   * **3 stepped dorsal twin-barrel Heavy Turrets** (`imperator_dorsal_turret_1..3`), **6 broadside twin-barrel turrets** (3 port, 3 starboard), and **2 ventral turrets** (22 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
+3. **Bow, Mid-Hull & Stern Dorsal Heavy Turrets + Broadside Secondary Batteries**:
+   * **3 non-overlapping dorsal twin-barrel Heavy Turrets** (`imperator_dorsal_turret_1` on the forward bow jaw, `imperator_dorsal_turret_2` mid-hull, and `imperator_dorsal_turret_3` facing aft on the stern deck behind the Command Citadel), plus **6 broadside twin-barrel turrets** (3 port, 3 starboard) and **2 ventral turrets** (22 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
 4. **Colossal Quad Outboard Engine Cluster Pods & 6-Nozzle Stern Bank**:
    * Four massive tapered outboard engine pods (`2x2` port/starboard) with dark rib collars and blazing Ion Blue-White (`#7dd3fc`) exhaust cores flanking a `3x2` stern main thruster bank.
 

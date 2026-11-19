@@ -830,4 +830,150 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     }
     expect(waiting?.state).toBe('unloading');
   });
+
+  it('builds combat ships from Orbital Dockyard with tech/supply/hub gating, autoRepeat, cross-system Rally Points, and Patrol Routes', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 6000;
+    p1.crystal = 4000;
+
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+
+    // 1. Build a 2-slot Orbital Dockyard on slots 2 & 3
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'orbital_dockyard',
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(31);
+    const dockyard = homeworld.structures.find(
+      (s) => s.structureId === 'orbital_dockyard',
+    );
+    expect(dockyard?.isComplete).toBe(true);
+    if (!dockyard) {
+      return;
+    }
+
+    // 2. Tech & Fighter gating: Cruiser requires 1 Tech Module, Fighter requires Logistics Hub or Carrier
+    const cruiserBlocked = sim.submitCommand({
+      type: 'QUEUE_SHIP',
+      playerId: 'player_1',
+      dockyardOrRefineryId: dockyard.id,
+      shipClassId: 'cruiser',
+      autoRepeat: false,
+    });
+    expect(cruiserBlocked.ok).toBe(false);
+    expect(cruiserBlocked.reason).toContain('Tech Module');
+
+    const fighterBlocked = sim.submitCommand({
+      type: 'QUEUE_SHIP',
+      playerId: 'player_1',
+      dockyardOrRefineryId: dockyard.id,
+      shipClassId: 'fighter',
+      autoRepeat: false,
+    });
+    expect(fighterBlocked.ok).toBe(false);
+    expect(fighterBlocked.reason).toContain('Logistics Hub');
+
+    // 3. Queue a Destroyer (supply 2) and cancel it -> refunds Ore, Crystal, AND Fleet Supply
+    const oreBeforeQueue = p1.ore;
+    const supplyBeforeQueue = p1.supplyUsed;
+    expect(
+      sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: dockyard.id,
+        shipClassId: 'destroyer',
+        autoRepeat: false,
+      }).ok,
+    ).toBe(true);
+    expect(p1.supplyUsed).toBe(supplyBeforeQueue + 2);
+    const queuedId = dockyard.productionQueue[0]?.id ?? '';
+    expect(
+      sim.submitCommand({
+        type: 'CANCEL_QUEUED_SHIP',
+        playerId: 'player_1',
+        structureId: dockyard.id,
+        queueItemId: queuedId,
+      }).ok,
+    ).toBe(true);
+    expect(p1.ore).toBe(oreBeforeQueue);
+    expect(p1.supplyUsed).toBe(supplyBeforeQueue);
+
+    // 4. Set a Cross-System Rally Point into Central Nexus and queue Destroyer with autoRepeat: true
+    expect(
+      sim.submitCommand({
+        type: 'SET_RALLY_POINT',
+        playerId: 'player_1',
+        dockyardId: dockyard.id,
+        targetSystemId: 'system_central_hub',
+        targetPosition: { x: 240, z: 180 },
+        stance: 'aggressive_push',
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: dockyard.id,
+        shipClassId: 'destroyer',
+        autoRepeat: true,
+      }).ok,
+    ).toBe(true);
+
+    // Advance 12.5s -> 1st Destroyer spawns AND autoRepeat queues a 2nd Destroyer automatically!
+    sim.stepTick(12.5);
+    const ships = sim.getAllCombatShips();
+    expect(ships).toHaveLength(1);
+    expect(ships[0]?.shipClassId).toBe('destroyer');
+    expect(ships[0]?.state).toBe('transiting_wormhole');
+    expect(dockyard.productionQueue).toHaveLength(1);
+    expect(dockyard.productionQueue[0]?.autoRepeat).toBe(true);
+
+    // Cancel the auto-repeat item so we can test navigation of ship #1 cleanly
+    sim.submitCommand({
+      type: 'CANCEL_QUEUED_SHIP',
+      playerId: 'player_1',
+      structureId: dockyard.id,
+      queueItemId: dockyard.productionQueue[0]!.id,
+    });
+
+    // Advance ticks until Destroyer #1 transits the wormhole into Central Nexus and reaches the rally point
+    const destroyer = ships[0]!;
+    for (let i = 0; i < 120; i++) {
+      sim.stepTick(0.5);
+    }
+    expect(destroyer.currentSystemId).toBe('system_central_hub');
+    expect(destroyer.state).toBe('holding_position');
+
+    // 5. Issue a 2-waypoint Patrol Route in Central Nexus -> ship enters patrolling and cycles waypoints
+    expect(
+      sim.submitCommand({
+        type: 'SET_PATROL_ROUTE',
+        playerId: 'player_1',
+        dockyardId: dockyard.id,
+        waypoints: [
+          { systemId: 'system_central_hub', position: { x: 260, z: 200 } },
+          { systemId: 'system_central_hub', position: { x: 360, z: 200 } },
+        ],
+        stance: 'hold_choke_point',
+      }).ok,
+    ).toBe(true);
+    expect(destroyer.state).toBe('patrolling');
+    expect(destroyer.stance).toBe('hold_choke_point');
+
+    let sawIndexOne = false;
+    for (let i = 0; i < 30; i++) {
+      sim.stepTick(0.5);
+      if (destroyer.patrolIndex === 1) {
+        sawIndexOne = true;
+      }
+    }
+    expect(sawIndexOne).toBe(true);
+  });
 });

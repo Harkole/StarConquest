@@ -732,6 +732,23 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(dreadnought.getObjectByName('imperator_command_citadel')).toBeDefined();
     expect(dreadnought.userData.turretPivots).toBeDefined();
 
+    // Verify all 3 dorsal heavy turrets are non-overlapping (bow, mid-hull, and aft behind the bridge)
+    const t1 = dreadnought.getObjectByName('imperator_dorsal_turret_1')!;
+    const t2 = dreadnought.getObjectByName('imperator_dorsal_turret_2')!;
+    const t3 = dreadnought.getObjectByName('imperator_dorsal_turret_3')!;
+    const bridge = dreadnought.getObjectByName('imperator_command_citadel')!;
+    expect(t1).toBeDefined();
+    expect(t2).toBeDefined();
+    expect(t3).toBeDefined();
+    expect(t1.position.z).toBeGreaterThan(t2.position.z + 2.5);
+    expect(t3.position.z).toBeLessThan(bridge.position.z - 2.0);
+    const t1Box = new THREE.Box3().setFromObject(t1);
+    const t2Box = new THREE.Box3().setFromObject(t2);
+    const t3Box = new THREE.Box3().setFromObject(t3);
+    expect(t1Box.intersectsBox(t2Box)).toBe(false);
+    expect(t2Box.intersectsBox(t3Box)).toBe(false);
+    expect(t1Box.intersectsBox(t3Box)).toBe(false);
+
     const cBox = new THREE.Box3().setFromObject(cruiser);
     const dBox = new THREE.Box3().setFromObject(dreadnought);
     const cruiserLen = cBox.max.z - cBox.min.z;

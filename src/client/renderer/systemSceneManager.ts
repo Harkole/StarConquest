@@ -3,12 +3,15 @@ import {
   DEEP_SPACE_STRUCTURES,
   type DeepSpaceStructureId,
 } from '../../shared/config/index.ts';
+import type { FleetStance } from '../../shared/protocol/commands.ts';
 import type {
   GalaxyTopology,
   PlanetNode,
   StarSystemNode,
 } from '../../shared/sim/galaxy.ts';
+import type { DockyardWaypoint } from '../../shared/sim/gameSimulation.ts';
 import type { LocalSimAdapter } from '../net/localSimAdapter.ts';
+import { CombatFleetRenderer } from './combatFleetRenderer.ts';
 import { HarvesterFleetRenderer } from './harvesterFleetRenderer.ts';
 import type { OrbitalCameraController } from './orbitalCamera.ts';
 import {
@@ -31,15 +34,23 @@ export class SystemSceneManager {
   private activeSystem: StarSystemNode;
   private selectedPlanetId: string;
   private selectedHarvesterId: string | null = null;
+  private selectedCombatShipId: string | null = null;
   private environmentHandle: SpaceEnvironmentHandle | null = null;
   private planetHandles: AnimatedPlanetHandle[] = [];
   private readonly harvesterRenderer = new HarvesterFleetRenderer();
+  private readonly combatFleetRenderer = new CombatFleetRenderer();
   private readonly deepSpaceModels = new StationModelLibrary();
   private readonly deepSpaceRootGroup = new THREE.Group();
   private readonly deepSpaceGroupsById = new Map<string, THREE.Group>();
   private lastDeepSpaceSignature: string | null = null;
 
   private pendingDeepSpaceBuildType: DeepSpaceStructureId | null = null;
+  private pendingFleetOrder: {
+    readonly mode: 'rally' | 'patrol';
+    readonly dockyardId: string;
+    readonly stance: FleetStance;
+    readonly collectedWaypoints: DockyardWaypoint[];
+  } | null = null;
   private readonly placementPreviewGroup = new THREE.Group();
   private readonly hubRadiusRingGeom = new THREE.RingGeometry(
     DEEP_SPACE_STRUCTURES.logistics_hub.buildRadiusProvided - 1.2,
@@ -83,6 +94,7 @@ export class SystemSceneManager {
     this.cameraController = cameraController;
     this.simAdapter = simAdapter;
     this.scene.add(this.harvesterRenderer.rootGroup);
+    this.scene.add(this.combatFleetRenderer.rootGroup);
     this.scene.add(this.deepSpaceRootGroup);
     this.placementPreviewGroup.visible = false;
     this.scene.add(this.placementPreviewGroup);
@@ -112,6 +124,88 @@ export class SystemSceneManager {
 
   public getPendingDeepSpacePlacement(): DeepSpaceStructureId | null {
     return this.pendingDeepSpaceBuildType;
+  }
+
+  public getSelectedCombatShipId(): string | null {
+    return this.selectedCombatShipId;
+  }
+
+  public getPendingFleetOrder(): {
+    readonly mode: 'rally' | 'patrol';
+    readonly dockyardId: string;
+    readonly waypointCount: number;
+  } | null {
+    if (!this.pendingFleetOrder) {
+      return null;
+    }
+    return {
+      mode: this.pendingFleetOrder.mode,
+      dockyardId: this.pendingFleetOrder.dockyardId,
+      waypointCount: this.pendingFleetOrder.collectedWaypoints.length,
+    };
+  }
+
+  public startRallyPointPlacement(dockyardId: string, stance: FleetStance): void {
+    this.startDeepSpacePlacement(null);
+    this.pendingFleetOrder = {
+      mode: 'rally',
+      dockyardId,
+      stance,
+      collectedWaypoints: [],
+    };
+    this.notifySelectionChanged();
+  }
+
+  public startPatrolRoutePlacement(dockyardId: string, stance: FleetStance): void {
+    this.startDeepSpacePlacement(null);
+    this.pendingFleetOrder = {
+      mode: 'patrol',
+      dockyardId,
+      stance,
+      collectedWaypoints: [],
+    };
+    this.notifySelectionChanged();
+  }
+
+  public cancelFleetOrderPlacement(): void {
+    if (this.pendingFleetOrder !== null) {
+      this.pendingFleetOrder = null;
+      this.notifySelectionChanged();
+    }
+  }
+
+  public selectAndPinCombatShip(shipId: string | null): void {
+    if (!shipId) {
+      this.selectedCombatShipId = null;
+      this.cameraController.clearPin();
+      this.notifySelectionChanged();
+      return;
+    }
+
+    const ship = this.simAdapter.simulation.getCombatShipById(shipId);
+    if (!ship) {
+      return;
+    }
+    if (ship.currentSystemId !== this.activeSystem.id) {
+      this.loadSystem(ship.currentSystemId);
+    }
+
+    this.selectedHarvesterId = null;
+    this.selectedCombatShipId = ship.id;
+    this.cameraController.pinToTarget(() => {
+      const liveShip = this.simAdapter.simulation.getCombatShipById(shipId);
+      if (!liveShip) {
+        return null;
+      }
+      if (liveShip.currentSystemId !== this.activeSystem.id) {
+        this.loadSystem(liveShip.currentSystemId);
+        this.selectedCombatShipId = liveShip.id;
+        this.notifySelectionChanged();
+      }
+      return { x: liveShip.position.x, y: 1.6, z: liveShip.position.z };
+    }, 64);
+
+    this.notifySelectionChanged();
   }
 
   public startDeepSpacePlacement(structureId: DeepSpaceStructureId | null): void {
@@ -368,7 +462,45 @@ export class SystemSceneManager {
       this.selectedHarvesterId,
     );
 
-    const shipPositions = harvestersInSystem.map((h) => h.position);
+    const combatShipsInSystem = this.simAdapter.simulation.getCombatShipsInSystem(
+      this.activeSystem.id,
+    );
+    this.combatFleetRenderer.syncShips(
+      combatShipsInSystem,
+      this.selectedCombatShipId,
+      elapsedSeconds,
+    );
+
+    // Render Rally Point & Patrol Route 3D markers for player Dockyards
+    const rallyPointsInSystem: { readonly x: number; readonly z: number }[] = [];
+    const patrolRoutes: (readonly DockyardWaypoint[])[] = [];
+    for (const sys of this.galaxy.systems) {
+      for (const planetState of this.simAdapter.simulation.getPlanetsInSystem(sys.id)) {
+        for (const s of planetState.structures) {
+          if (
+            s.structureId === 'orbital_dockyard' &&
+            s.ownerId === this.simAdapter.localPlayerId
+          ) {
+            if (s.rallyPoint && s.rallyPoint.systemId === this.activeSystem.id) {
+              rallyPointsInSystem.push(s.rallyPoint.position);
+            }
+            if (s.patrolWaypoints && s.patrolWaypoints.length >= 2) {
+              patrolRoutes.push(s.patrolWaypoints);
+            }
+          }
+        }
+      }
+    }
+    this.combatFleetRenderer.syncOrdersOverlay(
+      this.activeSystem.id,
+      rallyPointsInSystem,
+      patrolRoutes,
+    );
+
+    const shipPositions = [
+      ...harvestersInSystem.map((h) => h.position),
+      ...combatShipsInSystem.map((s) => s.position),
+    ];
     if (this.environmentHandle) {
       this.environmentHandle.syncBeltDepletion?.(
         this.simAdapter.simulation.getMiningBeltsInSystem(this.activeSystem.id),
@@ -429,9 +561,14 @@ export class SystemSceneManager {
     const hitPoint = new THREE.Vector3();
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.pendingDeepSpaceBuildType !== null) {
-        this.startDeepSpacePlacement(null);
-        this.notifyPlacementResult('Cancelled deep-space placement mode.', false);
+      if (e.key === 'Escape') {
+        if (this.pendingDeepSpaceBuildType !== null) {
+          this.startDeepSpacePlacement(null);
+          this.notifyPlacementResult('Cancelled deep-space placement mode.', false);
+        } else if (this.pendingFleetOrder !== null) {
+          this.cancelFleetOrderPlacement();
+          this.notifyPlacementResult('Cancelled fleet order placement.', false);
+        }
       }
     });
 
@@ -482,7 +619,62 @@ export class SystemSceneManager {
         this.cameraController.camera,
       );
 
-      // 0. If in Deep-Space Placement Mode, place structure at clicked (x, z) coordinate on orbital plane
+      // 0a. If in Fleet Order Placement Mode (Rally Point or 2-Click Patrol Route)
+      if (this.pendingFleetOrder) {
+        if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
+          const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
+          const order = this.pendingFleetOrder;
+          if (order.mode === 'rally') {
+            const res = this.simAdapter.submitPlayerCommand({
+              type: 'SET_RALLY_POINT',
+              playerId: this.simAdapter.localPlayerId,
+              dockyardId: order.dockyardId,
+              targetSystemId: this.activeSystem.id,
+              targetPosition: pos,
+              stance: order.stance,
+            });
+            this.pendingFleetOrder = null;
+            this.notifySelectionChanged();
+            this.notifyPlacementResult(
+              res.ok
+                ? `Rally Point set in ${this.activeSystem.name} at (${pos.x}, ${pos.z}).`
+                : `Cannot set Rally Point: ${res.reason}`,
+              res.ok,
+            );
+          } else {
+            order.collectedWaypoints.push({
+              systemId: this.activeSystem.id,
+              position: pos,
+            });
+            if (order.collectedWaypoints.length < 2) {
+              this.notifySelectionChanged();
+              this.notifyPlacementResult(
+                `Patrol Waypoint #1 set at (${pos.x}, ${pos.z}). Click a second point (in this or another system) to complete route.`,
+                true,
+              );
+            } else {
+              const res = this.simAdapter.submitPlayerCommand({
+                type: 'SET_PATROL_ROUTE',
+                playerId: this.simAdapter.localPlayerId,
+                dockyardId: order.dockyardId,
+                waypoints: order.collectedWaypoints,
+                stance: order.stance,
+              });
+              this.pendingFleetOrder = null;
+              this.notifySelectionChanged();
+              this.notifyPlacementResult(
+                res.ok
+                  ? `Patrol Route active (${order.collectedWaypoints.length} waypoints).`
+                  : `Cannot set Patrol Route: ${res.reason}`,
+                res.ok,
+              );
+            }
+          }
+        }
+        return;
+      }
+
+      // 0b. If in Deep-Space Placement Mode, place structure at clicked (x, z) coordinate on orbital plane
       if (this.pendingDeepSpaceBuildType) {
         if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
           const structId = this.pendingDeepSpaceBuildType;
@@ -513,7 +705,14 @@ export class SystemSceneManager {
         return;
       }
 
-      // 1. Check if user clicked a Harvester in 3D space
+      // 1a. Check if user clicked a Combat Ship in 3D space
+      const pickedCombatShipId = this.combatFleetRenderer.pickCombatShip(this.raycaster);
+      if (pickedCombatShipId) {
+        this.selectAndPinCombatShip(pickedCombatShipId);
+        return;
+      }
+
+      // 1b. Check if user clicked a Harvester in 3D space
       const pickedHarvesterId = this.harvesterRenderer.pickHarvester(this.raycaster);
       if (pickedHarvesterId) {
         this.selectAndPinHarvester(pickedHarvesterId);
@@ -567,5 +766,7 @@ export class SystemSceneManager {
     this.deepSpaceGroupsById.clear();
     this.lastDeepSpaceSignature = null;
     this.harvesterRenderer.syncHarvesters([]);
+    this.combatFleetRenderer.syncShips([], null, 0);
+    this.combatFleetRenderer.syncOrdersOverlay('', [], []);
   }
 }

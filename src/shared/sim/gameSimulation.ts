@@ -4,12 +4,14 @@ import {
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
+  type CombatShipClassId,
   type DeepSpaceStructureId,
   type MatchPresetId,
   type OrbitalStructureId,
   type ShipClassId,
 } from '../config/index.ts';
 import type {
+  FleetStance,
   GameCommand,
   PlayerSlotId,
   ResourceTargetFocus,
@@ -26,6 +28,11 @@ import {
   type GalaxyTopology,
   type PlanetNode,
 } from './galaxy.ts';
+import {
+  type PlanetaryObstacle,
+  computeObstacleAwareStep,
+  findWormholeHop,
+} from './navigation.ts';
 
 export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
 
@@ -116,6 +123,18 @@ export interface ShipQueueItem {
   readonly shipClassId: ShipClassId;
   readonly buildTimeSeconds: number;
   progressSeconds: number;
+  readonly autoRepeat?: boolean;
+}
+
+export interface DockyardWaypoint {
+  readonly systemId: string;
+  readonly position: Vector2D;
+}
+
+export interface DockyardRallyPoint {
+  readonly systemId: string;
+  readonly position: Vector2D;
+  readonly stance: FleetStance;
 }
 
 export interface OrbitalStructureInstance {
@@ -134,6 +153,37 @@ export interface OrbitalStructureInstance {
   readonly activeDockingHarvesterIds: string[];
   readonly queuedDockingHarvesterIds: string[];
   readonly productionQueue: ShipQueueItem[];
+  rallyPoint?: DockyardRallyPoint | null;
+  patrolWaypoints?: readonly DockyardWaypoint[];
+  fleetStance?: FleetStance;
+}
+
+export type CombatShipActivityState =
+  | 'moving_to_rally'
+  | 'holding_position'
+  | 'patrolling'
+  | 'transiting_wormhole';
+
+export interface CombatShipUnitState {
+  readonly id: string;
+  readonly shipClassId: CombatShipClassId;
+  readonly ownerId: PlayerSlotId;
+  readonly homeDockyardId: string;
+  currentSystemId: string;
+  position: Vector2D;
+  headingRadians: number;
+  currentSpeed: number;
+  shields: number;
+  readonly maxShields: number;
+  hull: number;
+  readonly maxHull: number;
+  stance: FleetStance;
+  state: CombatShipActivityState;
+  targetSystemId: string;
+  targetPosition: Vector2D;
+  patrolWaypoints: readonly DockyardWaypoint[];
+  patrolIndex: number;
+  readonly formationOffset: Vector2D;
 }
 
 export interface PlanetRuntimeState {
@@ -210,6 +260,7 @@ export class GameSimulation {
   private readonly deepSpaceStructures: DeepSpaceStructureInstance[] = [];
   private readonly miningBelts: AsteroidMiningBeltNode[] = [];
   private readonly harvesters: HarvesterUnitState[] = [];
+  private readonly combatShips: CombatShipUnitState[] = [];
   private nextEntityCounter = 1;
 
   constructor(presetId: MatchPresetId = 'standard_tactical') {
@@ -404,6 +455,49 @@ export class GameSimulation {
     return this.deepSpaceStructures.find((s) => s.id === structureId);
   }
 
+  public getAllCombatShips(): readonly CombatShipUnitState[] {
+    return this.combatShips;
+  }
+
+  public getCombatShipsInSystem(systemId: string): readonly CombatShipUnitState[] {
+    return this.combatShips.filter((s) => s.currentSystemId === systemId);
+  }
+
+  public getCombatShipById(shipId: string): CombatShipUnitState | undefined {
+    return this.combatShips.find((s) => s.id === shipId);
+  }
+
+  public getPlayerTechModuleCount(playerId: PlayerSlotId): number {
+    let count = 0;
+    for (const planetState of this.planets.values()) {
+      for (const s of planetState.structures) {
+        if (
+          s.ownerId === playerId &&
+          s.structureId === 'tech_module' &&
+          s.isComplete
+        ) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }
+
+  public hasPlayerFighterSupport(playerId: PlayerSlotId): boolean {
+    const hasCompletedHub = this.deepSpaceStructures.some(
+      (ds) =>
+        ds.ownerId === playerId &&
+        ds.structureId === 'logistics_hub' &&
+        ds.isComplete,
+    );
+    if (hasCompletedHub) {
+      return true;
+    }
+    return this.combatShips.some(
+      (ship) => ship.ownerId === playerId && ship.shipClassId === 'carrier',
+    );
+  }
+
   public destroyDeepSpaceStructure(structureId: string): boolean {
     const idx = this.deepSpaceStructures.findIndex((s) => s.id === structureId);
     if (idx === -1) {
@@ -446,7 +540,27 @@ export class GameSimulation {
             command.dockyardOrRefineryId,
           );
         }
-        return { ok: true };
+        return this.handleQueueCombatShip(
+          command.playerId,
+          command.dockyardOrRefineryId,
+          command.shipClassId,
+          command.autoRepeat,
+        );
+      case 'SET_RALLY_POINT':
+        return this.handleSetRallyPoint(
+          command.playerId,
+          command.dockyardId,
+          command.targetSystemId,
+          command.targetPosition,
+          command.stance,
+        );
+      case 'SET_PATROL_ROUTE':
+        return this.handleSetPatrolRoute(
+          command.playerId,
+          command.dockyardId,
+          command.waypoints,
+          command.stance,
+        );
       case 'SET_REFINERY_TARGET':
         return this.handleSetRefineryTarget(
           command.playerId,
@@ -497,6 +611,21 @@ export class GameSimulation {
                   planetState,
                   structure,
                 );
+              } else {
+                this.spawnCombatShipAtDockyard(
+                  structure.ownerId,
+                  planetState,
+                  structure,
+                  activeOrder.shipClassId,
+                );
+                if (activeOrder.autoRepeat) {
+                  this.handleQueueCombatShip(
+                    structure.ownerId,
+                    structure.id,
+                    activeOrder.shipClassId,
+                    true,
+                  );
+                }
               }
             }
           }
@@ -523,6 +652,11 @@ export class GameSimulation {
     // 3. Update automated Harvester mining, docking queues, & movement
     for (const harvester of this.harvesters) {
       this.updateHarvester(harvester, deltaSeconds);
+    }
+
+    // 4. Update combat fleet navigation (Rally Points, Patrol Routes & Cross-System Wormholes)
+    for (const ship of this.combatShips) {
+      this.updateCombatShip(ship, deltaSeconds);
     }
   }
 
@@ -968,13 +1102,363 @@ export class GameSimulation {
 
     const [removed] = found.structure.productionQueue.splice(queueIdx, 1);
     if (removed) {
-      // Refund resources back into player stores immediately
+      // Refund resources and reserved fleet supply immediately
       const shipCfg = SHIP_CLASSES[removed.shipClassId];
       player.ore += shipCfg.cost.ore;
       player.crystal += shipCfg.cost.crystal;
+      player.supplyUsed = Math.max(0, player.supplyUsed - shipCfg.supplyCost);
     }
 
     return { ok: true };
+  }
+
+  /**
+   * Side-effect-free validation for queuing a combat ship at an Orbital Dockyard.
+   * Shared by both `QUEUE_SHIP` commands and the Orbital Dockyard HUD panel.
+   */
+  public validateCombatShipOrder(
+    playerId: PlayerSlotId,
+    dockyardId: string,
+    shipClassId: CombatShipClassId,
+  ): CommandResult {
+    const player = this.players.get(playerId);
+    const found = this.getStructureById(dockyardId);
+    if (!player || !found || found.structure.ownerId !== playerId) {
+      return { ok: false, reason: 'Orbital Dockyard not found or not owned by player' };
+    }
+    if (found.structure.structureId !== 'orbital_dockyard' || !found.structure.isComplete) {
+      return { ok: false, reason: 'Requires a completed Orbital Dockyard' };
+    }
+    if (found.structure.productionQueue.length >= MAX_SHIP_PRODUCTION_QUEUE_SIZE) {
+      return {
+        ok: false,
+        reason: `Production queue is full (max ${MAX_SHIP_PRODUCTION_QUEUE_SIZE})`,
+      };
+    }
+
+    const shipCfg = SHIP_CLASSES[shipClassId];
+    const techCount = this.getPlayerTechModuleCount(playerId);
+    if (techCount < shipCfg.requiredTechModuleCount) {
+      return {
+        ok: false,
+        reason: `Requires ${shipCfg.requiredTechModuleCount} completed Tech Module${shipCfg.requiredTechModuleCount > 1 ? 's' : ''}`,
+      };
+    }
+
+    if (shipCfg.requiresCarrierOrLogisticsHub && !this.hasPlayerFighterSupport(playerId)) {
+      return {
+        ok: false,
+        reason: 'Fighters require a completed Logistics Hub or Fleet Carrier',
+      };
+    }
+
+    if (player.supplyUsed + shipCfg.supplyCost > player.supplyCap) {
+      return {
+        ok: false,
+        reason: `Insufficient Fleet Supply (requires ${shipCfg.supplyCost}, ${player.supplyCap - player.supplyUsed} free)`,
+      };
+    }
+
+    if (player.ore < shipCfg.cost.ore || player.crystal < shipCfg.cost.crystal) {
+      return {
+        ok: false,
+        reason: `Insufficient Ore or Crystals for ${shipCfg.displayName}`,
+      };
+    }
+
+    return { ok: true };
+  }
+
+  private handleQueueCombatShip(
+    playerId: PlayerSlotId,
+    dockyardId: string,
+    shipClassId: CombatShipClassId,
+    autoRepeat: boolean,
+  ): CommandResult {
+    const validation = this.validateCombatShipOrder(playerId, dockyardId, shipClassId);
+    if (!validation.ok) {
+      return validation;
+    }
+
+    const player = this.players.get(playerId)!;
+    const found = this.getStructureById(dockyardId)!;
+    const shipCfg = SHIP_CLASSES[shipClassId];
+
+    player.ore -= shipCfg.cost.ore;
+    player.crystal -= shipCfg.cost.crystal;
+    player.supplyUsed += shipCfg.supplyCost;
+
+    found.structure.productionQueue.push({
+      id: `queue_${this.nextEntityCounter++}`,
+      shipClassId,
+      buildTimeSeconds: shipCfg.buildTimeSeconds,
+      progressSeconds: 0,
+      autoRepeat,
+    });
+
+    return { ok: true };
+  }
+
+  private handleSetRallyPoint(
+    playerId: PlayerSlotId,
+    dockyardId: string,
+    targetSystemId: string,
+    targetPosition: Vector2D,
+    stance: FleetStance,
+  ): CommandResult {
+    const found = this.getStructureById(dockyardId);
+    if (
+      !found ||
+      found.structure.ownerId !== playerId ||
+      found.structure.structureId !== 'orbital_dockyard'
+    ) {
+      return { ok: false, reason: 'Requires an owned Orbital Dockyard' };
+    }
+    const system = this.galaxy.systems.find((s) => s.id === targetSystemId);
+    if (!system) {
+      return { ok: false, reason: 'Unknown target star system' };
+    }
+
+    found.structure.rallyPoint = {
+      systemId: targetSystemId,
+      position: { x: targetPosition.x, z: targetPosition.z },
+      stance,
+    };
+    found.structure.patrolWaypoints = [];
+    found.structure.fleetStance = stance;
+
+    // Immediately redirect existing ships assigned to this Dockyard to the new Rally Point
+    for (const ship of this.combatShips) {
+      if (ship.homeDockyardId === dockyardId && ship.ownerId === playerId) {
+        ship.stance = stance;
+        ship.patrolWaypoints = [];
+        ship.patrolIndex = 0;
+        ship.targetSystemId = targetSystemId;
+        ship.targetPosition = { x: targetPosition.x, z: targetPosition.z };
+        ship.state =
+          ship.currentSystemId === targetSystemId
+            ? 'moving_to_rally'
+            : 'transiting_wormhole';
+      }
+    }
+
+    return { ok: true };
+  }
+
+  private handleSetPatrolRoute(
+    playerId: PlayerSlotId,
+    dockyardId: string,
+    waypoints: readonly DockyardWaypoint[],
+    stance: FleetStance,
+  ): CommandResult {
+    const found = this.getStructureById(dockyardId);
+    if (
+      !found ||
+      found.structure.ownerId !== playerId ||
+      found.structure.structureId !== 'orbital_dockyard'
+    ) {
+      return { ok: false, reason: 'Requires an owned Orbital Dockyard' };
+    }
+    if (waypoints.length < 2) {
+      return { ok: false, reason: 'Patrol route requires at least 2 waypoints' };
+    }
+    for (const wp of waypoints) {
+      if (!this.galaxy.systems.some((s) => s.id === wp.systemId)) {
+        return { ok: false, reason: 'Patrol route contains an unknown star system' };
+      }
+    }
+
+    const copiedWaypoints: DockyardWaypoint[] = waypoints.map((wp) => ({
+      systemId: wp.systemId,
+      position: { x: wp.position.x, z: wp.position.z },
+    }));
+    found.structure.patrolWaypoints = copiedWaypoints;
+    found.structure.rallyPoint = null;
+    found.structure.fleetStance = stance;
+
+    const firstWp = copiedWaypoints[0]!;
+    for (const ship of this.combatShips) {
+      if (ship.homeDockyardId === dockyardId && ship.ownerId === playerId) {
+        ship.stance = stance;
+        ship.patrolWaypoints = copiedWaypoints;
+        ship.patrolIndex = 0;
+        ship.targetSystemId = firstWp.systemId;
+        ship.targetPosition = { x: firstWp.position.x, z: firstWp.position.z };
+        ship.state =
+          ship.currentSystemId === firstWp.systemId
+            ? 'patrolling'
+            : 'transiting_wormhole';
+      }
+    }
+
+    return { ok: true };
+  }
+
+  private spawnCombatShipAtDockyard(
+    playerId: PlayerSlotId,
+    planetState: PlanetRuntimeState,
+    dockyard: OrbitalStructureInstance,
+    shipClassId: CombatShipClassId,
+  ): void {
+    const shipCfg = SHIP_CLASSES[shipClassId];
+    const dockPos = this.getStructureWorldPosition(planetState, dockyard);
+    const outX = dockPos.x - planetState.planet.position.x;
+    const outZ = dockPos.z - planetState.planet.position.z;
+    const outLen = Math.max(0.001, Math.hypot(outX, outZ));
+    const nx = outX / outLen;
+    const nz = outZ / outLen;
+
+    // Launch just outside the Titan Dockyard's outward slipway mouth
+    const spawnPos: Vector2D = {
+      x: dockPos.x + nx * 24,
+      z: dockPos.z + nz * 24,
+    };
+
+    const shipIndex = this.combatShips.length;
+    const formAngle = (shipIndex * 2.39996) % (Math.PI * 2); // Golden-angle squadron spread
+    const formRadius = 10 + (shipIndex % 4) * 6;
+    const formationOffset: Vector2D = {
+      x: Math.cos(formAngle) * formRadius,
+      z: Math.sin(formAngle) * formRadius,
+    };
+
+    const stance: FleetStance = dockyard.fleetStance ?? 'aggressive_push';
+    const patrolWaypoints = dockyard.patrolWaypoints ?? [];
+
+    let targetSystemId = planetState.planet.systemId;
+    let targetPosition: Vector2D = {
+      x: dockPos.x + nx * 56,
+      z: dockPos.z + nz * 56,
+    };
+    let initialState: CombatShipActivityState = 'moving_to_rally';
+
+    if (patrolWaypoints.length >= 2) {
+      const wp0 = patrolWaypoints[0]!;
+      targetSystemId = wp0.systemId;
+      targetPosition = { x: wp0.position.x, z: wp0.position.z };
+      initialState =
+        planetState.planet.systemId === wp0.systemId
+          ? 'patrolling'
+          : 'transiting_wormhole';
+    } else if (dockyard.rallyPoint) {
+      targetSystemId = dockyard.rallyPoint.systemId;
+      targetPosition = {
+        x: dockyard.rallyPoint.position.x,
+        z: dockyard.rallyPoint.position.z,
+      };
+      initialState =
+        planetState.planet.systemId === dockyard.rallyPoint.systemId
+          ? 'moving_to_rally'
+          : 'transiting_wormhole';
+    }
+
+    this.combatShips.push({
+      id: `ship_${this.nextEntityCounter++}`,
+      shipClassId,
+      ownerId: playerId,
+      homeDockyardId: dockyard.id,
+      currentSystemId: planetState.planet.systemId,
+      position: spawnPos,
+      headingRadians: Math.atan2(nx, nz),
+      currentSpeed: shipCfg.speed,
+      shields: shipCfg.maxShields,
+      maxShields: shipCfg.maxShields,
+      hull: shipCfg.maxHull,
+      maxHull: shipCfg.maxHull,
+      stance,
+      state: initialState,
+      targetSystemId,
+      targetPosition,
+      patrolWaypoints,
+      patrolIndex: 0,
+      formationOffset,
+    });
+  }
+
+  private updateCombatShip(ship: CombatShipUnitState, deltaSeconds: number): void {
+    const shipCfg = SHIP_CLASSES[ship.shipClassId];
+    const maxStep = shipCfg.speed * deltaSeconds;
+    const obstacles = this.getPlanetaryObstaclesInSystem(ship.currentSystemId);
+
+    // 1. Cross-system transit via wormhole if target lies in another star system
+    if (ship.currentSystemId !== ship.targetSystemId) {
+      ship.state = 'transiting_wormhole';
+      const hop = findWormholeHop(this.galaxy, ship.currentSystemId, ship.targetSystemId);
+      if (!hop) {
+        ship.currentSpeed = 0;
+        return;
+      }
+      const step = computeObstacleAwareStep(
+        ship.position,
+        hop.entryPosition,
+        maxStep,
+        obstacles,
+        22,
+      );
+      ship.position = step.position;
+      if (step.movedDistance > 1e-5) {
+        ship.headingRadians = step.headingRadians;
+      }
+      ship.currentSpeed = shipCfg.speed;
+
+      if (step.arrived) {
+        ship.currentSystemId = hop.exitSystemId;
+        // Emerge slightly inward from the destination wormhole mouth with formation spread
+        ship.position = {
+          x: hop.exitPosition.x * 0.92 + ship.formationOffset.x * 0.5,
+          z: hop.exitPosition.z * 0.92 + ship.formationOffset.z * 0.5,
+        };
+        if (ship.currentSystemId === ship.targetSystemId) {
+          ship.state =
+            ship.patrolWaypoints.length >= 2 ? 'patrolling' : 'moving_to_rally';
+        }
+      }
+      return;
+    }
+
+    // 2. Same-system navigation (Patrol Route loop or Rally Point formation)
+    const goalPos: Vector2D =
+      ship.patrolWaypoints.length >= 2
+        ? {
+            x: ship.targetPosition.x + ship.formationOffset.x * 0.45,
+            z: ship.targetPosition.z + ship.formationOffset.z * 0.45,
+          }
+        : {
+            x: ship.targetPosition.x + ship.formationOffset.x,
+            z: ship.targetPosition.z + ship.formationOffset.z,
+          };
+
+    const arrivalTol = ship.patrolWaypoints.length >= 2 ? 12 : 4;
+    const step = computeObstacleAwareStep(
+      ship.position,
+      goalPos,
+      maxStep,
+      obstacles,
+      arrivalTol,
+    );
+    ship.position = step.position;
+    if (step.movedDistance > 1e-5) {
+      ship.headingRadians = step.headingRadians;
+    }
+
+    if (step.arrived) {
+      if (ship.patrolWaypoints.length >= 2) {
+        ship.patrolIndex = (ship.patrolIndex + 1) % ship.patrolWaypoints.length;
+        const nextWp = ship.patrolWaypoints[ship.patrolIndex]!;
+        ship.targetSystemId = nextWp.systemId;
+        ship.targetPosition = { x: nextWp.position.x, z: nextWp.position.z };
+        ship.state =
+          ship.currentSystemId === nextWp.systemId ? 'patrolling' : 'transiting_wormhole';
+        ship.currentSpeed = shipCfg.speed;
+      } else {
+        ship.state = 'holding_position';
+        ship.currentSpeed = 0;
+      }
+    } else {
+      ship.state =
+        ship.patrolWaypoints.length >= 2 ? 'patrolling' : 'moving_to_rally';
+      ship.currentSpeed = shipCfg.speed;
+    }
   }
 
   private handleSetRefineryTarget(
@@ -1568,29 +2052,37 @@ export class GameSimulation {
     return undefined;
   }
 
+  public getPlanetaryObstaclesInSystem(systemId: string): readonly PlanetaryObstacle[] {
+    const system = this.galaxy.systems.find((s) => s.id === systemId);
+    if (!system) {
+      return [];
+    }
+    return system.planets.map((p) => ({
+      id: p.id,
+      position: p.position,
+      // 1.24x clears the 1.125x atmosphere halo while remaining inside the 1.52x orbital ring
+      avoidRadius: PLANET_CLASSES[p.planetClass].radiusUnits * 1.24,
+    }));
+  }
+
   private movePositionTowards(
     harvester: HarvesterUnitState,
     target: Vector2D,
     maxStep: number,
     arrivalRadius = 2.0,
   ): boolean {
-    const dx = target.x - harvester.position.x;
-    const dz = target.z - harvester.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist <= arrivalRadius + maxStep) {
-      harvester.position = {
-        x: target.x - (dx / Math.max(0.001, dist)) * arrivalRadius,
-        z: target.z - (dz / Math.max(0.001, dist)) * arrivalRadius,
-      };
-      return true;
+    const obstacles = this.getPlanetaryObstaclesInSystem(harvester.currentSystemId);
+    const step = computeObstacleAwareStep(
+      harvester.position,
+      target,
+      maxStep,
+      obstacles,
+      arrivalRadius,
+    );
+    harvester.position = step.position;
+    if (step.movedDistance > 1e-5) {
+      harvester.headingRadians = step.headingRadians;
     }
-    const nx = dx / dist;
-    const nz = dz / dist;
-    harvester.headingRadians = Math.atan2(nx, nz);
-    harvester.position = {
-      x: harvester.position.x + nx * maxStep,
-      z: harvester.position.z + nz * maxStep,
-    };
-    return false;
+    return step.arrived;
   }
 }
