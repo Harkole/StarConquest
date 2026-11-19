@@ -155,9 +155,22 @@ flowchart LR
 | **Carriers** | Shields + Heavy Hull | Slow | Fighter Hangar Bays *(Minimal Direct Weapons)* | **Mobile Airbase & Standoff Support.** Operates, launches, and replenishes **Fighter** squadrons anywhere on the map without needing a Logistics Hub. Counters **Dreadnoughts** from afar, but is vulnerable if fast **Destroyers** close the gap or if **Cruisers** neutralize its Fighter wings. |
 | **Dreadnoughts** | Heavy Shields + Massive Hull | Very Slow | Capital Siege Batteries *(Very Low Tracking, High Alpha)* | **Linebreaker & Base Siege.** Devastates **Cruisers**, **Destroyers**, **Logistics Hubs**, **Defence Towers**, and **Command & Control** stations. Helpless when swarmed by uncontested **Fighters** (which strip its shields and evade its guns), leaving it exposed to **Hull Breakers**. |
 
-### Fleet Production & Command
-* **Production & Supply**: Ships are queued at **Orbital Dockyards** using Ore and Crystals, with optional **auto-repeat** toggles for continuous tug-of-war reinforcement. Total fleet size is governed by a **Fleet Supply Cap**, expanded by building **Logistics Hubs** and **C&C Tech Modules**.
-* **Macro Controls**: Players direct fleets by assigning **Rally Points**, **Patrol Routes** (e.g., guarding wormholes or escorting harvester lanes), and **Fleet Stances** (Aggressive Push, Hold Choke Point, Hunt Harvesters/Backline), letting fleets execute target-priority AI automatically in combat.
+### Fleet Management, Distributed Production & Command
+* **Fleet-First Organization (No Single-Ship Micro)**: Players create and manage named **Fleets** rather than commanding individual hulls. Clicking any ship belonging to a fleet selects the **entire fleet**, and all Move, Attack, and Patrol orders apply fleet-wide. Players can also **split** ships off into a new fleet or **merge** two fleets in the UI.
+* **Fleet Composition Templates & Distributed Dockyard Production**:
+  * For each fleet, the player configures a desired **Fleet Composition Template** across the 4 shipyard-built hull classes (**Destroyer**, **Cruiser**, **Carrier**, **Dreadnought**).
+  * **Fighters** are **not** manually added to Fleet Templates; they are auto-built and launched automatically by **Fleet Carriers** and **Atlas Logistics Hubs** at no manual queue micro.
+  * Any available completed **Orbital Dockyards** (building up to 2 ships in parallel across their twin dry-dock slipways) automatically pull and build missing hulls for active fleets, prioritizing **smaller ships first** (`Destroyer → Cruiser → Carrier → Dreadnought`), governed by Ore, Crystal, Tech tier, and **Fleet Supply Cap**.
+* **Rally Point & Auto-Resupply (`ON` / `OFF`)**:
+  * Creating a fleet sets its initial **Rally Point** where newly constructed ships fly to form up.
+  * Each fleet has an **Auto-Resupply** toggle (`ON` / `OFF`). When `ON`, whenever a ship in the fleet is destroyed, the nearest available Orbital Dockyard automatically builds a replacement and dispatches it straight to the **fleet's live current position** (or to its Rally Point if the fleet is currently empty).
+* **Formation Cruise & Combat Breakaway**:
+  * While cruising across a system or transiting a wormhole, ships in a fleet **match the speed of the slowest hull** so the formation arrives together. Once entering combat range, ships **break formation to individual hull speeds** so fast Destroyers can flank while heavy capitals hold the line.
+* **Fleet Orders & Three Engagement Stances**:
+  * Players direct selected fleets with right-click **Move**, right-click **Attack**, and **Patrol Routes** (multi-waypoint loops, including across wormholes), paired with three clear **Fleet Stances**:
+    1. **Aggressive**: Chases any visible hostile ships anywhere in the **current star system** (respecting Fog of War; never chasing unprompted through wormholes), then returns to its last ordered position / rally point once hostiles are cleared.
+    2. **Hold the Line**: Holds its current position and engages any hostile that enters weapons range without moving to pursue.
+    3. **Passive**: Neither moves to engage nor fires at hostiles.
 
 ---
 
@@ -321,5 +334,10 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **Empty Slipways When Idle**: Titan Orbital Dockyard bays should **not** display any static ship models when nothing is queued. When a ship is queued, each active slipway should dynamically render the exact queued ship class model (`fighter`, `destroyer`, `cruiser`, `carrier`, or `dreadnought`) being progressively fabricated under the gantry cranes and laser scanner.
   * **Dual-Bay Parallel Construction**: Upgrade Orbital Dockyards in `src/shared/sim/gameSimulation.ts` to construct **2 ships simultaneously** (one per dry-dock slipway), maximizing the visual and tactical utility of both bays.
 
-### Direct Ship Selection & Right-Click Move / Attack Orders
-* **Planned Feature**: Allow players to select individual combat ships (or multi-ship fleet groups) and issue direct **right-click Move and Attack-Target orders** in 3D space (distinguishing short right-click taps from right-drag camera orbit), complementing Dockyard Rally Points, Patrol Routes, and Fleet Stances.
+### Fleet Management, Template Production, Auto-Resupply & Fleet-Wide Right-Click Orders
+* **Planned Feature**: Upgrade the Step 3 prototype Dockyard controls to the canonical **Fleet-First Command System** (Section 6):
+  * **Fleet Manager UI**: Create fleets (with initial Rally Point), configure desired counts of `Destroyer / Cruiser / Carrier / Dreadnought`, toggle **Auto-Resupply (`ON`/`OFF`)**, set stance (**Aggressive**, **Hold the Line**, **Passive**), and **split / merge** fleets.
+  * **Distributed Smallest-First Shipyard Scheduler**: Completed Orbital Dockyards automatically build missing fleet hulls smallest-first (`Destroyer → Cruiser → Carrier → Dreadnought`) and dispatch replacements straight to the live fleet's position (or Rally Point if empty).
+  * **Whole-Fleet Selection & Right-Click Orders**: Clicking any ship selects its entire fleet; short right-click taps issue fleet-wide **Move** or **Attack** orders (distinguished from right-drag camera orbit), alongside fleet-level **Patrol Routes**.
+  * **Formation Cruise Speed**: Fleets match their slowest ship while cruising and break to individual hull speeds once in combat range.
+  * **Automatic Fighter Wings**: Fighters are auto-built and launched automatically by Carriers and Logistics Hubs rather than manually queued in Fleet Templates.
