@@ -223,3 +223,18 @@ Each ship and orbital platform is designed and locked in one at a time.
 4. **Multi-Tiered Pagoda Fabrication & Command Spire (`Side View`)**:
    * Rising from the central plateau is a tall pagoda tower surrounded by **3 stacked cantilevered horizontal discs** (**Open Hangar Deck** and **Fabrication & Construction Decks**) with warm amber bridge window rings and **4 shuttling vertical Material Transport Elevators**.
    * Crowned by the **Central Command & Control Core**, a rotating geodesic **Sensor Array Sphere** (`260` sensor range), and a tall tapered **Command Spire Elevation** needle with a red navigation beacon.
+
+---
+
+### 09 & 10. Deep-Space Defence Towers — "Point Defence Tower" & "Hull Breaker Tower"
+
+* **Shared Vertical Sentry Chassis Reference**: ![Vertical Sentry Tower Reference](./defense-aegis-remote-turret.jpg)
+* **Renderer Implementation**: `buildVerticalSentryTowerUnit` & `buildDeepSpaceSentryTower` in [stationModels.ts](../src/client/renderer/stationModels.ts)
+
+#### Shared Chassis & Variant Loadouts
+1. **Shared Armored Vertical Sentry Spine**:
+   * Both deep-space Defence Towers share the vertical sentry column chassis from the Aegis remote turret design: Gunmetal Slate (`#3e4652`) vertical spine, Dark Charcoal (`#1e232a`) rib collars, vertical Molten Copper-Orange (`#fb923c`) power conduits, lower **Reactor & Power Core Access Base** with twin rear station-keeping thrusters, flared upper crown collar, and **3 vertically stacked rotating `PDx2` side turrets**.
+2. **Hull Breaker Tower (`hull_breaker_tower`, `1.45x` Scale)**:
+   * Reuses the Aegis remote turret model as-is: crowns the spine with the heavy anti-capital spinal plasma cannon mount (`320` alpha, `3.5s` reload, slow `0.15` tracking).
+3. **Point Defence Tower (`point_defence_tower`, `1.30x` Scale)**:
+   * Replaces the heavy crown cannon with a compact, rapid-tracking **Quad-Barrel Point-Defence Gatling Crown Turret** (Steel Grey `#64748b` barrels and twin Weathered Ochre `#c27d2c` side ammo drums) paired with a dorsal targeting sensor mast (`18` alpha, `0.35s` reload, rapid `0.95` tracking).

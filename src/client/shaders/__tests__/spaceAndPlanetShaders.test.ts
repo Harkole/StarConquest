@@ -370,4 +370,26 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     library.updateStationAnimation(hubGroup, 3.25, null);
     library.dispose();
   });
+
+  it('constructs vertical sentry Hull Breaker and Point Defence deep-space towers with distinct weapon crowns', () => {
+    const library = new StationModelLibrary();
+    const hullBreaker = library.buildStationMesh('hull_breaker_tower', true);
+    const pointDefence = library.buildStationMesh('point_defence_tower', true);
+
+    expect(hullBreaker.name).toBe('deep_space_hull_breaker_tower');
+    expect(pointDefence.name).toBe('deep_space_point_defence_tower');
+    expect(typeof hullBreaker.userData.animateStation).toBe('function');
+    expect(typeof pointDefence.userData.animateStation).toBe('function');
+
+    const hbBox = new THREE.Box3().setFromObject(hullBreaker);
+    const pdBox = new THREE.Box3().setFromObject(pointDefence);
+    // Vertical sentry column is taller than it is wide, and Hull Breaker is larger than Point Defence
+    expect(hbBox.max.y - hbBox.min.y).toBeGreaterThan(8);
+    expect(pdBox.max.y - pdBox.min.y).toBeGreaterThan(7);
+    expect(hbBox.max.x - hbBox.min.x).toBeGreaterThan(pdBox.max.x - pdBox.min.x);
+
+    library.updateStationAnimation(hullBreaker, 2.0, null);
+    library.updateStationAnimation(pointDefence, 2.0, null);
+    library.dispose();
+  });
 });

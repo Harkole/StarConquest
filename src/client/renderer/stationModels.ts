@@ -244,9 +244,6 @@ export class StationModelLibrary {
   private readonly hubCommandNeedleGeom = this.registerGeom(
     new THREE.CylinderGeometry(0.08, 0.48, 2.8, 8),
   );
-  private readonly deepSpaceTowerPlaceholderGeom = this.registerGeom(
-    new THREE.CylinderGeometry(1.6, 2.2, 4.2, 8),
-  );
 
   // Minerva C&C Tech & Specialization Module reusable geometries (1-slot curved R&D platform)
   private readonly techDataConduitPipeGeom = this.registerGeom(
@@ -577,12 +574,9 @@ export class StationModelLibrary {
       case 'logistics_hub':
         return this.buildAtlasLogisticsHub(isComplete);
       case 'point_defence_tower':
-      case 'hull_breaker_tower': {
-        const group = new THREE.Group();
-        const mat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
-        group.add(new THREE.Mesh(this.deepSpaceTowerPlaceholderGeom, mat));
-        return group;
-      }
+        return this.buildDeepSpaceSentryTower('point_defence', isComplete);
+      case 'hull_breaker_tower':
+        return this.buildDeepSpaceSentryTower('hull_breaker', isComplete);
     }
   }
 
@@ -2030,107 +2024,25 @@ export class StationModelLibrary {
       [];
     const sentryPdTurrets: { readonly pivot: THREE.Group; readonly phase: number }[] = [];
 
-    const buildRemoteSentryTurret = (sentryIndex: number): THREE.Group => {
-      const sentryRoot = new THREE.Group();
-      sentryRoot.scale.setScalar(1.15);
-
-      // Vertical Sentry Gun Spine
-      const spine = new THREE.Mesh(this.aegisSentrySpineGeom, hullMat);
-      sentryRoot.add(spine);
-
-      for (const ribY of [-1.45, -0.25, 0.95, 1.95]) {
-        const rib = new THREE.Mesh(this.aegisSentryRibCollarGeom, frameMat);
-        rib.position.set(0, ribY, 0);
-        sentryRoot.add(rib);
-      }
-
-      for (const cz of [-0.62, 0.62]) {
-        const conduit = new THREE.Mesh(this.aegisSentryConduitStripGeom, heatMat);
-        conduit.position.set(0.74, 0, cz);
-        sentryRoot.add(conduit);
-      }
-
-      // Lower Reactor & Power Core Access Base + Rear Station-Keeping Thruster Assembly (-X rear side)
-      const reactorBase = new THREE.Mesh(this.aegisSentryReactorBaseGeom, frameMat);
-      reactorBase.position.set(-0.35, -2.35, 0);
-      sentryRoot.add(reactorBase);
-
-      const reactorAccent = new THREE.Mesh(this.outpostSupplyCrateGeom, ochreMat);
-      reactorAccent.position.set(-0.35, -2.35, 0);
-      sentryRoot.add(reactorAccent);
-
-      for (const ty of [-2.12, -2.56]) {
-        const thruster = new THREE.Mesh(this.aegisSentryThrusterNozzleGeom, plasmaMat);
-        thruster.rotation.z = Math.PI / 2;
-        thruster.position.set(-1.55, ty, 0);
-        sentryRoot.add(thruster);
-      }
-
-      // Flared Upper Collar & Rotating Top Heavy Plasma Turret
-      const crownCollar = new THREE.Mesh(this.aegisSentryCrownCollarGeom, hullMat);
-      crownCollar.rotation.y = Math.PI / 8;
-      crownCollar.position.set(0, 2.45, 0);
-      sentryRoot.add(crownCollar);
-
-      const topTurretPivot = new THREE.Group();
-      topTurretPivot.position.set(0, 2.98, 0);
-
-      const topHousing = new THREE.Mesh(this.aegisSentryTopTurretGeom, ochreMat);
-      topTurretPivot.add(topHousing);
-
-      const topBarrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, plasmaMat);
-      topBarrel.scale.set(0.78, 0.68, 0.78);
-      topBarrel.rotation.z = -Math.PI / 2;
-      topBarrel.position.set(1.45, 0.06, 0);
-      topTurretPivot.add(topBarrel);
-
-      sentryRoot.add(topTurretPivot);
-      sentryCrownTurrets.push({ pivot: topTurretPivot, phase: sentryIndex * 2.1 });
-
-      // 3 Vertically Stacked Rotating Point-Defense (PDx2) Turrets along the outward (+X) face of the spine
-      for (const [pdIdx, pdY] of [1.35, 0.15, -1.05].entries()) {
-        const pdPivot = new THREE.Group();
-        pdPivot.position.set(0.82, pdY, 0);
-
-        const pdHousing = new THREE.Mesh(this.outpostPdHousingGeom, hullMat);
-        pdPivot.add(pdHousing);
-
-        const pdAmmo = new THREE.Mesh(this.outpostPdAmmoDrumGeom, ochreMat);
-        pdAmmo.position.set(0, -0.26, 0);
-        pdPivot.add(pdAmmo);
-
-        for (const bz of [-0.14, 0.14]) {
-          const pdBarrel = new THREE.Mesh(this.aegisSentryPdBarrelGeom, plasmaMat);
-          pdBarrel.rotation.z = -Math.PI / 2;
-          pdBarrel.position.set(0.62, 0.04, bz);
-          pdPivot.add(pdBarrel);
-        }
-
-        sentryRoot.add(pdPivot);
-        sentryPdTurrets.push({
-          pivot: pdPivot,
-          phase: sentryIndex * 1.4 + pdIdx * 1.1,
-        });
-      }
-
-      return sentryRoot;
-    };
-
     const sentryStandoffRadius = ringR + 7.2;
     const sentryAngles = [-Math.PI * 0.6, Math.PI, Math.PI * 0.6];
     sentryAngles.forEach((theta, idx) => {
-      const sentryTower = buildRemoteSentryTurret(idx);
+      const unit = this.buildVerticalSentryTowerUnit('hull_breaker', isComplete, idx);
+      unit.root.scale.setScalar(1.15);
       // Map onto circular perimeter around the host planet center (-ringR, 0, 0)
-      sentryTower.position.set(
+      unit.root.position.set(
         sentryStandoffRadius * Math.cos(theta) - ringR,
         0,
         sentryStandoffRadius * Math.sin(theta),
       );
-      sentryTower.rotation.y = -theta;
-      remoteTurretsGroup.add(sentryTower);
+      unit.root.rotation.y = -theta;
+      remoteTurretsGroup.add(unit.root);
+
+      sentryCrownTurrets.push({ pivot: unit.crownTurretPivot, phase: idx * 2.1 });
+      sentryPdTurrets.push(...unit.pdTurretPivots);
     });
 
-    // Live turret tracking & planetary shield ripple animation hook
+    // Live turret tracking animation hook
     root.userData.animateStation = (elapsedSeconds: number): void => {
       if (!isComplete) {
         return;
@@ -2153,6 +2065,176 @@ export class StationModelLibrary {
     };
 
     return root;
+  }
+
+  /**
+   * Shared vertical sentry tower assembly used by:
+   * - `hull_breaker_tower` (and the Aegis remote sentry turrets): mounts the heavy spinal anti-capital
+   *   crown cannon above 3 stacked PDx2 side turrets.
+   * - `point_defence_tower`: replaces the heavy crown cannon with a compact rapid-tracking Quad-Barrel
+   *   Point-Defence Gatling crown turret and targeting sensor mast above 3 stacked PDx2 side turrets.
+   */
+  private buildVerticalSentryTowerUnit(
+    variant: 'hull_breaker' | 'point_defence',
+    isComplete: boolean,
+    phaseSeed: number,
+  ): {
+    readonly root: THREE.Group;
+    readonly crownTurretPivot: THREE.Group;
+    readonly pdTurretPivots: readonly {
+      readonly pivot: THREE.Group;
+      readonly phase: number;
+    }[];
+  } {
+    const sentryRoot = new THREE.Group();
+    const hullMat = isComplete ? this.primaryHullMat : this.buildingWireframeMat;
+    const ochreMat = isComplete ? this.accentOchreMat : this.buildingWireframeMat;
+    const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
+    const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
+    const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
+    const plasmaMat = isComplete ? this.techQuantumVioletMat : this.buildingWireframeMat;
+    const barrelMat = variant === 'point_defence' ? trimMat : plasmaMat;
+
+    // 1. Vertical Sentry Gun Spine, Rib Collars & Power Conduits
+    sentryRoot.add(new THREE.Mesh(this.aegisSentrySpineGeom, hullMat));
+
+    for (const ribY of [-1.45, -0.25, 0.95, 1.95]) {
+      const rib = new THREE.Mesh(this.aegisSentryRibCollarGeom, frameMat);
+      rib.position.set(0, ribY, 0);
+      sentryRoot.add(rib);
+    }
+
+    for (const cz of [-0.62, 0.62]) {
+      const conduit = new THREE.Mesh(this.aegisSentryConduitStripGeom, heatMat);
+      conduit.position.set(0.74, 0, cz);
+      sentryRoot.add(conduit);
+    }
+
+    // 2. Lower Reactor & Power Core Access Base + Rear Station-Keeping Thruster Assembly
+    const reactorBase = new THREE.Mesh(this.aegisSentryReactorBaseGeom, frameMat);
+    reactorBase.position.set(-0.35, -2.35, 0);
+    sentryRoot.add(reactorBase);
+
+    const reactorAccent = new THREE.Mesh(this.outpostSupplyCrateGeom, ochreMat);
+    reactorAccent.position.set(-0.35, -2.35, 0);
+    sentryRoot.add(reactorAccent);
+
+    for (const ty of [-2.12, -2.56]) {
+      const thruster = new THREE.Mesh(this.aegisSentryThrusterNozzleGeom, barrelMat);
+      thruster.rotation.z = Math.PI / 2;
+      thruster.position.set(-1.55, ty, 0);
+      sentryRoot.add(thruster);
+    }
+
+    // 3. Flared Upper Crown Collar & Variant-Specific Crown Weapon Mount
+    const crownCollar = new THREE.Mesh(this.aegisSentryCrownCollarGeom, hullMat);
+    crownCollar.rotation.y = Math.PI / 8;
+    crownCollar.position.set(0, 2.45, 0);
+    sentryRoot.add(crownCollar);
+
+    const crownTurretPivot = new THREE.Group();
+    crownTurretPivot.position.set(0, 2.98, 0);
+
+    if (variant === 'hull_breaker') {
+      // Heavy Anti-Capital Plasma Crown Cannon (reuses Aegis remote turret design as-is)
+      crownTurretPivot.add(new THREE.Mesh(this.aegisSentryTopTurretGeom, ochreMat));
+
+      const topBarrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, plasmaMat);
+      topBarrel.scale.set(0.78, 0.68, 0.78);
+      topBarrel.rotation.z = -Math.PI / 2;
+      topBarrel.position.set(1.45, 0.06, 0);
+      crownTurretPivot.add(topBarrel);
+    } else {
+      // Compact Rapid-Tracking Quad-Barrel Point-Defence Crown Turret + Targeting Mast
+      const pdCrownBase = new THREE.Mesh(this.outpostPdHousingGeom, hullMat);
+      pdCrownBase.scale.set(1.35, 1.15, 1.35);
+      crownTurretPivot.add(pdCrownBase);
+
+      for (const side of [-1, 1]) {
+        const ammoDrum = new THREE.Mesh(this.outpostPdAmmoDrumGeom, ochreMat);
+        ammoDrum.position.set(-0.08, -0.04, side * 0.52);
+        crownTurretPivot.add(ammoDrum);
+
+        for (const barY of [-0.1, 0.14]) {
+          const barrel = new THREE.Mesh(this.aegisSentryPdBarrelGeom, trimMat);
+          barrel.rotation.z = -Math.PI / 2;
+          barrel.position.set(0.78, barY, side * 0.22);
+          crownTurretPivot.add(barrel);
+        }
+      }
+
+      const trackingMast = new THREE.Mesh(this.cncAntennaMastGeom, trimMat);
+      trackingMast.scale.setScalar(0.65);
+      trackingMast.position.set(-0.35, 0.62, 0);
+      crownTurretPivot.add(trackingMast);
+    }
+
+    sentryRoot.add(crownTurretPivot);
+
+    // 4. Three Vertically Stacked Rotating Point-Defense (PDx2) Turrets along the outward (+X) face
+    const pdTurretPivots: { readonly pivot: THREE.Group; readonly phase: number }[] = [];
+    for (const [pdIdx, pdY] of [1.35, 0.15, -1.05].entries()) {
+      const pdPivot = new THREE.Group();
+      pdPivot.position.set(0.82, pdY, 0);
+
+      pdPivot.add(new THREE.Mesh(this.outpostPdHousingGeom, hullMat));
+
+      const pdAmmo = new THREE.Mesh(this.outpostPdAmmoDrumGeom, ochreMat);
+      pdAmmo.position.set(0, -0.26, 0);
+      pdPivot.add(pdAmmo);
+
+      for (const bz of [-0.14, 0.14]) {
+        const pdBarrel = new THREE.Mesh(this.aegisSentryPdBarrelGeom, barrelMat);
+        pdBarrel.rotation.z = -Math.PI / 2;
+        pdBarrel.position.set(0.62, 0.04, bz);
+        pdPivot.add(pdBarrel);
+      }
+
+      sentryRoot.add(pdPivot);
+      pdTurretPivots.push({
+        pivot: pdPivot,
+        phase: phaseSeed * 1.4 + pdIdx * 1.1,
+      });
+    }
+
+    return { root: sentryRoot, crownTurretPivot, pdTurretPivots };
+  }
+
+  /**
+   * Builds standalone Deep-Space Defence Towers (`point_defence_tower` & `hull_breaker_tower`)
+   * constructed inside a Logistics Hub's 180u operational build radius (docs/artstyle.md #09 & #10).
+   */
+  private buildDeepSpaceSentryTower(
+    variant: 'hull_breaker' | 'point_defence',
+    isComplete: boolean,
+  ): THREE.Group {
+    const unit = this.buildVerticalSentryTowerUnit(
+      variant,
+      isComplete,
+      variant === 'point_defence' ? 1 : 0,
+    );
+    unit.root.name =
+      variant === 'hull_breaker'
+        ? 'deep_space_hull_breaker_tower'
+        : 'deep_space_point_defence_tower';
+    unit.root.scale.setScalar(variant === 'hull_breaker' ? 1.45 : 1.3);
+
+    const crownSpeed = variant === 'point_defence' ? 1.65 : 0.55;
+    const pdSpeed = variant === 'point_defence' ? 2.15 : 1.35;
+
+    unit.root.userData.animateStation = (elapsedSeconds: number): void => {
+      if (!isComplete) {
+        return;
+      }
+      unit.crownTurretPivot.rotation.y =
+        Math.sin(elapsedSeconds * crownSpeed) * 0.85;
+      for (const item of unit.pdTurretPivots) {
+        item.pivot.rotation.y =
+          Math.sin(elapsedSeconds * pdSpeed + item.phase) * 0.52;
+      }
+    };
+
+    return unit.root;
   }
 
   /**
