@@ -11,6 +11,7 @@ import {
   type ShipClassId,
 } from '../config/index.ts';
 import type {
+  FleetHullClassId,
   FleetStance,
   GameCommand,
   PlayerSlotId,
@@ -58,6 +59,13 @@ export const REFINERY_UNLOAD_RATE_PER_SECOND = 10;
 export const CNC_UNLOAD_RATE_PER_SECOND = 4;
 export const REFINERY_MAX_CONCURRENT_DOCKS = 2;
 export const MAX_SHIP_PRODUCTION_QUEUE_SIZE = 5;
+export const DOCKYARD_MAX_PARALLEL_BAYS = 2;
+export const SMALLEST_FIRST_FLEET_HULLS: readonly FleetHullClassId[] = [
+  'destroyer',
+  'cruiser',
+  'carrier',
+  'dreadnought',
+];
 
 /**
  * 3-Pillar Expansion Economy Constants:
@@ -124,6 +132,7 @@ export interface ShipQueueItem {
   readonly buildTimeSeconds: number;
   progressSeconds: number;
   readonly autoRepeat?: boolean;
+  readonly targetFleetId?: string;
 }
 
 export interface DockyardWaypoint {
@@ -164,11 +173,34 @@ export type CombatShipActivityState =
   | 'patrolling'
   | 'transiting_wormhole';
 
+export type FleetOrderType = 'rally' | 'move' | 'attack' | 'patrol';
+
+export interface FleetInstance {
+  readonly id: string;
+  name: string;
+  readonly ownerId: PlayerSlotId;
+  rallySystemId: string;
+  rallyPosition: Vector2D;
+  stance: FleetStance;
+  autoResupply: boolean;
+  readonly desiredCounts: Record<FleetHullClassId, number>;
+  /** Tracks how many hulls of each class have already been produced for initial fill when autoResupply is OFF. */
+  readonly initialBuiltCounts: Record<FleetHullClassId, number>;
+  orderType: FleetOrderType;
+  orderSystemId: string;
+  orderPosition: Vector2D;
+  attackTargetId: string | null;
+  patrolWaypoints: readonly DockyardWaypoint[];
+  patrolIndex: number;
+}
+
 export interface CombatShipUnitState {
   readonly id: string;
   readonly shipClassId: CombatShipClassId;
   readonly ownerId: PlayerSlotId;
   readonly homeDockyardId: string;
+  fleetId: string | null;
+  inCombat: boolean;
   currentSystemId: string;
   position: Vector2D;
   headingRadians: number;
@@ -261,6 +293,7 @@ export class GameSimulation {
   private readonly miningBelts: AsteroidMiningBeltNode[] = [];
   private readonly harvesters: HarvesterUnitState[] = [];
   private readonly combatShips: CombatShipUnitState[] = [];
+  private readonly fleets: FleetInstance[] = [];
   private nextEntityCounter = 1;
 
   constructor(presetId: MatchPresetId = 'standard_tactical') {
@@ -467,6 +500,94 @@ export class GameSimulation {
     return this.combatShips.find((s) => s.id === shipId);
   }
 
+  public getAllFleets(): readonly FleetInstance[] {
+    return this.fleets;
+  }
+
+  public getFleetsForPlayer(playerId: PlayerSlotId): readonly FleetInstance[] {
+    return this.fleets.filter((f) => f.ownerId === playerId);
+  }
+
+  public getFleetById(fleetId: string): FleetInstance | undefined {
+    return this.fleets.find((f) => f.id === fleetId);
+  }
+
+  public getShipsInFleet(fleetId: string): readonly CombatShipUnitState[] {
+    return this.combatShips.filter((s) => s.fleetId === fleetId);
+  }
+
+  /**
+   * Returns the live centroid position of ships currently in `fleetId`, or its Rally Point if empty.
+   */
+  public getFleetLiveAnchor(
+    fleetId: string,
+  ): { readonly systemId: string; readonly position: Vector2D } | null {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet) {
+      return null;
+    }
+    const members = this.getShipsInFleet(fleetId);
+    if (members.length === 0) {
+      return {
+        systemId: fleet.orderSystemId,
+        position: fleet.orderPosition,
+      };
+    }
+    // Prefer members in the fleet's ordered system; otherwise use the first member's system
+    const inOrderSys = members.filter((m) => m.currentSystemId === fleet.orderSystemId);
+    const group = inOrderSys.length > 0 ? inOrderSys : [members[0]!];
+    const systemId = group[0]!.currentSystemId;
+    let sumX = 0;
+    let sumZ = 0;
+    for (const m of group) {
+      sumX += m.position.x;
+      sumZ += m.position.z;
+    }
+    return {
+      systemId,
+      position: { x: sumX / group.length, z: sumZ / group.length },
+    };
+  }
+
+  /**
+   * Cruise speed of a fleet equals its slowest live ship so formations travel and arrive together.
+   */
+  public getFleetCruiseSpeed(fleetId: string): number {
+    const members = this.getShipsInFleet(fleetId);
+    if (members.length === 0) {
+      return 0;
+    }
+    let minSpeed = Infinity;
+    for (const m of members) {
+      const spd = SHIP_CLASSES[m.shipClassId].speed;
+      if (spd < minSpeed) {
+        minSpeed = spd;
+      }
+    }
+    return Number.isFinite(minSpeed) ? minSpeed : 0;
+  }
+
+  /**
+   * Destroys a combat ship (used by Step 4 combat resolution & tests), refunding Fleet Supply.
+   * If its fleet has `autoResupply` enabled, the next tick's distributed shipyard scheduler
+   * automatically queues a replacement at the nearest available Orbital Dockyard.
+   */
+  public destroyCombatShip(shipId: string): boolean {
+    const idx = this.combatShips.findIndex((s) => s.id === shipId);
+    if (idx === -1) {
+      return false;
+    }
+    const [removed] = this.combatShips.splice(idx, 1);
+    if (removed) {
+      const player = this.players.get(removed.ownerId);
+      const cfg = SHIP_CLASSES[removed.shipClassId];
+      if (player) {
+        player.supplyUsed = Math.max(0, player.supplyUsed - cfg.supplyCost);
+      }
+    }
+    return true;
+  }
+
   public getPlayerTechModuleCount(playerId: PlayerSlotId): number {
     let count = 0;
     for (const planetState of this.planets.values()) {
@@ -573,6 +694,68 @@ export class GameSimulation {
           command.structureId,
           command.queueItemId,
         );
+      case 'CREATE_FLEET':
+        return this.handleCreateFleet(
+          command.playerId,
+          command.rallySystemId,
+          command.rallyPosition,
+          command.name,
+          command.stance,
+          command.autoResupply,
+        );
+      case 'UPDATE_FLEET_TEMPLATE':
+        return this.handleUpdateFleetTemplate(
+          command.playerId,
+          command.fleetId,
+          command.desiredCounts,
+        );
+      case 'SET_FLEET_STANCE':
+        return this.handleSetFleetStance(
+          command.playerId,
+          command.fleetId,
+          command.stance,
+        );
+      case 'SET_FLEET_RESUPPLY':
+        return this.handleSetFleetResupply(
+          command.playerId,
+          command.fleetId,
+          command.autoResupply,
+        );
+      case 'ORDER_FLEET_MOVE':
+        return this.handleOrderFleetMove(
+          command.playerId,
+          command.fleetId,
+          command.targetSystemId,
+          command.targetPosition,
+        );
+      case 'ORDER_FLEET_ATTACK':
+        return this.handleOrderFleetAttack(
+          command.playerId,
+          command.fleetId,
+          command.targetSystemId,
+          command.targetPosition,
+          command.targetEntityId,
+        );
+      case 'ORDER_FLEET_PATROL':
+        return this.handleOrderFleetPatrol(
+          command.playerId,
+          command.fleetId,
+          command.waypoints,
+        );
+      case 'SPLIT_FLEET':
+        return this.handleSplitFleet(
+          command.playerId,
+          command.sourceFleetId,
+          command.newFleetName,
+        );
+      case 'MERGE_FLEETS':
+        return this.handleMergeFleets(
+          command.playerId,
+          command.sourceFleetId,
+          command.targetFleetId,
+        );
+      case 'DISBAND_FLEET':
+        return this.handleDisbandFleet(command.playerId, command.fleetId);
       default:
         return { ok: true };
     }
@@ -589,7 +772,8 @@ export class GameSimulation {
       beltNode.worldY = worldPos.y;
     }
 
-    // 2. Advance orbital structure construction timers & per-platform ship build queues (1 at a time)
+    // 2. Advance orbital structure construction timers & per-platform ship build queues
+    // Orbital Dockyards build up to 2 ships simultaneously (1 per dry-dock slipway); C&C/Refineries build 1 at a time.
     for (const planetState of this.planets.values()) {
       for (const structure of planetState.structures) {
         if (!structure.isComplete) {
@@ -600,38 +784,58 @@ export class GameSimulation {
             this.onOrbitalStructureCompleted(planetState, structure);
           }
         } else if (structure.productionQueue.length > 0) {
-          const activeOrder = structure.productionQueue[0];
-          if (activeOrder) {
-            activeOrder.progressSeconds += deltaSeconds;
-            if (activeOrder.progressSeconds >= activeOrder.buildTimeSeconds) {
-              structure.productionQueue.shift();
-              if (activeOrder.shipClassId === 'harvester') {
-                this.spawnHarvesterAtStructure(
+          const maxParallel =
+            structure.structureId === 'orbital_dockyard'
+              ? DOCKYARD_MAX_PARALLEL_BAYS
+              : 1;
+          const activeCount = Math.min(maxParallel, structure.productionQueue.length);
+          const completedOrders: ShipQueueItem[] = [];
+
+          for (let i = 0; i < activeCount; i++) {
+            const order = structure.productionQueue[i];
+            if (!order) continue;
+            order.progressSeconds += deltaSeconds;
+            if (order.progressSeconds >= order.buildTimeSeconds) {
+              completedOrders.push(order);
+            }
+          }
+
+          for (const done of completedOrders) {
+            const idx = structure.productionQueue.indexOf(done);
+            if (idx !== -1) {
+              structure.productionQueue.splice(idx, 1);
+            }
+            if (done.shipClassId === 'harvester') {
+              this.spawnHarvesterAtStructure(
+                structure.ownerId,
+                planetState,
+                structure,
+              );
+            } else {
+              this.spawnCombatShipAtDockyard(
+                structure.ownerId,
+                planetState,
+                structure,
+                done.shipClassId,
+                done.targetFleetId ?? null,
+              );
+              if (done.autoRepeat) {
+                this.handleQueueCombatShip(
                   structure.ownerId,
-                  planetState,
-                  structure,
+                  structure.id,
+                  done.shipClassId,
+                  true,
+                  done.targetFleetId,
                 );
-              } else {
-                this.spawnCombatShipAtDockyard(
-                  structure.ownerId,
-                  planetState,
-                  structure,
-                  activeOrder.shipClassId,
-                );
-                if (activeOrder.autoRepeat) {
-                  this.handleQueueCombatShip(
-                    structure.ownerId,
-                    structure.id,
-                    activeOrder.shipClassId,
-                    true,
-                  );
-                }
               }
             }
           }
         }
       }
     }
+
+    // 2a. Distributed smallest-first shipyard scheduler for player Fleet Templates & Auto-Resupply
+    this.scheduleFleetProduction();
 
     // 2b. Advance deep-space structure construction timers (Logistics Hubs & Defence Towers)
     for (const dsStruct of this.deepSpaceStructures) {
@@ -1174,6 +1378,7 @@ export class GameSimulation {
     dockyardId: string,
     shipClassId: CombatShipClassId,
     autoRepeat: boolean,
+    targetFleetId?: string,
   ): CommandResult {
     const validation = this.validateCombatShipOrder(playerId, dockyardId, shipClassId);
     if (!validation.ok) {
@@ -1194,9 +1399,491 @@ export class GameSimulation {
       buildTimeSeconds: shipCfg.buildTimeSeconds,
       progressSeconds: 0,
       autoRepeat,
+      targetFleetId,
     });
 
     return { ok: true };
+  }
+
+  private handleCreateFleet(
+    playerId: PlayerSlotId,
+    rallySystemId: string,
+    rallyPosition: Vector2D,
+    name?: string,
+    stance: FleetStance = 'aggressive',
+    autoResupply = true,
+  ): CommandResult {
+    if (!this.players.has(playerId)) {
+      return { ok: false, reason: 'Invalid player' };
+    }
+    if (!this.galaxy.systems.some((s) => s.id === rallySystemId)) {
+      return { ok: false, reason: 'Unknown rally star system' };
+    }
+
+    const playerFleetNum = this.getFleetsForPlayer(playerId).length + 1;
+    const fleet: FleetInstance = {
+      id: `fleet_${this.nextEntityCounter++}`,
+      name: name?.trim() || `Fleet #${playerFleetNum}`,
+      ownerId: playerId,
+      rallySystemId,
+      rallyPosition: { x: rallyPosition.x, z: rallyPosition.z },
+      stance,
+      autoResupply,
+      desiredCounts: {
+        destroyer: 0,
+        cruiser: 0,
+        carrier: 0,
+        dreadnought: 0,
+      },
+      initialBuiltCounts: {
+        destroyer: 0,
+        cruiser: 0,
+        carrier: 0,
+        dreadnought: 0,
+      },
+      orderType: 'rally',
+      orderSystemId: rallySystemId,
+      orderPosition: { x: rallyPosition.x, z: rallyPosition.z },
+      attackTargetId: null,
+      patrolWaypoints: [],
+      patrolIndex: 0,
+    };
+    this.fleets.push(fleet);
+    return { ok: true };
+  }
+
+  private handleUpdateFleetTemplate(
+    playerId: PlayerSlotId,
+    fleetId: string,
+    desiredCounts: Partial<Record<FleetHullClassId, number>>,
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    for (const hull of SMALLEST_FIRST_FLEET_HULLS) {
+      const nextVal = desiredCounts[hull];
+      if (nextVal !== undefined) {
+        const clamped = Math.max(0, Math.min(30, Math.floor(nextVal)));
+        fleet.desiredCounts[hull] = clamped;
+        // If user lowered the template below initialBuiltCounts, clamp initialBuiltCounts down too
+        if (fleet.initialBuiltCounts[hull] > clamped) {
+          fleet.initialBuiltCounts[hull] = clamped;
+        }
+      }
+    }
+    return { ok: true };
+  }
+
+  private handleSetFleetStance(
+    playerId: PlayerSlotId,
+    fleetId: string,
+    stance: FleetStance,
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    fleet.stance = stance;
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === fleetId) {
+        ship.stance = stance;
+      }
+    }
+    return { ok: true };
+  }
+
+  private handleSetFleetResupply(
+    playerId: PlayerSlotId,
+    fleetId: string,
+    autoResupply: boolean,
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    fleet.autoResupply = autoResupply;
+    return { ok: true };
+  }
+
+  private handleOrderFleetMove(
+    playerId: PlayerSlotId,
+    fleetId: string,
+    targetSystemId: string,
+    targetPosition: Vector2D,
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    if (!this.galaxy.systems.some((s) => s.id === targetSystemId)) {
+      return { ok: false, reason: 'Unknown target star system' };
+    }
+    fleet.orderType = 'move';
+    fleet.orderSystemId = targetSystemId;
+    fleet.orderPosition = { x: targetPosition.x, z: targetPosition.z };
+    fleet.attackTargetId = null;
+    fleet.patrolWaypoints = [];
+    fleet.patrolIndex = 0;
+
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === fleetId) {
+        ship.patrolWaypoints = [];
+        ship.patrolIndex = 0;
+        ship.targetSystemId = targetSystemId;
+        ship.targetPosition = { x: targetPosition.x, z: targetPosition.z };
+        ship.state =
+          ship.currentSystemId === targetSystemId
+            ? 'moving_to_rally'
+            : 'transiting_wormhole';
+      }
+    }
+    return { ok: true };
+  }
+
+  private handleOrderFleetAttack(
+    playerId: PlayerSlotId,
+    fleetId: string,
+    targetSystemId: string,
+    targetPosition: Vector2D,
+    targetEntityId?: string,
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    if (!this.galaxy.systems.some((s) => s.id === targetSystemId)) {
+      return { ok: false, reason: 'Unknown target star system' };
+    }
+    fleet.orderType = 'attack';
+    fleet.orderSystemId = targetSystemId;
+    fleet.orderPosition = { x: targetPosition.x, z: targetPosition.z };
+    fleet.attackTargetId = targetEntityId ?? null;
+    fleet.patrolWaypoints = [];
+    fleet.patrolIndex = 0;
+
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === fleetId) {
+        ship.patrolWaypoints = [];
+        ship.patrolIndex = 0;
+        ship.targetSystemId = targetSystemId;
+        ship.targetPosition = { x: targetPosition.x, z: targetPosition.z };
+        ship.state =
+          ship.currentSystemId === targetSystemId
+            ? 'moving_to_rally'
+            : 'transiting_wormhole';
+      }
+    }
+    return { ok: true };
+  }
+
+  private handleOrderFleetPatrol(
+    playerId: PlayerSlotId,
+    fleetId: string,
+    waypoints: readonly DockyardWaypoint[],
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    if (waypoints.length < 2) {
+      return { ok: false, reason: 'Patrol route requires at least 2 waypoints' };
+    }
+    for (const wp of waypoints) {
+      if (!this.galaxy.systems.some((s) => s.id === wp.systemId)) {
+        return { ok: false, reason: 'Patrol route contains an unknown star system' };
+      }
+    }
+
+    const copied: DockyardWaypoint[] = waypoints.map((wp) => ({
+      systemId: wp.systemId,
+      position: { x: wp.position.x, z: wp.position.z },
+    }));
+    const firstWp = copied[0]!;
+    fleet.orderType = 'patrol';
+    fleet.orderSystemId = firstWp.systemId;
+    fleet.orderPosition = { x: firstWp.position.x, z: firstWp.position.z };
+    fleet.attackTargetId = null;
+    fleet.patrolWaypoints = copied;
+    fleet.patrolIndex = 0;
+
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === fleetId) {
+        ship.patrolWaypoints = copied;
+        ship.patrolIndex = 0;
+        ship.targetSystemId = firstWp.systemId;
+        ship.targetPosition = { x: firstWp.position.x, z: firstWp.position.z };
+        ship.state =
+          ship.currentSystemId === firstWp.systemId
+            ? 'patrolling'
+            : 'transiting_wormhole';
+      }
+    }
+    return { ok: true };
+  }
+
+  private handleSplitFleet(
+    playerId: PlayerSlotId,
+    sourceFleetId: string,
+    newFleetName?: string,
+  ): CommandResult {
+    const source = this.getFleetById(sourceFleetId);
+    if (!source || source.ownerId !== playerId) {
+      return { ok: false, reason: 'Source fleet not found or not owned by player' };
+    }
+    const members = this.getShipsInFleet(sourceFleetId);
+    if (members.length < 2) {
+      return { ok: false, reason: 'Requires at least 2 ships to split a fleet' };
+    }
+
+    // Prefer splitting excess ships above desiredCounts; otherwise split half of the fleet
+    const toMove: CombatShipUnitState[] = [];
+    for (const hull of SMALLEST_FIRST_FLEET_HULLS) {
+      const ofClass = members.filter((m) => m.shipClassId === hull);
+      const excess = ofClass.length - source.desiredCounts[hull];
+      if (excess > 0) {
+        toMove.push(...ofClass.slice(0, excess));
+      }
+    }
+    if (toMove.length === 0) {
+      const half = Math.floor(members.length / 2);
+      toMove.push(...members.slice(0, half));
+    }
+
+    const anchor = this.getFleetLiveAnchor(sourceFleetId) ?? {
+      systemId: source.rallySystemId,
+      position: source.rallyPosition,
+    };
+    const newFleetNum = this.getFleetsForPlayer(playerId).length + 1;
+    const newFleet: FleetInstance = {
+      id: `fleet_${this.nextEntityCounter++}`,
+      name: newFleetName?.trim() || `Fleet #${newFleetNum}`,
+      ownerId: playerId,
+      rallySystemId: anchor.systemId,
+      rallyPosition: { x: anchor.position.x + 24, z: anchor.position.z },
+      stance: source.stance,
+      autoResupply: false,
+      desiredCounts: { destroyer: 0, cruiser: 0, carrier: 0, dreadnought: 0 },
+      initialBuiltCounts: { destroyer: 0, cruiser: 0, carrier: 0, dreadnought: 0 },
+      orderType: 'rally',
+      orderSystemId: anchor.systemId,
+      orderPosition: { x: anchor.position.x + 24, z: anchor.position.z },
+      attackTargetId: null,
+      patrolWaypoints: [],
+      patrolIndex: 0,
+    };
+
+    for (const ship of toMove) {
+      ship.fleetId = newFleet.id;
+      if (ship.shipClassId !== 'fighter') {
+        newFleet.desiredCounts[ship.shipClassId] += 1;
+        newFleet.initialBuiltCounts[ship.shipClassId] += 1;
+      }
+      ship.patrolWaypoints = [];
+      ship.targetSystemId = newFleet.rallySystemId;
+      ship.targetPosition = { x: newFleet.rallyPosition.x, z: newFleet.rallyPosition.z };
+      ship.state =
+        ship.currentSystemId === newFleet.rallySystemId
+          ? 'moving_to_rally'
+          : 'transiting_wormhole';
+    }
+    this.fleets.push(newFleet);
+    return { ok: true };
+  }
+
+  private handleMergeFleets(
+    playerId: PlayerSlotId,
+    sourceFleetId: string,
+    targetFleetId: string,
+  ): CommandResult {
+    if (sourceFleetId === targetFleetId) {
+      return { ok: false, reason: 'Cannot merge a fleet into itself' };
+    }
+    const source = this.getFleetById(sourceFleetId);
+    const target = this.getFleetById(targetFleetId);
+    if (!source || !target || source.ownerId !== playerId || target.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleets not found or not owned by player' };
+    }
+
+    const targetAnchor = this.getFleetLiveAnchor(targetFleetId) ?? {
+      systemId: target.orderSystemId,
+      position: target.orderPosition,
+    };
+
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === sourceFleetId) {
+        ship.fleetId = targetFleetId;
+        ship.stance = target.stance;
+        ship.patrolWaypoints = target.patrolWaypoints;
+        ship.patrolIndex = target.patrolIndex;
+        ship.targetSystemId = targetAnchor.systemId;
+        ship.targetPosition = { x: targetAnchor.position.x, z: targetAnchor.position.z };
+        ship.state =
+          ship.currentSystemId === targetAnchor.systemId
+            ? target.patrolWaypoints.length >= 2
+              ? 'patrolling'
+              : 'moving_to_rally'
+            : 'transiting_wormhole';
+      }
+    }
+
+    for (const hull of SMALLEST_FIRST_FLEET_HULLS) {
+      target.desiredCounts[hull] += source.desiredCounts[hull];
+      target.initialBuiltCounts[hull] += source.initialBuiltCounts[hull];
+    }
+
+    const srcIdx = this.fleets.findIndex((f) => f.id === sourceFleetId);
+    if (srcIdx !== -1) {
+      this.fleets.splice(srcIdx, 1);
+    }
+    return { ok: true };
+  }
+
+  private handleDisbandFleet(
+    playerId: PlayerSlotId,
+    fleetId: string,
+  ): CommandResult {
+    const idx = this.fleets.findIndex(
+      (f) => f.id === fleetId && f.ownerId === playerId,
+    );
+    if (idx === -1) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+    // Cancel any queued builds earmarked for this fleet and refund resources/supply
+    for (const planetState of this.planets.values()) {
+      for (const s of planetState.structures) {
+        if (s.ownerId === playerId && s.structureId === 'orbital_dockyard') {
+          const toCancel = s.productionQueue
+            .filter((q) => q.targetFleetId === fleetId)
+            .map((q) => q.id);
+          for (const qId of toCancel) {
+            this.handleCancelQueuedShip(playerId, s.id, qId);
+          }
+        }
+      }
+    }
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === fleetId) {
+        ship.fleetId = null;
+      }
+    }
+    this.fleets.splice(idx, 1);
+    return { ok: true };
+  }
+
+  /**
+   * Distributed smallest-first shipyard production scheduler.
+   * For every fleet that still needs hulls (either initial template fill or Auto-Resupply),
+   * finds the nearest available completed Orbital Dockyard with a free parallel bay and queues
+   * the smallest missing hull (`destroyer -> cruiser -> carrier -> dreadnought`).
+   */
+  private scheduleFleetProduction(): void {
+    for (const fleet of this.fleets) {
+      // Collect all completed Orbital Dockyards belonging to this fleet's owner that have a free bay
+      const availableDockyards: {
+        readonly planetState: PlanetRuntimeState;
+        readonly structure: OrbitalStructureInstance;
+        readonly distScore: number;
+      }[] = [];
+
+      const anchor = this.getFleetLiveAnchor(fleet.id) ?? {
+        systemId: fleet.rallySystemId,
+        position: fleet.rallyPosition,
+      };
+
+      for (const planetState of this.planets.values()) {
+        for (const s of planetState.structures) {
+          if (
+            s.ownerId === fleet.ownerId &&
+            s.structureId === 'orbital_dockyard' &&
+            s.isComplete &&
+            s.productionQueue.length < DOCKYARD_MAX_PARALLEL_BAYS
+          ) {
+            const dockPos = this.getStructureWorldPosition(planetState, s);
+            const sameSystemBonus =
+              planetState.planet.systemId === anchor.systemId ? 0 : 100000;
+            const dist = Math.hypot(
+              dockPos.x - anchor.position.x,
+              dockPos.z - anchor.position.z,
+            );
+            availableDockyards.push({
+              planetState,
+              structure: s,
+              distScore: sameSystemBonus + dist,
+            });
+          }
+        }
+      }
+
+      if (availableDockyards.length === 0) {
+        continue;
+      }
+      availableDockyards.sort((a, b) => a.distScore - b.distScore);
+
+      // Count live + currently queued ships for this fleet per hull class
+      const liveCounts: Record<FleetHullClassId, number> = {
+        destroyer: 0,
+        cruiser: 0,
+        carrier: 0,
+        dreadnought: 0,
+      };
+      for (const ship of this.combatShips) {
+        if (ship.fleetId === fleet.id && ship.shipClassId !== 'fighter') {
+          liveCounts[ship.shipClassId] += 1;
+        }
+      }
+
+      const queuedCounts: Record<FleetHullClassId, number> = {
+        destroyer: 0,
+        cruiser: 0,
+        carrier: 0,
+        dreadnought: 0,
+      };
+      for (const planetState of this.planets.values()) {
+        for (const s of planetState.structures) {
+          if (s.ownerId === fleet.ownerId && s.structureId === 'orbital_dockyard') {
+            for (const q of s.productionQueue) {
+              if (q.targetFleetId === fleet.id && q.shipClassId !== 'harvester' && q.shipClassId !== 'fighter') {
+                queuedCounts[q.shipClassId] += 1;
+              }
+            }
+          }
+        }
+      }
+
+      // Queue smallest missing hulls first across nearest available Dockyards
+      for (const hull of SMALLEST_FIRST_FLEET_HULLS) {
+        const desired = fleet.desiredCounts[hull];
+        const needed = fleet.autoResupply
+          ? desired - (liveCounts[hull] + queuedCounts[hull])
+          : desired - (fleet.initialBuiltCounts[hull] + queuedCounts[hull]);
+        if (needed <= 0) {
+          continue;
+        }
+
+        for (let n = 0; n < needed; n++) {
+          const freeDock = availableDockyards.find(
+            (d) => d.structure.productionQueue.length < DOCKYARD_MAX_PARALLEL_BAYS,
+          );
+          if (!freeDock) {
+            break;
+          }
+          const res = this.handleQueueCombatShip(
+            fleet.ownerId,
+            freeDock.structure.id,
+            hull,
+            false,
+            fleet.id,
+          );
+          if (res.ok) {
+            queuedCounts[hull] += 1;
+          } else {
+            // Stop trying this hull class if resources, tech, or supply cannot satisfy it
+            break;
+          }
+        }
+      }
+    }
   }
 
   private handleSetRallyPoint(
@@ -1299,6 +1986,7 @@ export class GameSimulation {
     planetState: PlanetRuntimeState,
     dockyard: OrbitalStructureInstance,
     shipClassId: CombatShipClassId,
+    targetFleetId: string | null = null,
   ): void {
     const shipCfg = SHIP_CLASSES[shipClassId];
     const dockPos = this.getStructureWorldPosition(planetState, dockyard);
@@ -1322,8 +2010,17 @@ export class GameSimulation {
       z: Math.sin(formAngle) * formRadius,
     };
 
-    const stance: FleetStance = dockyard.fleetStance ?? 'aggressive_push';
-    const patrolWaypoints = dockyard.patrolWaypoints ?? [];
+    const fleet = targetFleetId ? this.getFleetById(targetFleetId) : undefined;
+    if (fleet && shipClassId !== 'fighter') {
+      fleet.initialBuiltCounts[shipClassId] += 1;
+    }
+
+    const stance: FleetStance =
+      fleet?.stance ?? dockyard.fleetStance ?? 'aggressive';
+    const patrolWaypoints =
+      fleet?.patrolWaypoints && fleet.patrolWaypoints.length >= 2
+        ? fleet.patrolWaypoints
+        : (dockyard.patrolWaypoints ?? []);
 
     let targetSystemId = planetState.planet.systemId;
     let targetPosition: Vector2D = {
@@ -1332,7 +2029,26 @@ export class GameSimulation {
     };
     let initialState: CombatShipActivityState = 'moving_to_rally';
 
-    if (patrolWaypoints.length >= 2) {
+    if (fleet) {
+      // Replacements fly straight to the fleet's live current position (or its Rally Point if empty)
+      const liveAnchor = this.getFleetLiveAnchor(fleet.id);
+      if (patrolWaypoints.length >= 2) {
+        const wp = patrolWaypoints[fleet.patrolIndex % patrolWaypoints.length]!;
+        targetSystemId = wp.systemId;
+        targetPosition = { x: wp.position.x, z: wp.position.z };
+        initialState =
+          planetState.planet.systemId === wp.systemId
+            ? 'patrolling'
+            : 'transiting_wormhole';
+      } else if (liveAnchor) {
+        targetSystemId = liveAnchor.systemId;
+        targetPosition = { x: liveAnchor.position.x, z: liveAnchor.position.z };
+        initialState =
+          planetState.planet.systemId === liveAnchor.systemId
+            ? 'moving_to_rally'
+            : 'transiting_wormhole';
+      }
+    } else if (patrolWaypoints.length >= 2) {
       const wp0 = patrolWaypoints[0]!;
       targetSystemId = wp0.systemId;
       targetPosition = { x: wp0.position.x, z: wp0.position.z };
@@ -1357,6 +2073,8 @@ export class GameSimulation {
       shipClassId,
       ownerId: playerId,
       homeDockyardId: dockyard.id,
+      fleetId: fleet ? fleet.id : null,
+      inCombat: false,
       currentSystemId: planetState.planet.systemId,
       position: spawnPos,
       headingRadians: Math.atan2(nx, nz),
@@ -1370,14 +2088,19 @@ export class GameSimulation {
       targetSystemId,
       targetPosition,
       patrolWaypoints,
-      patrolIndex: 0,
+      patrolIndex: fleet ? fleet.patrolIndex : 0,
       formationOffset,
     });
   }
 
   private updateCombatShip(ship: CombatShipUnitState, deltaSeconds: number): void {
     const shipCfg = SHIP_CLASSES[ship.shipClassId];
-    const maxStep = shipCfg.speed * deltaSeconds;
+    // Match slowest ship in the fleet while cruising; break to individual hull speed in combat
+    const effectiveSpeed =
+      !ship.inCombat && ship.fleetId
+        ? Math.min(shipCfg.speed, this.getFleetCruiseSpeed(ship.fleetId) || shipCfg.speed)
+        : shipCfg.speed;
+    const maxStep = effectiveSpeed * deltaSeconds;
     const obstacles = this.getPlanetaryObstaclesInSystem(ship.currentSystemId);
 
     // 1. Cross-system transit via wormhole if target lies in another star system

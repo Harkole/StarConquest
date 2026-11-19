@@ -43,9 +43,9 @@ const BUILDABLE_COMBAT_SHIP_IDS: readonly CombatShipClassId[] = [
 ];
 
 const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label: string }[] = [
-  { id: 'aggressive_push', label: 'Aggressive Push' },
-  { id: 'hold_choke_point', label: 'Hold Choke Point' },
-  { id: 'hunt_backline', label: 'Hunt Backline' },
+  { id: 'aggressive', label: 'Aggressive' },
+  { id: 'hold_the_line', label: 'Hold the Line' },
+  { id: 'passive', label: 'Passive' },
 ];
 
 export interface MainPanelSignatureParams {
@@ -168,7 +168,7 @@ export function mountSystemHud(
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
   let autoRepeatDockyardOrders = false;
-  let selectedFleetStance: FleetStance = 'aggressive_push';
+  let selectedFleetStance: FleetStance = 'aggressive';
 
   const topBarEl = document.createElement('div');
   topBarEl.className = 'hud-econ-bar';

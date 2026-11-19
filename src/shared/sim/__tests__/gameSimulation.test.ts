@@ -912,7 +912,7 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
         dockyardId: dockyard.id,
         targetSystemId: 'system_central_hub',
         targetPosition: { x: 240, z: 180 },
-        stance: 'aggressive_push',
+        stance: 'aggressive',
       }).ok,
     ).toBe(true);
 
@@ -961,11 +961,11 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
           { systemId: 'system_central_hub', position: { x: 260, z: 200 } },
           { systemId: 'system_central_hub', position: { x: 360, z: 200 } },
         ],
-        stance: 'hold_choke_point',
+        stance: 'hold_the_line',
       }).ok,
     ).toBe(true);
     expect(destroyer.state).toBe('patrolling');
-    expect(destroyer.stance).toBe('hold_choke_point');
+    expect(destroyer.stance).toBe('hold_the_line');
 
     let sawIndexOne = false;
     for (let i = 0; i < 30; i++) {
@@ -975,5 +975,136 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       }
     }
     expect(sawIndexOne).toBe(true);
+  });
+
+  it('manages Fleets with distributed smallest-first dual-bay production, formation cruise speed, auto-resupply, split, and merge', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 8000;
+    p1.crystal = 5000;
+
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+
+    // Build 1 Tech Module (slot 4) and 1 Orbital Dockyard (slots 2 & 3)
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 4,
+        structureId: 'tech_module',
+      }).ok,
+    ).toBe(true);
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'orbital_dockyard',
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(31);
+
+    const dockyard = homeworld.structures.find(
+      (s) => s.structureId === 'orbital_dockyard',
+    )!;
+    expect(dockyard.isComplete).toBe(true);
+
+    // 1. Create a Fleet with Rally Point and Auto-Resupply ON, requesting 1 Cruiser + 2 Destroyers
+    expect(
+      sim.submitCommand({
+        type: 'CREATE_FLEET',
+        playerId: 'player_1',
+        name: 'Alpha Strike',
+        rallySystemId: 'system_starter_1',
+        rallyPosition: { x: 220, z: 120 },
+        stance: 'aggressive',
+        autoResupply: true,
+      }).ok,
+    ).toBe(true);
+
+    const fleet = sim.getFleetsForPlayer('player_1')[0]!;
+    expect(fleet.name).toBe('Alpha Strike');
+    expect(fleet.autoResupply).toBe(true);
+
+    expect(
+      sim.submitCommand({
+        type: 'UPDATE_FLEET_TEMPLATE',
+        playerId: 'player_1',
+        fleetId: fleet.id,
+        desiredCounts: { destroyer: 2, cruiser: 1 },
+      }).ok,
+    ).toBe(true);
+
+    // 2. Next tick: Dockyard's 2 parallel bays immediately queue the 2 smallest ships first (both Destroyers!)
+    sim.stepTick(0.5);
+    expect(dockyard.productionQueue).toHaveLength(2);
+    expect(dockyard.productionQueue[0]?.shipClassId).toBe('destroyer');
+    expect(dockyard.productionQueue[1]?.shipClassId).toBe('destroyer');
+
+    // 3. Advance 12s -> BOTH Destroyers finish in parallel (dual-bay construction!), and Cruiser starts immediately!
+    sim.stepTick(12.0);
+    expect(sim.getShipsInFleet(fleet.id)).toHaveLength(2);
+    expect(dockyard.productionQueue).toHaveLength(1);
+    expect(dockyard.productionQueue[0]?.shipClassId).toBe('cruiser');
+
+    // 4. Advance 20.5s -> Cruiser completes and joins the fleet (now 2 Destroyers + 1 Cruiser)
+    sim.stepTick(20.5);
+    const fleetShips = sim.getShipsInFleet(fleet.id);
+    expect(fleetShips).toHaveLength(3);
+
+    // Formation cruise speed equals the slowest ship (Cruiser = 44 u/s, not Destroyer = 68 u/s)
+    expect(sim.getFleetCruiseSpeed(fleet.id)).toBe(44);
+
+    // 5. Move entire fleet to (420, 260) and test Auto-Resupply when 1 Destroyer is destroyed
+    expect(
+      sim.submitCommand({
+        type: 'ORDER_FLEET_MOVE',
+        playerId: 'player_1',
+        fleetId: fleet.id,
+        targetSystemId: 'system_starter_1',
+        targetPosition: { x: 420, z: 260 },
+      }).ok,
+    ).toBe(true);
+
+    const destroyerToLose = fleetShips.find((s) => s.shipClassId === 'destroyer')!;
+    expect(sim.destroyCombatShip(destroyerToLose.id)).toBe(true);
+    expect(sim.getShipsInFleet(fleet.id)).toHaveLength(2);
+
+    // Next tick: Auto-Resupply ON automatically queues a replacement Destroyer at the nearest Dockyard!
+    sim.stepTick(0.5);
+    expect(dockyard.productionQueue).toHaveLength(1);
+    expect(dockyard.productionQueue[0]?.shipClassId).toBe('destroyer');
+    expect(dockyard.productionQueue[0]?.targetFleetId).toBe(fleet.id);
+
+    // Complete replacement -> fleet returns to 3 ships!
+    sim.stepTick(12.0);
+    expect(sim.getShipsInFleet(fleet.id)).toHaveLength(3);
+
+    // 6. Test Split Fleet & Merge Fleets
+    expect(
+      sim.submitCommand({
+        type: 'SPLIT_FLEET',
+        playerId: 'player_1',
+        sourceFleetId: fleet.id,
+        newFleetName: 'Bravo Detachment',
+      }).ok,
+    ).toBe(true);
+    const allFleets = sim.getFleetsForPlayer('player_1');
+    expect(allFleets).toHaveLength(2);
+    const bravo = allFleets.find((f) => f.name === 'Bravo Detachment')!;
+    expect(sim.getShipsInFleet(bravo.id).length).toBeGreaterThan(0);
+
+    expect(
+      sim.submitCommand({
+        type: 'MERGE_FLEETS',
+        playerId: 'player_1',
+        sourceFleetId: bravo.id,
+        targetFleetId: fleet.id,
+      }).ok,
+    ).toBe(true);
+    expect(sim.getFleetsForPlayer('player_1')).toHaveLength(1);
+    expect(sim.getShipsInFleet(fleet.id)).toHaveLength(3);
   });
 });
