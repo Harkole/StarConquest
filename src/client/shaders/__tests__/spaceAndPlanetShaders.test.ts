@@ -371,25 +371,40 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     library.dispose();
   });
 
-  it('constructs vertical sentry Hull Breaker and Point Defence deep-space towers with distinct weapon crowns', () => {
+  it('constructs vertical sentry Hull Breaker and Point Defence deep-space towers with 360-degree column pivots and no idle gun animation', () => {
     const library = new StationModelLibrary();
     const hullBreaker = library.buildStationMesh('hull_breaker_tower', true);
     const pointDefence = library.buildStationMesh('point_defence_tower', true);
 
     expect(hullBreaker.name).toBe('deep_space_hull_breaker_tower');
     expect(pointDefence.name).toBe('deep_space_point_defence_tower');
-    expect(typeof hullBreaker.userData.animateStation).toBe('function');
-    expect(typeof pointDefence.userData.animateStation).toBe('function');
+    expect(hullBreaker.userData.animateStation).toBeUndefined();
+    expect(pointDefence.userData.animateStation).toBeUndefined();
+    expect(hullBreaker.userData.turretPivots).toBeDefined();
+    expect(pointDefence.userData.turretPivots).toBeDefined();
+
+    const hbPivots = hullBreaker.userData.turretPivots as {
+      crownTurretPivot: THREE.Group;
+      pdTurretPivots: THREE.Group[];
+    };
+    expect(hbPivots.pdTurretPivots).toHaveLength(3);
+    // Concentric column pivots at x=0, z=0 allow unobstructed 360-degree gun rotation
+    for (const pivot of hbPivots.pdTurretPivots) {
+      expect(pivot.position.x).toBe(0);
+      expect(pivot.position.z).toBe(0);
+    }
 
     const hbBox = new THREE.Box3().setFromObject(hullBreaker);
     const pdBox = new THREE.Box3().setFromObject(pointDefence);
-    // Vertical sentry column is taller than it is wide, and Hull Breaker is larger than Point Defence
     expect(hbBox.max.y - hbBox.min.y).toBeGreaterThan(8);
     expect(pdBox.max.y - pdBox.min.y).toBeGreaterThan(7);
     expect(hbBox.max.x - hbBox.min.x).toBeGreaterThan(pdBox.max.x - pdBox.min.x);
 
+    // Guns stay stationary while idle (no target tracked)
     library.updateStationAnimation(hullBreaker, 2.0, null);
     library.updateStationAnimation(pointDefence, 2.0, null);
+    expect(hbPivots.crownTurretPivot.rotation.y).toBe(0);
+
     library.dispose();
   });
 });
