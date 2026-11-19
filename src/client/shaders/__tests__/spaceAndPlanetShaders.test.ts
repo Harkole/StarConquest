@@ -7,6 +7,7 @@ import {
 } from '../../renderer/planetFactory.ts';
 import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
 import { createProceduralHullTextures } from '../../renderer/proceduralHullTextures.ts';
+import { ShipModelLibrary } from '../../renderer/shipModels.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from '../../renderer/stationModels.ts';
 import {
@@ -559,5 +560,265 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     const volcanicBody = volcanicHandle.rootGroup.children[0] as THREE.Group;
     expect(volcanicBody.children).toHaveLength(2);
     volcanicHandle.dispose();
+  });
+
+  it('constructs the tiny Stinger Light Fighter with machined steel chin barrels, procedural PBR hull, and stages 24 on Atlas Logistics Hub', () => {
+    const ships = new ShipModelLibrary();
+    const airborneFighter = ships.buildShipMesh('fighter');
+    const stagedFighter = ships.buildStingerFighterMesh({ staged: true });
+
+    expect(airborneFighter.name).toBe('ship_fighter_stinger');
+    expect(airborneFighter.getObjectByName('stinger_chin_turret')).toBeDefined();
+
+    const bbox = new THREE.Box3().setFromObject(airborneFighter);
+    const lengthZ = bbox.max.z - bbox.min.z;
+    const widthX = bbox.max.x - bbox.min.x;
+    const heightY = bbox.max.y - bbox.min.y;
+
+    // Smallest ship in the game (~1.2u long x ~1.0u wide x ~0.5u tall)
+    expect(lengthZ).toBeGreaterThan(1.0);
+    expect(lengthZ).toBeLessThan(1.6);
+    expect(widthX).toBeGreaterThan(0.85);
+    expect(widthX).toBeLessThan(1.3);
+    expect(heightY).toBeGreaterThan(0.35);
+    expect(heightY).toBeLessThan(0.75);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    airborneFighter.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    expect(greyBarrelCount).toBe(2);
+    expect(texturedHullCount).toBeGreaterThan(10);
+    expect(violetCount).toBe(0);
+
+    // Staged fighter deploys landing skids (lower min.y) and turns off engine exhaust cores
+    const stagedBox = new THREE.Box3().setFromObject(stagedFighter);
+    expect(stagedBox.min.y).toBeLessThan(bbox.min.y);
+    ships.dispose();
+
+    // Verify Atlas Deep-Space Logistics Hub stages 24 approved Stinger Light Fighters across its 4 bays
+    const stations = new StationModelLibrary();
+    const hub = stations.buildStationMesh('logistics_hub', true);
+    let stagedStingerCount = 0;
+    hub.traverse((obj) => {
+      if (obj.name === 'ship_fighter_stinger') {
+        stagedStingerCount += 1;
+      }
+    });
+    expect(stagedStingerCount).toBe(24);
+    stations.dispose();
+  });
+
+  it('constructs the Havoc Destroyer at ~4x Stinger scale with machined steel turrets, PBR hull, and docks 4 on Titan Orbital Dockyard', () => {
+    const ships = new ShipModelLibrary();
+    const fighter = ships.buildShipMesh('fighter');
+    const destroyer = ships.buildShipMesh('destroyer');
+
+    expect(destroyer.name).toBe('ship_destroyer_havoc');
+    expect(destroyer.getObjectByName('havoc_dorsal_turret')).toBeDefined();
+    expect(destroyer.userData.turretPivots).toBeDefined();
+
+    const fBox = new THREE.Box3().setFromObject(fighter);
+    const dBox = new THREE.Box3().setFromObject(destroyer);
+    const fighterLen = fBox.max.z - fBox.min.z;
+    const destroyerLen = dBox.max.z - dBox.min.z;
+
+    // Hull-based gamified scale: Destroyer (~4.8u) is roughly 4x Stinger Light Fighter (~1.2u)
+    expect(destroyerLen).toBeGreaterThan(4.2);
+    expect(destroyerLen).toBeLessThan(5.4);
+    expect(destroyerLen / fighterLen).toBeGreaterThan(3.4);
+    expect(destroyerLen / fighterLen).toBeLessThan(4.6);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    destroyer.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    // 2 dorsal medium cannon barrels + 12 light flak PD barrels (6 twin turrets) = 14
+    expect(greyBarrelCount).toBe(14);
+    expect(texturedHullCount).toBeGreaterThan(15);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Titan Orbital Dockyard docks 4 approved Havoc Destroyers in its outer escort alcoves
+    const stations = new StationModelLibrary();
+    const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    let dockedHavocCount = 0;
+    dockyard.traverse((obj) => {
+      if (obj.name === 'ship_destroyer_havoc') {
+        dockedHavocCount += 1;
+      }
+    });
+    expect(dockedHavocCount).toBe(4);
+    stations.dispose();
+  });
+
+  it('constructs the Cruiser at ~7.5u scale with twin heavy dorsal turrets, 9 PD arrays, and stages 1 in Titan Dockyard Slot 2', () => {
+    const ships = new ShipModelLibrary();
+    const destroyer = ships.buildShipMesh('destroyer');
+    const cruiser = ships.buildShipMesh('cruiser');
+
+    expect(cruiser.name).toBe('ship_cruiser');
+    expect(cruiser.getObjectByName('cruiser_dorsal_turret_fore')).toBeDefined();
+    expect(cruiser.getObjectByName('cruiser_dorsal_turret_aft')).toBeDefined();
+    expect(cruiser.userData.turretPivots).toBeDefined();
+
+    const dBox = new THREE.Box3().setFromObject(destroyer);
+    const cBox = new THREE.Box3().setFromObject(cruiser);
+    const destroyerLen = dBox.max.z - dBox.min.z;
+    const cruiserLen = cBox.max.z - cBox.min.z;
+
+    // Cruiser (~7.5u) is ~1.5x larger than Havoc Destroyer (~4.8u)
+    expect(cruiserLen).toBeGreaterThan(6.8);
+    expect(cruiserLen).toBeLessThan(8.2);
+    expect(cruiserLen).toBeGreaterThan(destroyerLen * 1.35);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    cruiser.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    // 4 heavy dorsal barrels + 18 rapid PD barrels (9 twin turrets) = 22
+    expect(greyBarrelCount).toBe(22);
+    expect(texturedHullCount).toBeGreaterThan(15);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Titan Orbital Dockyard Slot 2 stages the approved Cruiser hull
+    const stations = new StationModelLibrary();
+    const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    let stagedCruiserCount = 0;
+    dockyard.traverse((obj) => {
+      if (obj.name === 'ship_cruiser') {
+        stagedCruiserCount += 1;
+      }
+    });
+    expect(stagedCruiserCount).toBe(1);
+    stations.dispose();
+  });
+
+  it('constructs the Imperator Dreadnought at ~14.5u scale with spinal siege battery, 4-tier citadel, and stages it in Titan Dockyard Slot 1', () => {
+    const ships = new ShipModelLibrary();
+    const cruiser = ships.buildShipMesh('cruiser');
+    const dreadnought = ships.buildShipMesh('dreadnought');
+
+    expect(dreadnought.name).toBe('ship_dreadnought_imperator');
+    expect(dreadnought.getObjectByName('imperator_spinal_siege_battery')).toBeDefined();
+    expect(dreadnought.getObjectByName('imperator_command_citadel')).toBeDefined();
+    expect(dreadnought.userData.turretPivots).toBeDefined();
+
+    const cBox = new THREE.Box3().setFromObject(cruiser);
+    const dBox = new THREE.Box3().setFromObject(dreadnought);
+    const cruiserLen = cBox.max.z - cBox.min.z;
+    const dreadLen = dBox.max.z - dBox.min.z;
+
+    // Colossal capital ship (~14.5u long, ~1.9x Cruiser)
+    expect(dreadLen).toBeGreaterThan(13.2);
+    expect(dreadLen).toBeLessThan(15.8);
+    expect(dreadLen).toBeGreaterThan(cruiserLen * 1.75);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    dreadnought.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    // 6 dorsal heavy barrels + 16 broadside/ventral barrels = 22
+    expect(greyBarrelCount).toBe(22);
+    expect(texturedHullCount).toBeGreaterThan(20);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Titan Orbital Dockyard Slot 1 fabricates the approved Imperator Dreadnought (wireframe + solid pair)
+    const stations = new StationModelLibrary();
+    const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    let bay1ImperatorCount = 0;
+    dockyard.traverse((obj) => {
+      if (obj.name === 'ship_dreadnought_imperator') {
+        bay1ImperatorCount += 1;
+      }
+    });
+    expect(bay1ImperatorCount).toBe(2);
+    stations.dispose();
+  });
+
+  it('constructs the Vanguard Fleet Carrier at ~10.5u scale with flight deck, 4 staged Stingers, radar sphere, and projects it on Minerva', () => {
+    const ships = new ShipModelLibrary();
+    const cruiser = ships.buildShipMesh('cruiser');
+    const carrier = ships.buildShipMesh('carrier');
+    const dreadnought = ships.buildShipMesh('dreadnought');
+
+    expect(carrier.name).toBe('ship_carrier_vanguard');
+    expect(carrier.getObjectByName('carrier_flight_deck')).toBeDefined();
+    expect(carrier.getObjectByName('carrier_command_island')).toBeDefined();
+    expect(carrier.userData.turretPivots).toBeDefined();
+
+    const cruiserLen =
+      new THREE.Box3().setFromObject(cruiser).max.z -
+      new THREE.Box3().setFromObject(cruiser).min.z;
+    const carrierBox = new THREE.Box3().setFromObject(carrier);
+    const carrierLen = carrierBox.max.z - carrierBox.min.z;
+    const dreadLen =
+      new THREE.Box3().setFromObject(dreadnought).max.z -
+      new THREE.Box3().setFromObject(dreadnought).min.z;
+
+    // Carrier (~10.5u) sits cleanly between Cruiser (~7.5u) and Imperator Dreadnought (~14.5u)
+    expect(carrierLen).toBeGreaterThan(cruiserLen * 1.2);
+    expect(carrierLen).toBeLessThan(dreadLen * 0.85);
+
+    let deckStingerCount = 0;
+    let greyBarrelCount = 0;
+    let violetCount = 0;
+    carrier.traverse((obj) => {
+      if (obj.name === 'ship_fighter_stinger') deckStingerCount += 1;
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    expect(deckStingerCount).toBe(4);
+    // 8 Carrier PD barrels + 8 chin barrels on the 4 deck-staged Stingers = 16
+    expect(greyBarrelCount).toBe(16);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Minerva Tech Module projects the wireframe Vanguard Carrier hologram
+    const stations = new StationModelLibrary();
+    const techModule = stations.buildStationMesh('tech_module', true, 42.56);
+    expect(techModule.getObjectByName('ship_carrier_vanguard')).toBeDefined();
+    stations.dispose();
   });
 });

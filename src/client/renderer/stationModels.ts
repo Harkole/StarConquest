@@ -4,6 +4,7 @@ import type {
   OrbitalStructureId,
 } from '../../shared/config/index.ts';
 import { createProceduralHullTextures } from './proceduralHullTextures.ts';
+import { ShipModelLibrary } from './shipModels.ts';
 
 export type StationOrDeepSpaceStructureId = OrbitalStructureId | DeepSpaceStructureId;
 
@@ -19,6 +20,7 @@ export const AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET = 28;
  */
 export class StationModelLibrary {
   private readonly hullTextures = createProceduralHullTextures();
+  private readonly shipModels = new ShipModelLibrary();
 
   // Standardized PBR Materials with procedural industrial hull textures per docs/artstyle.md
   private readonly primaryHullMat = new THREE.MeshStandardMaterial({
@@ -269,12 +271,6 @@ export class StationModelLibrary {
   private readonly hubHangarPortalGeom = this.registerGeom(
     new THREE.BoxGeometry(0.24, 0.82, 3.2),
   );
-  private readonly hubFighterBodyGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.26, 0.92, 4),
-  );
-  private readonly hubFighterWingGeom = this.registerGeom(
-    new THREE.BoxGeometry(0.24, 0.06, 0.86),
-  );
   private readonly hubSpireTrunkGeom = this.registerGeom(
     new THREE.CylinderGeometry(1.95, 2.75, 5.4, 12),
   );
@@ -315,18 +311,6 @@ export class StationModelLibrary {
   );
   private readonly techHoloTableGeom = this.registerGeom(
     new THREE.BoxGeometry(1.75, 0.08, 1.55),
-  );
-  private readonly techHoloHullMainGeom = this.registerGeom(
-    new THREE.BoxGeometry(0.68, 0.34, 1.35),
-  );
-  private readonly techHoloHullBowGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.38, 0.78, 5),
-  );
-  private readonly techHoloHullWingGeom = this.registerGeom(
-    new THREE.BoxGeometry(1.32, 0.08, 0.58),
-  );
-  private readonly techHoloMiniShipGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.14, 0.42, 4),
   );
 
   // Titan Orbital Dockyard reusable geometries (2-slot curved fabrication core + twin outward slipways)
@@ -375,9 +359,6 @@ export class StationModelLibrary {
   private readonly dockSmallCraftAlcoveGeom = this.registerGeom(
     new THREE.BoxGeometry(3.4, 0.75, 1.45),
   );
-  private readonly dockSmallCraftHullGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.44, 1.85, 5),
-  );
   private readonly dockThermalRailGeom = this.registerGeom(
     new THREE.BoxGeometry(13.8, 0.18, 0.22),
   );
@@ -404,24 +385,6 @@ export class StationModelLibrary {
   );
   private readonly dockWeldingFlareGeom = this.registerGeom(
     new THREE.SphereGeometry(0.22, 8, 8),
-  );
-  private readonly dockDreadHullSternGeom = this.registerGeom(
-    new THREE.BoxGeometry(3.4, 1.15, 2.55),
-  );
-  private readonly dockDreadHullMidGeom = this.registerGeom(
-    new THREE.BoxGeometry(4.2, 1.05, 2.25),
-  );
-  private readonly dockDreadHullBowGeom = this.registerGeom(
-    new THREE.ConeGeometry(1.38, 3.4, 6),
-  );
-  private readonly dockDreadBridgeGeom = this.registerGeom(
-    new THREE.BoxGeometry(2.1, 0.72, 1.35),
-  );
-  private readonly dockCruiserHullMidGeom = this.registerGeom(
-    new THREE.BoxGeometry(5.2, 0.85, 1.72),
-  );
-  private readonly dockCruiserHullBowGeom = this.registerGeom(
-    new THREE.ConeGeometry(1.02, 2.9, 6),
   );
   private readonly dockLaserScannerPlaneGeom = this.registerGeom(
     new THREE.BoxGeometry(0.16, 2.1, 4.4),
@@ -664,6 +627,7 @@ export class StationModelLibrary {
     this.techTranslucentDomeMat.dispose();
     this.buildingWireframeMat.dispose();
     this.hullTextures.dispose();
+    this.shipModels.dispose();
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
@@ -1347,15 +1311,19 @@ export class StationModelLibrary {
       innerRail.position.set(bayCenterX, 1.32, side * 1.28);
       slipwaysGroup.add(innerRail);
 
-      // Outer Small-Craft Dry-Dock Alcoves (2 per outer flank with docked fighter/escort frames)
+      // Outer Small-Craft Dry-Dock Alcoves (2 per outer flank with docked Havoc Destroyers)
       for (const alcoveX of [4.8, 10.2]) {
         const alcove = new THREE.Mesh(this.dockSmallCraftAlcoveGeom, frameMat);
         alcove.position.set(alcoveX, 0.05, side * (outerPierZ + 1.65));
         slipwaysGroup.add(alcove);
 
-        const escortHull = new THREE.Mesh(this.dockSmallCraftHullGeom, trimMat);
-        escortHull.rotation.z = -Math.PI / 2;
-        escortHull.position.set(alcoveX, 0.55, side * (outerPierZ + 1.65));
+        const escortHull = this.shipModels.buildHavocDestroyerMesh({
+          wireframe: !isComplete,
+          staged: true,
+          scale: 0.68,
+        });
+        escortHull.rotation.y = Math.PI / 2;
+        escortHull.position.set(alcoveX, 0.68, side * (outerPierZ + 1.65));
         slipwaysGroup.add(escortHull);
       }
 
@@ -1475,39 +1443,23 @@ export class StationModelLibrary {
       }
     }
 
-    // 5. Progressive 3D Fleet Hull Assemblies Inside Slot 1 (Dreadnought Bay) & Slot 2 (Cruiser Bay)
-    const buildDreadnoughtHullAssembly = (mat: THREE.Material, accent: THREE.Material): THREE.Group => {
-      const shipGroup = new THREE.Group();
-      const stern = new THREE.Mesh(this.dockDreadHullSternGeom, mat);
-      stern.position.set(4.1, 0.25, 0);
-      shipGroup.add(stern);
-
-      const mid = new THREE.Mesh(this.dockDreadHullMidGeom, mat);
-      mid.position.set(7.6, 0.22, 0);
-      shipGroup.add(mid);
-
-      const bow = new THREE.Mesh(this.dockDreadHullBowGeom, accent);
-      bow.rotation.z = -Math.PI / 2;
-      bow.position.set(11.1, 0.18, 0);
-      shipGroup.add(bow);
-
-      const bridge = new THREE.Mesh(this.dockDreadBridgeGeom, accent);
-      bridge.position.set(5.4, 0.98, 0);
-      shipGroup.add(bridge);
-
+    // 5. Progressive 3D Fleet Hull Assemblies Inside Slot 1 (Imperator Dreadnought Bay) & Slot 2 (Cruiser Bay)
+    const buildStagedImperatorAssembly = (wireframe: boolean): THREE.Group => {
+      const shipGroup = this.shipModels.buildImperatorDreadnoughtMesh({
+        wireframe,
+        staged: true,
+        scale: 0.72,
+      });
+      shipGroup.rotation.y = Math.PI / 2;
+      shipGroup.position.set(7.6, 0.35, bay1Z);
       return shipGroup;
     };
 
-    // Slot 1 (Bay 1): Wireframe skeletal cradle + solid armored hull that progressive-fills + laser scanner plane
-    const bay1WireframeHull = buildDreadnoughtHullAssembly(
-      this.buildingWireframeMat,
-      this.buildingWireframeMat,
-    );
-    bay1WireframeHull.position.set(0, 0, bay1Z);
+    // Slot 1 (Bay 1): Wireframe skeletal cradle + solid armored Imperator hull that progressive-fills + laser scanner plane
+    const bay1WireframeHull = buildStagedImperatorAssembly(true);
     slipwaysGroup.add(bay1WireframeHull);
 
-    const bay1SolidHull = buildDreadnoughtHullAssembly(hullMat, ochreMat);
-    bay1SolidHull.position.set(0, 0, bay1Z);
+    const bay1SolidHull = buildStagedImperatorAssembly(!isComplete);
     slipwaysGroup.add(bay1SolidHull);
 
     const laserScannerPlane = new THREE.Mesh(
@@ -1517,23 +1469,15 @@ export class StationModelLibrary {
     laserScannerPlane.position.set(7.5, 0.55, bay1Z);
     slipwaysGroup.add(laserScannerPlane);
 
-    // Slot 2 (Bay 2): Secondary Cruiser / Carrier hull under assembly
-    const bay2CruiserGroup = new THREE.Group();
-    bay2CruiserGroup.position.set(0, 0, bay2Z);
-    const cruiserMid = new THREE.Mesh(this.dockCruiserHullMidGeom, hullMat);
-    cruiserMid.position.set(6.4, 0.15, 0);
-    bay2CruiserGroup.add(cruiserMid);
-
-    const cruiserBow = new THREE.Mesh(this.dockCruiserHullBowGeom, ochreMat);
-    cruiserBow.rotation.z = -Math.PI / 2;
-    cruiserBow.position.set(10.2, 0.15, 0);
-    bay2CruiserGroup.add(cruiserBow);
-
-    const cruiserBridge = new THREE.Mesh(this.dockDreadBridgeGeom, trimMat);
-    cruiserBridge.scale.set(0.75, 0.75, 0.75);
-    cruiserBridge.position.set(5.2, 0.76, 0);
-    bay2CruiserGroup.add(cruiserBridge);
-    slipwaysGroup.add(bay2CruiserGroup);
+    // Slot 2 (Bay 2): Approved Cruiser hull staged under assembly
+    const bay2Cruiser = this.shipModels.buildCruiserMesh({
+      wireframe: !isComplete,
+      staged: true,
+      scale: 1.0,
+    });
+    bay2Cruiser.rotation.y = Math.PI / 2;
+    bay2Cruiser.position.set(7.4, 0.35, bay2Z);
+    slipwaysGroup.add(bay2Cruiser);
 
     // Attach live per-frame shipyard animation hook to root.userData
     root.userData.animateStation = (
@@ -1795,47 +1739,56 @@ export class StationModelLibrary {
           }
         }
       } else if (i === 1) {
-        // 3. Advanced Hull Development Bay (Floating 3D Cyan Wireframe Prototype Ship Hologram)
+        // 3. Advanced Hull Development Bay (Floating 3D Cyan Wireframe Vanguard Fleet Carrier Hologram)
         const holoPad = new THREE.Mesh(this.techHoloTableGeom, holoSurfMat);
         holoPad.position.set(0, 0.28, 0);
         segPivot.add(holoPad);
 
-        const holoShip = new THREE.Group();
+        const holoShip = this.shipModels.buildVanguardCarrierMesh({
+          wireframe: true,
+          staged: true,
+          scale: 0.22,
+        });
+        holoShip.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.material = holoWireMat;
+          }
+        });
         holoShip.position.set(0, 0.92, 0);
-
-        const hullBody = new THREE.Mesh(this.techHoloHullMainGeom, holoWireMat);
-        holoShip.add(hullBody);
-
-        const hullBow = new THREE.Mesh(this.techHoloHullBowGeom, holoWireMat);
-        hullBow.rotation.x = Math.PI / 2;
-        hullBow.position.set(0, 0, 1.05);
-        holoShip.add(hullBow);
-
-        const hullWings = new THREE.Mesh(this.techHoloHullWingGeom, holoWireMat);
-        hullWings.position.set(0, -0.04, -0.15);
-        holoShip.add(hullWings);
 
         segPivot.add(holoShip);
         holoPrototypeShipGroup = holoShip;
       } else if (i === 5) {
-        // 4. Doctrine Integration & Calibration Lab (Tactical Fleet Formation Holo-Table)
+        // 4. Doctrine Integration & Calibration Lab (Tactical Fleet Formation Holo-Table with real ship models)
         const holoTable = new THREE.Mesh(this.techHoloTableGeom, holoSurfMat);
         holoTable.position.set(0, 0.28, 0);
         segPivot.add(holoTable);
 
         const fleetFormation = new THREE.Group();
         fleetFormation.position.set(0, 0.72, 0);
-        const shipOffsets: readonly [number, number, number][] = [
-          [0, 0.14, 0.48],
-          [-0.44, 0.04, 0.05],
-          [0.44, 0.04, 0.05],
-          [-0.68, -0.06, -0.42],
-          [0.68, -0.06, -0.42],
+        const formationSpecs: readonly {
+          readonly ship: 'cruiser' | 'destroyer' | 'fighter';
+          readonly scale: number;
+          readonly pos: readonly [number, number, number];
+        }[] = [
+          { ship: 'cruiser', scale: 0.085, pos: [0, 0.14, 0.42] },
+          { ship: 'destroyer', scale: 0.09, pos: [-0.46, 0.04, 0.04] },
+          { ship: 'destroyer', scale: 0.09, pos: [0.46, 0.04, 0.04] },
+          { ship: 'fighter', scale: 0.18, pos: [-0.68, -0.04, -0.42] },
+          { ship: 'fighter', scale: 0.18, pos: [0.68, -0.04, -0.42] },
         ];
-        for (const [fx, fy, fz] of shipOffsets) {
-          const miniShip = new THREE.Mesh(this.techHoloMiniShipGeom, holoWireMat);
-          miniShip.rotation.x = Math.PI / 2;
-          miniShip.position.set(fx, fy, fz);
+        for (const spec of formationSpecs) {
+          const miniShip = this.shipModels.buildShipMesh(spec.ship, {
+            wireframe: true,
+            staged: true,
+            scale: spec.scale,
+          });
+          miniShip.traverse((obj) => {
+            if (obj instanceof THREE.Mesh) {
+              obj.material = holoWireMat;
+            }
+          });
+          miniShip.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
           fleetFormation.add(miniShip);
         }
         segPivot.add(fleetFormation);
@@ -2343,14 +2296,13 @@ export class StationModelLibrary {
 
     // 2. Four Diagonal Fighter Hangar Bays & Launch Catapult Systems (45°, 135°, 225°, 315°)
     const buildStagedFighterMesh = (): THREE.Group => {
-      const fighter = new THREE.Group();
-      const body = new THREE.Mesh(this.hubFighterBodyGeom, trimMat);
-      body.rotation.z = -Math.PI / 2;
-      fighter.add(body);
-
-      const wing = new THREE.Mesh(this.hubFighterWingGeom, ochreMat);
-      wing.position.set(-0.1, 0, 0);
-      fighter.add(wing);
+      const fighter = this.shipModels.buildStingerFighterMesh({
+        wireframe: !isComplete,
+        staged: true,
+        scale: 0.92,
+      });
+      // Rotate +Z fighter nose to point outward along the bay's +X launch catapult track
+      fighter.rotation.y = Math.PI / 2;
       return fighter;
     };
 

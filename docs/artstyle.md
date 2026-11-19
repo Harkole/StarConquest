@@ -240,3 +240,114 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Crowns the vertical column with the heavy anti-capital spinal plasma cannon mount (`320` alpha, `3.5s` reload, slow `0.15` tracking).
 3. **Point Defence Tower (`point_defence_tower`, `1.30x` Scale)**:
    * Replaces the heavy crown cannon with a compact, rapid-tracking **Quad-Barrel Point-Defence Gatling Crown Turret** (Steel Grey `#64748b` barrels and twin Weathered Ochre `#c27d2c` side ammo drums) paired with a dorsal targeting sensor mast (`18` alpha, `0.35s` reload, rapid `0.95` tracking).
+
+---
+
+### 11. Light Fighter — Carrier/Hub Interceptor "Stinger"
+
+* **Concept Reference**: ![Stinger Light Fighter Concept Art](./fighter-stinger-concept.jpg)
+* **Orthographic Blueprint**: ![Stinger Light Fighter Orthographic Reference](./fighter-stinger-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildStingerFighterMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also staged inside Atlas Logistics Hub bays via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Stinger" Class — Smallest Ship in Game)
+1. **Tiny Carrier/Hub-Borne Scale (`~1.22u` Length × `~1.04u` Wingspan × `~0.50u` Height)**:
+   * Deliberately the smallest combat craft in StarConquest (~38% the length of the Prospector Mining Frigate), sized to fit `2x3` launch catapult formations inside the **Atlas Deep-Space Logistics Hub** and future **Carrier** hangars.
+   * Always operates tethered to a Carrier or Logistics Hub.
+2. **Faceted Multi-Pane Cockpit Canopy (`+Z` Nose) & Signature Weathered Ochre Band**:
+   * Prominent sloped armored glass canopy framed by Dark Charcoal (`#1e232a`) structural mullions atop a rounded gunmetal chin housing.
+   * Chunky procedural PBR Gunmetal Slate (`#46505e`) mid-fuselage wrapped in a vertical **Weathered Ochre (`#cd8734`)** industrial band immediately aft of the cockpit, topped by a small dorsal sensor blister.
+3. **Chin-Mounted Gimbaled Twin-Barrel Autocannon & Cheek Pods**:
+   * Ventral chin gimbal turret mounting **twin parallel machined steel grey (`#8492a6`) barrels** projecting forward past the nose, flanked by paired cylindrical nose-cheek weapon/sensor pods.
+4. **Stacked Outboard Engine Cluster Pods (`x4`) + Upper Dorsal Shoulder Pods (`x2`) + Quad Rear Thrusters**:
+   * Short armored stub wings carry vertically stacked upper/lower cylindrical engine pods (`4` outboard pods total), complemented by `2` upper dorsal shoulder pods and a `2x2` quad rear main thruster bell cluster with Ion Blue-White (`#7dd3fc`) exhaust cores when airborne.
+5. **Hangar-Staged Variant (`staged: true`)**:
+   * Deploys compact twin ventral landing skids and powers down engine exhaust cores when parked on Atlas Logistics Hub or Carrier launch decks.
+
+---
+
+### Hull-Based Gamified Ship Scale Progression
+
+Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.ts`) with a gamified curve so Dreadnoughts and Carriers look massive without shrinking Fighters and Destroyers into unreadable dots:
+
+| Ship Class | `maxHull` | Canonical 3D Length | Relative to Fighter |
+| :--- | :---: | :---: | :---: |
+| **Light Fighter "Stinger"** | `110` | `~1.2u` | `1.0x` |
+| **Resource Harvester "Prospector"** | `300` | `~3.0u` | `2.5x` |
+| **Destroyer "Havoc"** | `420` | `~4.8u` | `4.0x` |
+| **Cruiser** | `750` | `~7.5u` | `6.2x` |
+| **Fleet Carrier "Vanguard"** | `1,100` | `~10.5u` | `8.7x` |
+| **Dreadnought "Imperator"** | `2,400` | `~14.5u` | `12.0x` |
+
+---
+
+### 12. Destroyer — Fast Hull-Only Flanker "Havoc"
+
+* **Concept Reference**: ![Havoc Destroyer Concept Art](./destroyer-havoc-concept.jpg)
+* **Orthographic Blueprint**: ![Havoc Destroyer Orthographic Reference](./destroyer-havoc-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildHavocDestroyerMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also docked in Titan Orbital Dockyard outer escort alcoves via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Havoc" Class — `~4.8u` Length, `4.0x` Stinger)
+1. **Elongated Rectangular Armored Bow & Central Spine Plating (`+Z` Bow)**:
+   * Long heavy-industrial gunmetal slate forward hull (`~4.8u` length × `~2.0u` aft pod span × `~1.05u` height) with raised dark charcoal **Central Spine Plating**, horizontal **Weathered Ochre (`#cd8734`)** flank stripes, a recessed armored prow intake cavity, and glowing warm-amber forward navigation slits.
+2. **Paired Side-Mounted Multi-Tier Command Bridge Modules**:
+   * Recessed port and starboard mid-aft armored bridge bays featuring warm amber (`#fbbf24`) multi-tier observation windows divided by dark charcoal mullions.
+3. **Dorsal Twin-Barrel Medium Anti-Ship Turret & Light Flak PD Batteries**:
+   * Raised octagonal dorsal pedestal mounting `havoc_dorsal_turret` — a chunky gunmetal turret with ochre bustle and **twin long machined steel grey (`#8492a6`) barrels** (`Medium Anti-Ship Autoloaders`).
+   * **4 side-mounted** (2 port, 2 starboard) and **2 underslung ventral** twin-barrel **Light Flak Point Defence** turrets along the forward hull, exposed via `userData.turretPivots` for target tracking.
+4. **Quad Articulated Outboard Engine Cluster Pods & Quad Stern Thrusters**:
+   * Four cylindrical outboard engine pods (`2x2` port/starboard) featuring tapered gunmetal cowlings, dark rib collars, **glowing cyan-blue (`#38bdf8`) forward intakes**, and rear ion thruster bells, paired with a `2x2` quad rear main thruster cluster.
+
+---
+
+### 13. Cruiser — Shielded & Armored Fleet Backbone
+
+* **Concept Reference**: ![Cruiser Concept Art](./cruiser-concept.jpg)
+* **Orthographic Blueprint**: ![Cruiser Orthographic Reference](./cruiser-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildCruiserMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also staged in Titan Orbital Dockyard Slot 2 via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown (Cruiser Class — `~7.5u` Length, `~1.56x` Havoc)
+1. **Heavy Broadside Armored Hull & Continuous Dorsal Spine Ridge (`+Z` Bow)**:
+   * Elongated shielded capital-escort hull (`~7.5u` length × `~2.95u` aft pod span × `~1.65u` height) in procedural PBR Gunmetal Slate (`#46505e`) with a continuous raised Dark Charcoal (`#1e232a`) dorsal spine ridge, horizontal **Weathered Ochre (`#cd8734`)** flank stripes, octagonal armored mid-aft side bulkheads, and recessed warm-amber (`#fbbf24`) bridge observation bays.
+2. **Twin Elevated Dorsal Heavy Turret Emplacements (`cruiser_dorsal_turret_fore` & `cruiser_dorsal_turret_aft`)**:
+   * Fore and aft circular armored barbettes mounting chunky gunmetal turrets with **dual heavy machined steel grey (`#8492a6`) barrels** (`Dual Heavy Turrets`).
+3. **Dense Rapid Point-Defence Arrays (9 Twin-Barrel PD Turrets)**:
+   * **6 broadside** (3 port, 3 starboard), **2 ventral**, and **1 bow dorsal** twin-barrel Point-Defence turrets (22 machined steel barrels total, exposed via `userData.turretPivots`) built to shred Fighter swarms.
+4. **Heavy Quad Outboard Engine Cluster Pods & Quad Stern Thrusters**:
+   * Four heavy cylindrical outboard engine pods (`2x2` port/starboard) with glowing cyan-blue (`#38bdf8`) forward intakes and Ion Blue-White (`#7dd3fc`) exhaust cores, backed by a `2x2` stern main thruster cluster.
+
+---
+
+### 14. Dreadnought — Heavy Siege Capital "Imperator"
+
+* **Concept Reference**: ![Imperator Dreadnought Concept Art](./dreadnought-imperator-concept.jpg)
+* **Orthographic Blueprint**: ![Imperator Dreadnought Orthographic Reference](./dreadnought-imperator-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildImperatorDreadnoughtMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also progressively fabricated inside Titan Orbital Dockyard Slot 1 via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Imperator" Class — `~14.5u` Length, `~12x` Stinger)
+1. **Split Armored Jaw Prow & Integrated Glowing Spinal Siege Battery (`+Z` Bow)**:
+   * Colossal upper and lower armored bow jaws framing the **Integrated Spinal Siege Battery** (`imperator_spinal_siege_battery`) — a glowing ice-blue HDR accelerator core (`#7dd3fc`) wrapped in dark charcoal containment rib rings and a heavy muzzle crown.
+2. **Towering 4-Tier Battleship Command Citadel & Diamond-Flared Mid-Aft Hull**:
+   * Wide hexagonal/diamond-flared mid-aft armored hull anchoring a 4-tier stepped **Command Bridge Citadel** (`imperator_command_citadel`) with warm-amber and cyan-white panoramic window bands, weathered ochre crown cap, and twin communications masts.
+3. **Superfiring Dorsal Heavy Turrets & Broadside Secondary Batteries**:
+   * **3 stepped dorsal twin-barrel Heavy Turrets** (`imperator_dorsal_turret_1..3`), **6 broadside twin-barrel turrets** (3 port, 3 starboard), and **2 ventral turrets** (22 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
+4. **Colossal Quad Outboard Engine Cluster Pods & 6-Nozzle Stern Bank**:
+   * Four massive tapered outboard engine pods (`2x2` port/starboard) with dark rib collars and blazing Ion Blue-White (`#7dd3fc`) exhaust cores flanking a `3x2` stern main thruster bank.
+
+---
+
+### 15. Fleet Carrier — Mobile Airbase "Vanguard"
+
+* **Concept Reference**: ![Vanguard Fleet Carrier Concept Art](./carrier-vanguard-concept.jpg)
+* **Orthographic Blueprint**: ![Vanguard Fleet Carrier Orthographic Reference](./carrier-vanguard-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildVanguardCarrierMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also projected on Minerva Tech Module's Port R&D holo-table via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Vanguard" Class — `~10.5u` Length, `~8.7x` Stinger)
+1. **Expansive Flat-Top Flight Deck Module & Under-Deck Launch Hangar (`+Z` Bow)**:
+   * Wide flat-topped forward flight deck (`carrier_flight_deck`, `~6.2u` × `~2.9u`) in Dark Charcoal (`#1e232a`) tarmac framed by Gunmetal Slate (`#46505e`) deck edges, twin **Weathered Ochre (`#cd8734`)** runway border stripes, and Steel Grey centerline markings, staging **4 parked Stinger Light Fighters** right on deck.
+   * Under-deck bow launch hangar mouth with glowing cyan-blue (`#38bdf8`) containment strip.
+2. **Aft Command Bridge Island & Dorsal Geodesic Radar Sphere**:
+   * Multi-tier aft flight-control island (`carrier_command_island`) with warm-amber (`#fbbf24`) panoramic windows, crowned by a prominent **Dorsal Geodesic Radar Sphere** (`290` sensor range) and tall communications mast, backed by Weathered Ochre stern deck armor.
+3. **Defensive Point-Defence Grid (4 Twin-Barrel PD Turrets)**:
+   * 1 forward-island dorsal, 2 broadside, and 1 aft twin-barrel Point-Defence turret (8 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
+4. **Six Vertically Stacked Outboard Engine Cluster Pods (`3` Port + `3` Starboard)**:
+   * Three stacked cylindrical engine pods per stern flank (`6` total) with glowing cyan-blue forward intakes and Ion Blue-White (`#7dd3fc`) exhaust cores.
