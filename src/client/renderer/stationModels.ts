@@ -8,6 +8,13 @@ import { createProceduralHullTextures } from './proceduralHullTextures.ts';
 export type StationOrDeepSpaceStructureId = OrbitalStructureId | DeepSpaceStructureId;
 
 /**
+ * Radial standoff beyond `orbitalRingRadius` for the Aegis Heavy Orbital Defense Platform's
+ * 3 remote vertical sentry turrets. Exceeds the outward reach of the largest orbital structure
+ * (Titan Orbital Dockyard slipways at ~19.5u) plus sentry radius and safety clearance.
+ */
+export const AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET = 28;
+
+/**
  * Shared 3D Orbital Platform & Station Model Builder following `docs/artstyle.md`.
  */
 export class StationModelLibrary {
@@ -2067,7 +2074,7 @@ export class StationModelLibrary {
       [];
     const sentryPdTurrets: { readonly pivot: THREE.Group; readonly phase: number }[] = [];
 
-    const sentryStandoffRadius = ringR + 7.2;
+    const sentryStandoffRadius = ringR + AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET;
     const sentryAngles = [-Math.PI * 0.6, Math.PI, Math.PI * 0.6];
     sentryAngles.forEach((theta, idx) => {
       const unit = this.buildVerticalSentryTowerUnit('hull_breaker', isComplete, idx);

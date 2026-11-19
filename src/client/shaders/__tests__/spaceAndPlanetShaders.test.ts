@@ -344,7 +344,49 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
       // Middle remote sentry turret (idx 1, theta = PI) is stationed on the far opposite side of the planet
       const farSideSentry = remoteTurrets.children[1];
-      expect(farSideSentry?.position.x).toBeLessThan(-ringRadius * 1.8);
+      expect(farSideSentry?.position.x).toBeLessThan(-ringRadius * 2.1);
+
+      // Compute the maximum outward radial reach from planet center (-ringRadius, 0, 0) across all orbital buildings
+      const orbitalIds = [
+        'command_and_control',
+        'orbital_dockyard',
+        'heavy_defense_platform',
+        'refinery',
+        'planetary_outpost',
+        'tech_module',
+      ] as const;
+      let maxBuildingRadialReach = 0;
+      for (const id of orbitalIds) {
+        const mesh = library.buildStationMesh(id, true, ringRadius);
+        const target =
+          id === 'heavy_defense_platform'
+            ? (mesh.getObjectByName('aegis_main_platform') ?? mesh)
+            : mesh;
+        const b = new THREE.Box3().setFromObject(target);
+        for (const cx of [b.min.x, b.max.x]) {
+          for (const cz of [b.min.z, b.max.z]) {
+            const radialDist = Math.hypot(cx + ringRadius, cz);
+            if (radialDist > maxBuildingRadialReach) {
+              maxBuildingRadialReach = radialDist;
+            }
+          }
+        }
+      }
+
+      // Every remote sentry turret must sit strictly outside the largest orbital building + safety clearance
+      for (const sentry of remoteTurrets.children) {
+        const sb = new THREE.Box3().setFromObject(sentry);
+        let closestSentryRadialDist = Infinity;
+        for (const cx of [sb.min.x, sb.max.x]) {
+          for (const cz of [sb.min.z, sb.max.z]) {
+            const radialDist = Math.hypot(cx + ringRadius, cz);
+            if (radialDist < closestSentryRadialDist) {
+              closestSentryRadialDist = radialDist;
+            }
+          }
+        }
+        expect(closestSentryRadialDist).toBeGreaterThan(maxBuildingRadialReach + 3);
+      }
     }
 
     library.updateStationAnimation(defenseGroup, 5.0, null);
