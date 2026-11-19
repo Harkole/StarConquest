@@ -1222,12 +1222,17 @@ export class ShipModelLibrary {
 
     root.add(bridgeGroup);
 
-    // 4. Three Stepped Dorsal Heavy Turrets + Six Broadside & Two Ventral Secondary Turrets
+    // 4. Three Non-Overlapping Dorsal Heavy Turrets (Bow, Mid-Hull, & Aft Behind Bridge) + Broadside/Ventral Batteries
     const dorsalTurretPivots: THREE.Group[] = [];
-    const dorsalSpecs: readonly { readonly name: string; readonly y: number; readonly z: number }[] = [
-      { name: 'imperator_dorsal_turret_1', y: 1.08, z: 3.1 },
-      { name: 'imperator_dorsal_turret_2', y: 1.16, z: 1.45 },
-      { name: 'imperator_dorsal_turret_3', y: 1.24, z: -0.15 },
+    const dorsalSpecs: readonly {
+      readonly name: string;
+      readonly y: number;
+      readonly z: number;
+      readonly yaw: number;
+    }[] = [
+      { name: 'imperator_dorsal_turret_1', y: 1.16, z: 5.15, yaw: 0 },
+      { name: 'imperator_dorsal_turret_2', y: 1.04, z: 1.85, yaw: 0 },
+      { name: 'imperator_dorsal_turret_3', y: 1.16, z: -4.65, yaw: Math.PI },
     ];
     for (const spec of dorsalSpecs) {
       const base = new THREE.Mesh(this.imperatorTurretBaseGeom, frameMat);
@@ -1237,6 +1242,7 @@ export class ShipModelLibrary {
       const pivot = new THREE.Group();
       pivot.name = spec.name;
       pivot.position.set(0, spec.y + 0.1, spec.z);
+      pivot.rotation.y = spec.yaw;
       pivot.add(new THREE.Mesh(this.imperatorTurretHousingGeom, hullMat));
 
       for (const bx of [-0.14, 0.14]) {
