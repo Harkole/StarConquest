@@ -645,4 +645,101 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     });
     expect(tower2.ok).toBe(true);
   });
+
+  it('falls back to the preceding empty slot for 2-slot orbital platforms and reports 1-indexed slot numbers on failure', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 5000;
+    p1.crystal = 5000;
+
+    // Pick a 6-slot Small secondary planet in Starter System 1
+    const smallPlanet = sim
+      .getPlanetsInSystem('system_starter_1')
+      .find((p) => p.planet.orbitalSlots === 6);
+    expect(smallPlanet).toBeDefined();
+    if (!smallPlanet) {
+      return;
+    }
+
+    // Claim Slot 1 (index 0) with Outpost, occupy Slot 2 (1), Slot 3 (2), and Slot 6 (5) — leaving Slots 4 (3) & 5 (4) empty
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: smallPlanet.planet.id,
+        slotIndex: 0,
+        structureId: 'planetary_outpost',
+      }).ok,
+    ).toBe(true);
+    for (const idx of [1, 2, 5]) {
+      expect(
+        sim.submitCommand({
+          type: 'BUILD_ORBITAL_STRUCTURE',
+          playerId: 'player_1',
+          planetId: smallPlanet.planet.id,
+          slotIndex: idx,
+          structureId: 'refinery',
+        }).ok,
+      ).toBe(true);
+    }
+
+    // Clicking an occupied slot (Slot 6, index 5) reports 1-indexed "slot 6"
+    const occupiedRes = sim.submitCommand({
+      type: 'BUILD_ORBITAL_STRUCTURE',
+      playerId: 'player_1',
+      planetId: smallPlanet.planet.id,
+      slotIndex: 5,
+      structureId: 'orbital_dockyard',
+    });
+    expect(occupiedRes.ok).toBe(false);
+    expect(occupiedRes.reason).toContain('slot 6');
+
+    // Selecting Slot 5 (index 4) when Slot 6 (5) is occupied falls back to [3, 4] (Slots 4 & 5)
+    const fallbackRes = sim.submitCommand({
+      type: 'BUILD_ORBITAL_STRUCTURE',
+      playerId: 'player_1',
+      planetId: smallPlanet.planet.id,
+      slotIndex: 4,
+      structureId: 'orbital_dockyard',
+    });
+    expect(fallbackRes.ok).toBe(true);
+
+    const dockyard = smallPlanet.structures.find(
+      (s) => s.structureId === 'orbital_dockyard',
+    );
+    expect(dockyard?.primarySlotIndex).toBe(3);
+    expect(dockyard?.occupiedSlots).toEqual([3, 4]);
+
+    // Test isolated single empty slot on Homeworld (10 slots): occupy slots 2 & 4, try 2-slot on slot 3 (index 3)
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'refinery',
+      }).ok,
+    ).toBe(true);
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 4,
+        structureId: 'refinery',
+      }).ok,
+    ).toBe(true);
+
+    const isolatedRes = sim.submitCommand({
+      type: 'BUILD_ORBITAL_STRUCTURE',
+      playerId: 'player_1',
+      planetId: homeworld.planet.id,
+      slotIndex: 3,
+      structureId: 'heavy_defense_platform',
+    });
+    expect(isolatedRes.ok).toBe(false);
+    expect(isolatedRes.reason).toContain('slot 4');
+    expect(isolatedRes.reason).toContain('slots 3 and 5');
+  });
 });

@@ -654,21 +654,33 @@ export class GameSimulation {
       return { ok: false, reason: 'Planet is owned by another player' };
     }
 
-    const requiredSlots =
-      config.slotCost === 2
-        ? [slotIndex, (slotIndex + 1) % totalSlots]
-        : [slotIndex];
+    const isSlotOccupied = (idx: number): boolean =>
+      planetState.structures.some((s) => s.occupiedSlots.includes(idx));
 
-    for (const reqSlot of requiredSlots) {
-      const alreadyUsed = planetState.structures.some((s) =>
-        s.occupiedSlots.includes(reqSlot),
-      );
-      if (alreadyUsed) {
+    if (isSlotOccupied(slotIndex)) {
+      return {
+        ok: false,
+        reason: `Orbital slot ${slotIndex + 1} is already occupied`,
+      };
+    }
+
+    let requiredSlots: number[];
+    if (config.slotCost === 2) {
+      const nextSlot = (slotIndex + 1) % totalSlots;
+      const prevSlot = (slotIndex - 1 + totalSlots) % totalSlots;
+      if (!isSlotOccupied(nextSlot)) {
+        requiredSlots = [slotIndex, nextSlot];
+      } else if (!isSlotOccupied(prevSlot)) {
+        // Keep ring order [prevSlot, slotIndex] so orbital midpoint calculations work across wrap-around
+        requiredSlots = [prevSlot, slotIndex];
+      } else {
         return {
           ok: false,
-          reason: `Orbital slot ${reqSlot} is already occupied`,
+          reason: `No adjacent empty slot next to Orbital slot ${slotIndex + 1} (slots ${prevSlot + 1} and ${nextSlot + 1} are occupied)`,
         };
       }
+    } else {
+      requiredSlots = [slotIndex];
     }
 
     if (player.ore < config.cost.ore || player.crystal < config.cost.crystal) {
@@ -687,7 +699,7 @@ export class GameSimulation {
       structureId,
       ownerId: playerId,
       planetId,
-      primarySlotIndex: slotIndex,
+      primarySlotIndex: requiredSlots[0] ?? slotIndex,
       occupiedSlots: requiredSlots,
       buildProgressSeconds: 0,
       totalBuildTimeSeconds: config.buildTimeSeconds,

@@ -313,10 +313,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Shield Visual Effects & Energized Hull Plating Art Pass
 * **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
 
-### 2-Slot Orbital Platform Preceding-Slot Fallback & Slot Numbering Bug
-* **Known Issue**: When the player selects an empty orbital slot (e.g., Slot 5 on a 6-slot planet) and attempts to build a 2-slot platform (`orbital_dockyard` or `heavy_defense_platform`) while the next slot (Slot 6) is occupied but the preceding slot (Slot 4) is empty, the build fails with `"Cannot build: Orbital slot 5 is already occupied"` instead of automatically using the empty preceding pair `(Slot 4, Slot 5)`. In addition, the rejection message displays 0-indexed slot numbers (`5`) instead of the 1-indexed HUD labels (`Slot 6`).
-* **Planned Fix**: When placing a 2-slot structure at `slotIndex`, check `[slotIndex, (slotIndex + 1) % totalSlots]` first and fall back to `[(slotIndex - 1 + totalSlots) % totalSlots, slotIndex]` if the forward neighbor is occupied and the preceding slot is free. Format user-facing slot error messages with 1-indexed slot numbers matching the Orbital Ring Builder buttons.
-
 ### Barren Planets Should Not Have an Atmosphere
 * **Known Issue**: Airless barren rock planets (`barren_rock` in `src/client/renderer/planetFactory.ts` / `src/client/shaders/planetShaders.ts`) currently render an outer Fresnel atmospheric halo shell around the sphere, making lifeless rocky moons/planets look like they have a hazy atmosphere.
 * **Planned Fix**: Skip creating the atmospheric Fresnel halo shell (and any cloud/haze layers) for `barren_rock` planets so only habitable Terran/Super-Earth worlds and volcanic/lava worlds with scorched ember haze render an atmosphere.
