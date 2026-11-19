@@ -295,10 +295,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ## 12. Future Work & Known Bug Fixes
 
-### HUD Build Queue & Platform Completion Stale State
-* **Known Issue**: In `src/client/ui/systemHud.ts`, the 250ms polling timer only calls `renderMainPanel()` while `anyActiveTimers` (`!s.isComplete || s.productionQueue.length > 0`) is true. When the final queued Harvester or orbital platform finishes building, `isComplete` becomes `true` and `productionQueue.length` drops to `0` before the next 250ms poll. As a result, `anyActiveTimers` evaluates to `false` and skips the completion re-render, leaving the UI frozen at `1s` remaining (and leaving dock counts and system reserve totals in `mainBodyEl` stale until the player clicks a HUD button).
-* **Planned Fix**: Track a state signature (or update live text/DOM bindings every 250ms tick whenever structure completion, queue length, remaining build seconds, active dock counts, or system reserves change) so the HUD always renders the final completion transition and live telemetry without requiring a manual click.
-
 ### Harvester Planetary Collision & Orbit Avoidance
 * **Known Issue**: Harvesters currently travel in a direct straight line (`moveToward` in `src/shared/sim/gameSimulation.ts`) between their home orbital platform, asteroid belts, and wormholes, which causes them to fly straight through the interior of a planet whenever their target lies on the opposite side of the planet.
 * **Planned Fix**: Add planetary obstacle avoidance / tangential waypoint steering around planet radii (plus atmospheric clearance) so Harvesters smoothly arc around the orbital perimeter rather than clipping through planets.

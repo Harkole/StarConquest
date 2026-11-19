@@ -10,6 +10,7 @@ import type { ResourceTargetFocus } from '../../shared/protocol/commands.ts';
 import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
 import {
   CNC_UNLOAD_RATE_PER_SECOND,
+  type GameSimulation,
   type HarvesterActivityState,
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
   REFINERY_UNLOAD_RATE_PER_SECOND,
@@ -30,6 +31,83 @@ const BUILDABLE_DEEP_SPACE_IDS: readonly DeepSpaceStructureId[] = [
   'point_defence_tower',
   'hull_breaker_tower',
 ];
+
+export interface MainPanelSignatureParams {
+  readonly activeSystemId: string;
+  readonly selectedPlanetId: string;
+  readonly selectedSlotIndex: number;
+  readonly selectedHarvesterId: string | null;
+  readonly pendingDeepSpace: DeepSpaceStructureId | null;
+  readonly statusBannerMessage: string;
+  readonly wormholeStates: readonly { readonly id: string; readonly isOpen: boolean }[];
+}
+
+/**
+ * Computes a deterministic snapshot signature for every live telemetry field rendered inside the
+ * main tactical HUD panel (planet ownership/slots, orbital build progress & completion, Harvester
+ * production queues, active/queued docks, deep-space build progress, wormholes, and system reserves).
+ * Used by the 250ms HUD poll so final completion transitions and live dock/reserve changes always render.
+ */
+export function computeMainPanelSignature(
+  sim: GameSimulation,
+  params: MainPanelSignatureParams,
+): string {
+  const planets = sim.getPlanetsInSystem(params.activeSystemId);
+  const planetSummarySig = planets
+    .map((p) => {
+      const usedSlots = p.structures.reduce((acc, s) => acc + s.occupiedSlots.length, 0);
+      return `${p.planet.id}:${p.ownerId ?? 'none'}:${usedSlots}`;
+    })
+    .join(',');
+
+  const selectedPlanetState = sim.getPlanetState(params.selectedPlanetId);
+  const structSig = selectedPlanetState.structures
+    .map((s) => {
+      const pct = s.isComplete
+        ? 100
+        : Math.floor((s.buildProgressSeconds / Math.max(1, s.totalBuildTimeSeconds)) * 100);
+      const remSec = s.isComplete
+        ? 0
+        : Math.ceil(s.totalBuildTimeSeconds - s.buildProgressSeconds);
+      const head = s.productionQueue[0];
+      const queueHeadSig = head
+        ? `${head.id}:${Math.max(0, Math.ceil(head.buildTimeSeconds - head.progressSeconds))}`
+        : 'empty';
+      return `${s.id}:${s.isComplete ? 1 : 0}:${pct}:${remSec}:${s.targetResource}:${s.activeDockingHarvesterIds.length}:${s.queuedDockingHarvesterIds.length}:${s.productionQueue.length}:${queueHeadSig}`;
+    })
+    .join(';');
+
+  const deepSpaceSig = sim
+    .getDeepSpaceStructuresInSystem(params.activeSystemId)
+    .map((ds) => {
+      const pct = ds.isComplete
+        ? 100
+        : Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100);
+      return `${ds.id}:${ds.isComplete ? 1 : 0}:${pct}`;
+    })
+    .join(';');
+
+  const wormholeSig = params.wormholeStates
+    .map((wh) => `${wh.id}:${wh.isOpen ? 1 : 0}`)
+    .join(',');
+
+  const sysRes = sim.getSystemResourceSummary(params.activeSystemId);
+  const resSig = `${Math.round(sysRes.remainingOre)}:${Math.round(sysRes.remainingCrystal)}:${Math.round(sysRes.innerBeltRemaining)}`;
+
+  return [
+    params.activeSystemId,
+    params.selectedPlanetId,
+    params.selectedSlotIndex,
+    params.selectedHarvesterId ?? 'none',
+    params.pendingDeepSpace ?? 'none',
+    params.statusBannerMessage,
+    planetSummarySig,
+    structSig,
+    deepSpaceSig,
+    wormholeSig,
+    resSig,
+  ].join('|');
+}
 
 function formatHarvesterState(
   state: HarvesterActivityState,
@@ -233,6 +311,23 @@ export function mountSystemHud(
       });
   }
 
+  let lastMainPanelSignature = '';
+
+  function getCurrentMainPanelSignature(): string {
+    return computeMainPanelSignature(sim, {
+      activeSystemId: sceneManager.getActiveSystem().id,
+      selectedPlanetId: sceneManager.getSelectedPlanetId(),
+      selectedSlotIndex,
+      selectedHarvesterId: sceneManager.getSelectedHarvesterId(),
+      pendingDeepSpace: sceneManager.getPendingDeepSpacePlacement(),
+      statusBannerMessage,
+      wormholeStates: sceneManager.getActiveWormholes().map((wh) => ({
+        id: wh.wormholeId,
+        isOpen: wh.isOpen(),
+      })),
+    });
+  }
+
   function renderMainPanel(): void {
     const activeSystem = sceneManager.getActiveSystem();
     const paletteInfo = NEBULA_PALETTES[activeSystem.nebulaPalette];
@@ -243,6 +338,8 @@ export function mountSystemHud(
     if (selectedSlotIndex >= totalSlots) {
       selectedSlotIndex = 0;
     }
+
+    lastMainPanelSignature = getCurrentMainPanelSignature();
 
     const systemButtonsHtml = galaxy.systems
       .map((sys) => {
@@ -726,14 +823,8 @@ export function mountSystemHud(
   window.setInterval(() => {
     renderEconomyBar();
     renderHarvesterInspector();
-    const activePlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
-    const anyActiveOrbitalTimers = activePlanetState.structures.some(
-      (s) => !s.isComplete || s.productionQueue.length > 0,
-    );
-    const anyActiveDeepSpaceTimers = sim
-      .getDeepSpaceStructuresInSystem(sceneManager.getActiveSystem().id)
-      .some((ds) => !ds.isComplete);
-    if (anyActiveOrbitalTimers || anyActiveDeepSpaceTimers) {
+    const nextSignature = getCurrentMainPanelSignature();
+    if (nextSignature !== lastMainPanelSignature) {
       renderMainPanel();
     }
   }, 250);
