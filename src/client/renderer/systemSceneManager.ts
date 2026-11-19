@@ -35,6 +35,7 @@ export class SystemSceneManager {
   private selectedPlanetId: string;
   private selectedHarvesterId: string | null = null;
   private selectedCombatShipId: string | null = null;
+  private selectedFleetId: string | null = null;
   private environmentHandle: SpaceEnvironmentHandle | null = null;
   private planetHandles: AnimatedPlanetHandle[] = [];
   private readonly harvesterRenderer = new HarvesterFleetRenderer();
@@ -46,9 +47,11 @@ export class SystemSceneManager {
 
   private pendingDeepSpaceBuildType: DeepSpaceStructureId | null = null;
   private pendingFleetOrder: {
-    readonly mode: 'rally' | 'patrol';
-    readonly dockyardId: string;
+    readonly mode: 'rally' | 'patrol' | 'create_fleet' | 'fleet_patrol';
+    readonly dockyardId?: string;
+    readonly fleetId?: string;
     readonly stance: FleetStance;
+    readonly autoResupply?: boolean;
     readonly collectedWaypoints: DockyardWaypoint[];
   } | null = null;
   private readonly placementPreviewGroup = new THREE.Group();
@@ -130,9 +133,38 @@ export class SystemSceneManager {
     return this.selectedCombatShipId;
   }
 
+  public getSelectedFleetId(): string | null {
+    return this.selectedFleetId;
+  }
+
+  public selectFleet(fleetId: string | null): void {
+    this.selectedFleetId = fleetId;
+    if (!fleetId) {
+      this.selectedCombatShipId = null;
+      this.notifySelectionChanged();
+      return;
+    }
+    const anchor = this.simAdapter.simulation.getFleetLiveAnchor(fleetId);
+    if (anchor) {
+      if (anchor.systemId !== this.activeSystem.id) {
+        this.loadSystem(anchor.systemId);
+      }
+      this.selectedHarvesterId = null;
+      this.cameraController.pinToTarget(
+        () => {
+          const live = this.simAdapter.simulation.getFleetLiveAnchor(fleetId);
+          return live ? { x: live.position.x, y: 1.6, z: live.position.z } : null;
+        },
+        110,
+      );
+    }
+    this.notifySelectionChanged();
+  }
+
   public getPendingFleetOrder(): {
-    readonly mode: 'rally' | 'patrol';
-    readonly dockyardId: string;
+    readonly mode: 'rally' | 'patrol' | 'create_fleet' | 'fleet_patrol';
+    readonly dockyardId?: string;
+    readonly fleetId?: string;
     readonly waypointCount: number;
   } | null {
     if (!this.pendingFleetOrder) {
@@ -141,8 +173,35 @@ export class SystemSceneManager {
     return {
       mode: this.pendingFleetOrder.mode,
       dockyardId: this.pendingFleetOrder.dockyardId,
+      fleetId: this.pendingFleetOrder.fleetId,
       waypointCount: this.pendingFleetOrder.collectedWaypoints.length,
     };
+  }
+
+  public startCreateFleetPlacement(
+    stance: FleetStance = 'aggressive',
+    autoResupply = true,
+  ): void {
+    this.startDeepSpacePlacement(null);
+    this.pendingFleetOrder = {
+      mode: 'create_fleet',
+      stance,
+      autoResupply,
+      collectedWaypoints: [],
+    };
+    this.notifySelectionChanged();
+  }
+
+  public startFleetPatrolPlacement(fleetId: string): void {
+    this.startDeepSpacePlacement(null);
+    const fleet = this.simAdapter.simulation.getFleetById(fleetId);
+    this.pendingFleetOrder = {
+      mode: 'fleet_patrol',
+      fleetId,
+      stance: fleet?.stance ?? 'aggressive',
+      collectedWaypoints: [],
+    };
+    this.notifySelectionChanged();
   }
 
   public startRallyPointPlacement(dockyardId: string, stance: FleetStance): void {
@@ -192,6 +251,8 @@ export class SystemSceneManager {
 
     this.selectedHarvesterId = null;
     this.selectedCombatShipId = ship.id;
+    // Selecting any ship in a fleet selects the entire fleet
+    this.selectedFleetId = ship.fleetId;
     this.cameraController.pinToTarget(() => {
       const liveShip = this.simAdapter.simulation.getCombatShipById(shipId);
       if (!liveShip) {
@@ -468,12 +529,22 @@ export class SystemSceneManager {
     this.combatFleetRenderer.syncShips(
       combatShipsInSystem,
       this.selectedCombatShipId,
+      this.selectedFleetId,
       elapsedSeconds,
     );
 
-    // Render Rally Point & Patrol Route 3D markers for player Dockyards
+    // Render Rally / Move beacons & Patrol Route 3D markers for player Fleets & Dockyards
     const rallyPointsInSystem: { readonly x: number; readonly z: number }[] = [];
     const patrolRoutes: (readonly DockyardWaypoint[])[] = [];
+    for (const fleet of this.simAdapter.simulation.getFleetsForPlayer(
+      this.simAdapter.localPlayerId,
+    )) {
+      if (fleet.orderType === 'patrol' && fleet.patrolWaypoints.length >= 2) {
+        patrolRoutes.push(fleet.patrolWaypoints);
+      } else if (fleet.orderSystemId === this.activeSystem.id) {
+        rallyPointsInSystem.push(fleet.orderPosition);
+      }
+    }
     for (const sys of this.galaxy.systems) {
       for (const planetState of this.simAdapter.simulation.getPlanetsInSystem(sys.id)) {
         for (const s of planetState.structures) {
@@ -594,14 +665,52 @@ export class SystemSceneManager {
       }
     });
 
+    let rightDownX = 0;
+    let rightDownY = 0;
+
     canvasElement.addEventListener('pointerdown', (e) => {
       if (e.button === 0) {
         downX = e.clientX;
         downY = e.clientY;
+      } else if (e.button === 2) {
+        rightDownX = e.clientX;
+        rightDownY = e.clientY;
       }
     });
 
     canvasElement.addEventListener('pointerup', (e) => {
+      // Short right-click tap (not a camera orbit drag): issue fleet-wide Move order if a fleet is selected
+      if (e.button === 2) {
+        const rightMoveDist = Math.hypot(e.clientX - rightDownX, e.clientY - rightDownY);
+        if (rightMoveDist <= 5 && this.selectedFleetId) {
+          const rect = canvasElement.getBoundingClientRect();
+          const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          this.raycaster.setFromCamera(
+            new THREE.Vector2(ndcX, ndcY),
+            this.cameraController.camera,
+          );
+          if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
+            const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
+            const res = this.simAdapter.submitPlayerCommand({
+              type: 'ORDER_FLEET_MOVE',
+              playerId: this.simAdapter.localPlayerId,
+              fleetId: this.selectedFleetId,
+              targetSystemId: this.activeSystem.id,
+              targetPosition: pos,
+            });
+            const fleet = this.simAdapter.simulation.getFleetById(this.selectedFleetId);
+            this.notifyPlacementResult(
+              res.ok
+                ? `${fleet?.name ?? 'Fleet'} moving to (${pos.x}, ${pos.z}) in ${this.activeSystem.name}.`
+                : `Cannot move fleet: ${res.reason}`,
+              res.ok,
+            );
+          }
+        }
+        return;
+      }
+
       if (e.button !== 0) {
         return;
       }
@@ -619,12 +728,65 @@ export class SystemSceneManager {
         this.cameraController.camera,
       );
 
-      // 0a. If in Fleet Order Placement Mode (Rally Point or 2-Click Patrol Route)
+      // 0a. If in Fleet Order Placement Mode (Create Fleet, Fleet Patrol, or Dockyard Rally/Patrol)
       if (this.pendingFleetOrder) {
         if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
           const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
           const order = this.pendingFleetOrder;
-          if (order.mode === 'rally') {
+          if (order.mode === 'create_fleet') {
+            const res = this.simAdapter.submitPlayerCommand({
+              type: 'CREATE_FLEET',
+              playerId: this.simAdapter.localPlayerId,
+              rallySystemId: this.activeSystem.id,
+              rallyPosition: pos,
+              stance: order.stance,
+              autoResupply: order.autoResupply ?? true,
+            });
+            this.pendingFleetOrder = null;
+            if (res.ok) {
+              const fleets = this.simAdapter.simulation.getFleetsForPlayer(
+                this.simAdapter.localPlayerId,
+              );
+              const created = fleets[fleets.length - 1];
+              if (created) {
+                this.selectedFleetId = created.id;
+              }
+            }
+            this.notifySelectionChanged();
+            this.notifyPlacementResult(
+              res.ok
+                ? `Created new Fleet with Rally Point at (${pos.x}, ${pos.z}) in ${this.activeSystem.name}.`
+                : `Cannot create Fleet: ${res.reason}`,
+              res.ok,
+            );
+          } else if (order.mode === 'fleet_patrol' && order.fleetId) {
+            order.collectedWaypoints.push({
+              systemId: this.activeSystem.id,
+              position: pos,
+            });
+            if (order.collectedWaypoints.length < 2) {
+              this.notifySelectionChanged();
+              this.notifyPlacementResult(
+                `Fleet Patrol Waypoint #1 set at (${pos.x}, ${pos.z}). Click a second point to start patrolling.`,
+                true,
+              );
+            } else {
+              const res = this.simAdapter.submitPlayerCommand({
+                type: 'ORDER_FLEET_PATROL',
+                playerId: this.simAdapter.localPlayerId,
+                fleetId: order.fleetId,
+                waypoints: order.collectedWaypoints,
+              });
+              this.pendingFleetOrder = null;
+              this.notifySelectionChanged();
+              this.notifyPlacementResult(
+                res.ok
+                  ? `Fleet Patrol Route active (${order.collectedWaypoints.length} waypoints).`
+                  : `Cannot set Fleet Patrol: ${res.reason}`,
+                res.ok,
+              );
+            }
+          } else if (order.mode === 'rally' && order.dockyardId) {
             const res = this.simAdapter.submitPlayerCommand({
               type: 'SET_RALLY_POINT',
               playerId: this.simAdapter.localPlayerId,
@@ -641,7 +803,7 @@ export class SystemSceneManager {
                 : `Cannot set Rally Point: ${res.reason}`,
               res.ok,
             );
-          } else {
+          } else if (order.dockyardId) {
             order.collectedWaypoints.push({
               systemId: this.activeSystem.id,
               position: pos,
@@ -766,7 +928,7 @@ export class SystemSceneManager {
     this.deepSpaceGroupsById.clear();
     this.lastDeepSpaceSignature = null;
     this.harvesterRenderer.syncHarvesters([]);
-    this.combatFleetRenderer.syncShips([], null, 0);
+    this.combatFleetRenderer.syncShips([], null, null, 0);
     this.combatFleetRenderer.syncOrdersOverlay('', [], []);
   }
 }

@@ -78,6 +78,7 @@ export class CombatFleetRenderer {
   public syncShips(
     shipsInSystem: readonly CombatShipUnitState[],
     selectedShipId: string | null,
+    selectedFleetId: string | null,
     elapsedSeconds: number,
   ): void {
     const activeIds = new Set<string>();
@@ -94,7 +95,9 @@ export class CombatFleetRenderer {
       const hoverY = 1.6 + Math.sin(elapsedSeconds * 1.8 + entry.hoverPhase) * 0.25;
       entry.group.position.set(ship.position.x, hoverY, ship.position.z);
       entry.group.rotation.y = ship.headingRadians;
-      entry.selectionRing.visible = ship.id === selectedShipId;
+      entry.selectionRing.visible =
+        ship.id === selectedShipId ||
+        (selectedFleetId !== null && ship.fleetId === selectedFleetId);
     }
 
     for (const [id, entry] of this.entries.entries()) {
