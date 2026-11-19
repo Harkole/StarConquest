@@ -68,7 +68,24 @@ export const CENTRAL_HUB_ROCK_RESERVES = 600;
 export const CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER = 1.6;
 
 export const MIN_DEEP_SPACE_PLANET_CLEARANCE_BUFFER = 24;
-export const MIN_DEEP_SPACE_STRUCTURE_SPACING = 28;
+export const MIN_DEEP_SPACE_WORMHOLE_CLEARANCE = 45;
+export const MIN_LOGISTICS_HUB_SPACING = 120;
+export const MIN_HUB_TO_TOWER_SPACING = 42;
+export const MIN_TOWER_TO_TOWER_SPACING = 30;
+export const MIN_DEEP_SPACE_STRUCTURE_SPACING = MIN_TOWER_TO_TOWER_SPACING;
+
+export function getMinDeepSpaceStructureSpacing(
+  a: DeepSpaceStructureId,
+  b: DeepSpaceStructureId,
+): number {
+  if (a === 'logistics_hub' && b === 'logistics_hub') {
+    return MIN_LOGISTICS_HUB_SPACING;
+  }
+  if (a === 'logistics_hub' || b === 'logistics_hub') {
+    return MIN_HUB_TO_TOWER_SPACING;
+  }
+  return MIN_TOWER_TO_TOWER_SPACING;
+}
 
 export interface DeepSpaceStructureInstance {
   readonly id: string;
@@ -691,7 +708,11 @@ export class GameSimulation {
     return { ok: true };
   }
 
-  private handleBuildDeepSpaceStructure(
+  /**
+   * Side-effect-free validation for deep-space structure placement.
+   * Shared by both authoritative `BUILD_DEEP_SPACE_STRUCTURE` commands and the 3D live preview ghost.
+   */
+  public validateDeepSpacePlacement(
     playerId: PlayerSlotId,
     systemId: string,
     position: Vector2D,
@@ -706,6 +727,10 @@ export class GameSimulation {
     const config = DEEP_SPACE_STRUCTURES[structureId];
     if (!config) {
       return { ok: false, reason: 'Unknown deep-space structure type' };
+    }
+
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.z)) {
+      return { ok: false, reason: 'Invalid placement coordinates' };
     }
 
     // 1. Ensure placement does not overlap any planet or its orbital ring
@@ -726,22 +751,49 @@ export class GameSimulation {
       }
     }
 
-    // 2. Ensure placement does not overlap another deep-space structure in the same system
+    // 2. Ensure placement stays clear of every wormhole mouth in this system
+    for (const wormhole of this.galaxy.wormholes) {
+      const mouthPos =
+        wormhole.fromSystemId === systemId
+          ? wormhole.fromPosition
+          : wormhole.toSystemId === systemId
+            ? wormhole.toPosition
+            : null;
+      if (mouthPos) {
+        const distToWormhole = Math.hypot(
+          position.x - mouthPos.x,
+          position.z - mouthPos.z,
+        );
+        if (distToWormhole < MIN_DEEP_SPACE_WORMHOLE_CLEARANCE) {
+          return {
+            ok: false,
+            reason: `Too close to wormhole mouth (requires ${MIN_DEEP_SPACE_WORMHOLE_CLEARANCE}u clearance)`,
+          };
+        }
+      }
+    }
+
+    // 3. Enforce per-structure minimum spacing against every existing deep-space installation
     const existingInSystem = this.getDeepSpaceStructuresInSystem(systemId);
     for (const existing of existingInSystem) {
+      const requiredSpacing = getMinDeepSpaceStructureSpacing(
+        structureId,
+        existing.structureId,
+      );
       const dist = Math.hypot(
         position.x - existing.position.x,
         position.z - existing.position.z,
       );
-      if (dist < MIN_DEEP_SPACE_STRUCTURE_SPACING) {
+      if (dist < requiredSpacing) {
+        const existingName = DEEP_SPACE_STRUCTURES[existing.structureId].displayName;
         return {
           ok: false,
-          reason: 'Too close to an existing deep-space installation',
+          reason: `Too close to an existing ${existingName} (requires ${requiredSpacing}u spacing)`,
         };
       }
     }
 
-    // 3. Enforce Logistics Hub radius rule for Defence Towers (PD Tower & Hull Breaker Tower)
+    // 4. Enforce Logistics Hub radius rule for Defence Towers (PD Tower & Hull Breaker Tower)
     if (config.requiresLogisticsHubRadius) {
       const hubConfig = DEEP_SPACE_STRUCTURES.logistics_hub;
       const insideFriendlyHub = existingInSystem.some(
@@ -760,10 +812,32 @@ export class GameSimulation {
       }
     }
 
-    // 4. Validate and deduct Ore & Crystal cost upfront
+    // 5. Verify Ore & Crystal reserves
     if (player.ore < config.cost.ore || player.crystal < config.cost.crystal) {
       return { ok: false, reason: 'Insufficient Ore or Crystals' };
     }
+
+    return { ok: true };
+  }
+
+  private handleBuildDeepSpaceStructure(
+    playerId: PlayerSlotId,
+    systemId: string,
+    position: Vector2D,
+    structureId: DeepSpaceStructureId,
+  ): CommandResult {
+    const validation = this.validateDeepSpacePlacement(
+      playerId,
+      systemId,
+      position,
+      structureId,
+    );
+    if (!validation.ok) {
+      return validation;
+    }
+
+    const player = this.players.get(playerId)!;
+    const config = DEEP_SPACE_STRUCTURES[structureId];
     player.ore -= config.cost.ore;
     player.crystal -= config.cost.crystal;
 

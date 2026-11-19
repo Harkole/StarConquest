@@ -52,6 +52,18 @@ export class SystemSceneManager {
     opacity: 0.35,
     side: THREE.DoubleSide,
   });
+  private readonly placementPreviewWireframeMat = new THREE.MeshBasicMaterial({
+    color: 0x22c55e,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.85,
+  });
+  private readonly placementPreviewRingMat = new THREE.MeshBasicMaterial({
+    color: 0x22c55e,
+    transparent: true,
+    opacity: 0.42,
+    side: THREE.DoubleSide,
+  });
 
   private readonly raycaster = new THREE.Raycaster();
   private readonly orbitalPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -112,11 +124,16 @@ export class SystemSceneManager {
     }
 
     const previewMesh = this.deepSpaceModels.buildStationMesh(structureId, false);
+    previewMesh.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.material = this.placementPreviewWireframeMat;
+      }
+    });
     this.placementPreviewGroup.add(previewMesh);
     if (structureId === 'logistics_hub') {
       const radiusMesh = new THREE.Mesh(
         this.hubRadiusRingGeom,
-        this.hubRadiusRingMat,
+        this.placementPreviewRingMat,
       );
       radiusMesh.position.set(0, 0.25, 0);
       this.placementPreviewGroup.add(radiusMesh);
@@ -128,9 +145,32 @@ export class SystemSceneManager {
       this.cameraController.camera,
     );
     this.raycaster.ray.intersectPlane(this.orbitalPlane, initialHit);
-    this.placementPreviewGroup.position.set(initialHit.x, 0, initialHit.z);
+    this.placementPreviewGroup.position.set(
+      Math.round(initialHit.x),
+      0,
+      Math.round(initialHit.z),
+    );
     this.placementPreviewGroup.visible = true;
+    this.updatePlacementPreviewValidity();
     this.notifySelectionChanged();
+  }
+
+  private updatePlacementPreviewValidity(): void {
+    if (!this.pendingDeepSpaceBuildType) {
+      return;
+    }
+    const validation = this.simAdapter.simulation.validateDeepSpacePlacement(
+      this.simAdapter.localPlayerId,
+      this.activeSystem.id,
+      {
+        x: Math.round(this.placementPreviewGroup.position.x),
+        z: Math.round(this.placementPreviewGroup.position.z),
+      },
+      this.pendingDeepSpaceBuildType,
+    );
+    const previewColor = validation.ok ? 0x22c55e : 0xef4444;
+    this.placementPreviewWireframeMat.color.setHex(previewColor);
+    this.placementPreviewRingMat.color.setHex(previewColor);
   }
 
   public focusDeepSpaceStructure(structureId: string): void {
@@ -317,6 +357,9 @@ export class SystemSceneManager {
     }
 
     this.syncAndAnimateDeepSpaceStructures(elapsedSeconds);
+    if (this.pendingDeepSpaceBuildType !== null) {
+      this.updatePlacementPreviewValidity();
+    }
 
     const harvestersInSystem = this.simAdapter.simulation.getHarvestersInSystem(
       this.activeSystem.id,
@@ -405,8 +448,13 @@ export class SystemSceneManager {
         this.cameraController.camera,
       );
       if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
-        this.placementPreviewGroup.position.set(hitPoint.x, 0, hitPoint.z);
+        this.placementPreviewGroup.position.set(
+          Math.round(hitPoint.x),
+          0,
+          Math.round(hitPoint.z),
+        );
         this.placementPreviewGroup.visible = true;
+        this.updatePlacementPreviewValidity();
       }
     });
 
@@ -440,6 +488,7 @@ export class SystemSceneManager {
         if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
           const structId = this.pendingDeepSpaceBuildType;
           const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
+          this.placementPreviewGroup.position.set(pos.x, 0, pos.z);
           const res = this.simAdapter.submitPlayerCommand({
             type: 'BUILD_DEEP_SPACE_STRUCTURE',
             playerId: this.simAdapter.localPlayerId,
@@ -455,6 +504,7 @@ export class SystemSceneManager {
               true,
             );
           } else {
+            this.updatePlacementPreviewValidity();
             this.notifyPlacementResult(
               `Cannot place here: ${res.reason}`,
               false,

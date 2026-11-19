@@ -8,6 +8,10 @@ import {
   HARVESTER_FULL_SPEED,
   HARVESTER_MINING_DURATION_SECONDS,
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
+  MIN_DEEP_SPACE_WORMHOLE_CLEARANCE,
+  MIN_HUB_TO_TOWER_SPACING,
+  MIN_LOGISTICS_HUB_SPACING,
+  MIN_TOWER_TO_TOWER_SPACING,
   REFINERY_MAX_CONCURRENT_DOCKS,
   REFINERY_UNLOAD_RATE_PER_SECOND,
 } from '../gameSimulation.ts';
@@ -526,5 +530,119 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     });
     expect(validTowerRes.ok).toBe(true);
     expect(sim.getDeepSpaceStructuresInSystem('system_starter_1')).toHaveLength(2);
+  });
+
+  it('enforces per-structure deep-space spacing, wormhole clearance, and prevents repeated-click Logistics Hub clustering', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 5000;
+    p1.crystal = 5000;
+
+    // 1. Place Logistics Hub #1 at (1888, 254)
+    const hub1Pos = { x: 1888, z: 254 };
+    const hub1Res = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: hub1Pos,
+      structureId: 'logistics_hub',
+    });
+    expect(hub1Res.ok).toBe(true);
+
+    // 2. Repeated clicks near hub1Pos — including (-54, -16) at ~56u and (-21, -33) at ~39u — must all fail (< 120u)
+    const oreBefore = p1.ore;
+    for (const pos of [
+      { x: hub1Pos.x, z: hub1Pos.z },
+      { x: hub1Pos.x - 54, z: hub1Pos.z - 16 },
+      { x: hub1Pos.x - 21, z: hub1Pos.z - 33 },
+      { x: hub1Pos.x + MIN_LOGISTICS_HUB_SPACING - 1, z: hub1Pos.z },
+    ]) {
+      const preview = sim.validateDeepSpacePlacement(
+        'player_1',
+        'system_starter_1',
+        pos,
+        'logistics_hub',
+      );
+      expect(preview.ok).toBe(false);
+      expect(preview.reason).toContain(`${MIN_LOGISTICS_HUB_SPACING}u`);
+
+      const attempt = sim.submitCommand({
+        type: 'BUILD_DEEP_SPACE_STRUCTURE',
+        playerId: 'player_1',
+        systemId: 'system_starter_1',
+        position: pos,
+        structureId: 'logistics_hub',
+      });
+      expect(attempt.ok).toBe(false);
+    }
+    expect(p1.ore).toBe(oreBefore);
+    expect(sim.getDeepSpaceStructuresInSystem('system_starter_1')).toHaveLength(1);
+
+    // 3. Placing a second Logistics Hub at >= MIN_LOGISTICS_HUB_SPACING (120u) succeeds
+    const hub2Res = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: hub1Pos.x + MIN_LOGISTICS_HUB_SPACING, z: hub1Pos.z },
+      structureId: 'logistics_hub',
+    });
+    expect(hub2Res.ok).toBe(true);
+
+    // 4. Reject placement directly inside a wormhole mouth (< MIN_DEEP_SPACE_WORMHOLE_CLEARANCE)
+    const starterWormhole = sim.galaxy.wormholes.find(
+      (w) => w.fromSystemId === 'system_starter_1',
+    );
+    expect(starterWormhole).toBeDefined();
+    if (starterWormhole) {
+      const whRes = sim.validateDeepSpacePlacement(
+        'player_1',
+        'system_starter_1',
+        {
+          x: starterWormhole.fromPosition.x + MIN_DEEP_SPACE_WORMHOLE_CLEARANCE - 5,
+          z: starterWormhole.fromPosition.z,
+        },
+        'logistics_hub',
+      );
+      expect(whRes.ok).toBe(false);
+      expect(whRes.reason).toContain('wormhole');
+    }
+
+    // 5. Complete hubs and verify hub-to-tower (42u) and tower-to-tower (30u) spacing rules
+    sim.stepTick(20);
+    const tooCloseToHub = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: hub1Pos.x + MIN_HUB_TO_TOWER_SPACING - 5, z: hub1Pos.z },
+      structureId: 'point_defence_tower',
+    });
+    expect(tooCloseToHub.ok).toBe(false);
+
+    const tower1 = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: hub1Pos.x, z: hub1Pos.z + MIN_HUB_TO_TOWER_SPACING + 5 },
+      structureId: 'point_defence_tower',
+    });
+    expect(tower1.ok).toBe(true);
+
+    const tooCloseToTower = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: hub1Pos.x + MIN_TOWER_TO_TOWER_SPACING - 5, z: hub1Pos.z + MIN_HUB_TO_TOWER_SPACING + 5 },
+      structureId: 'hull_breaker_tower',
+    });
+    expect(tooCloseToTower.ok).toBe(false);
+
+    const tower2 = sim.submitCommand({
+      type: 'BUILD_DEEP_SPACE_STRUCTURE',
+      playerId: 'player_1',
+      systemId: 'system_starter_1',
+      position: { x: hub1Pos.x + MIN_TOWER_TO_TOWER_SPACING + 2, z: hub1Pos.z + MIN_HUB_TO_TOWER_SPACING + 5 },
+      structureId: 'hull_breaker_tower',
+    });
+    expect(tower2.ok).toBe(true);
   });
 });
