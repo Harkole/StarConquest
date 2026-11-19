@@ -296,7 +296,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ## 12. Feature Roadmap, Future Work & Known Bug Fixes
 
 ### Planned Feature Execution Order
-1. **HUD & Wormhole UX Quick-Win (`fix/hud-harvester-and-wormhole-ux`)**: Move assigned Harvesters out of the top HUD bar into each selected C&C / Refinery panel beside its `Auto` / `Ore` / `Crystal` Mining Focus controls, and make HUD wormhole clicks focus the camera only without triggering a false opening animation.
+1. ~~**HUD & Wormhole UX Quick-Win (`fix/hud-harvester-and-wormhole-ux`)**~~ *(Completed)*: Moved assigned Harvesters out of the top HUD bar into each selected C&C / Refinery panel beside its `Auto` / `Ore` / `Crystal` Mining Focus controls, and made HUD wormhole clicks focus the camera only without triggering a false opening animation.
 2. **5 Combat Ship 3D Models Art Pass (`feature/combat-ship-models`)**: Design and build the 5 combat ship models (`Fighter`, `Destroyer`, `Cruiser`, `Carrier`, `Dreadnought`) one by one in `docs/artstyle.md`, and swap out the placeholder proxy hulls in the Titan Dockyard slipways, Minerva holo-tables, and Atlas Fighter Bays.
 3. **Combat Fleet Production, Navigation & Planetary Obstacle Avoidance (`feature/fleet-navigation`)**: Wire Orbital Dockyard production queues (with auto-repeat) for all 5 combat ship classes, Rally Points, Patrol Routes, wormhole transit, and a shared 2D planetary obstacle-avoidance steering solver used by both Harvesters and combat fleets.
 4. **Combat RPS Simulation, Turret Tracking & Shield VFX (`feature/combat-and-vfx`)**: Implement the 5-class Shield vs. Hull RPS combat math, Fleet Stances, Carrier/Hub fighter tether rules, active target-tracking rotation for Defence Tower `turretPivots`, weapon tracers/salvos, and the dedicated Shield impact VFX art pass.
@@ -312,11 +312,3 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Shield Visual Effects & Energized Hull Plating Art Pass
 * **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
-
-### Per-Platform Harvester Ownership & HUD Relocation
-* **Known Issue**: In `src/client/ui/systemHud.ts`, all Harvesters are listed in a single flat `HARVESTER FLEET` panel at the top of the HUD, which grows vertically and clutters the screen as more Harvesters are built and gives no indication of which Command & Control or Orbital Refinery each Harvester belongs to.
-* **Planned Fix**: Remove the global Harvester list from the top of the HUD and instead display each platform's assigned Harvesters (count + clickable inspect/follow badges) inside the selected C&C / Refinery building panel alongside its `Auto` / `Ore` / `Crystal` Mining Focus controls, so players can immediately see how many Harvesters belong to a platform and will be affected by a Mining Focus change.
-
-### Wormhole HUD Selection Should Not Trigger False Opening Animation
-* **Known Issue**: Clicking a wormhole gateway button in the HUD (`focusAndToggleWormhole` in `src/client/renderer/systemSceneManager.ts` / `src/client/ui/systemHud.ts`) currently toggles the wormhole's open vortex animation manually, creating a false opening even when no ship is nearby.
-* **Planned Fix**: Change the HUD wormhole button to focus the camera on the wormhole only (`focusWormhole`) and remove the manual open/close toggle so wormhole opening animations are triggered exclusively by nearby or transiting ships (`updateShipProximity`).

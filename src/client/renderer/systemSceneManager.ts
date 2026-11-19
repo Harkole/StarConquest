@@ -324,12 +324,12 @@ export class SystemSceneManager {
     this.notifySelectionChanged();
   }
 
-  public focusAndToggleWormhole(wormholeId: string): boolean {
+  public focusWormhole(wormholeId: string): void {
     const wh = this.environmentHandle?.wormholes.find(
       (item) => item.wormholeId === wormholeId,
     );
     if (!wh) {
-      return false;
+      return;
     }
     this.selectedHarvesterId = null;
     this.cameraController.pinToTarget(
@@ -337,7 +337,6 @@ export class SystemSceneManager {
       92,
     );
     this.notifySelectionChanged();
-    return wh.toggleManualOpen();
   }
 
   public focusSystemOverview(): void {
