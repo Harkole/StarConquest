@@ -75,6 +75,20 @@ export function computeMainPanelSignature(
     })
     .join(';');
 
+  const selectedStruct = selectedPlanetState.structures.find((s) =>
+    s.occupiedSlots.includes(params.selectedSlotIndex),
+  );
+  const assignedHarvesterSig = selectedStruct
+    ? sim
+        .getAllHarvesters()
+        .filter((h) => h.homeStructureId === selectedStruct.id)
+        .map((h) => {
+          const pct = Math.round((h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100);
+          return `${h.id}:${h.cargoType}:${pct}`;
+        })
+        .join(',')
+    : 'none';
+
   const deepSpaceSig = sim
     .getDeepSpaceStructuresInSystem(params.activeSystemId)
     .map((ds) => {
@@ -101,6 +115,7 @@ export function computeMainPanelSignature(
     params.statusBannerMessage,
     planetSummarySig,
     structSig,
+    assignedHarvesterSig,
     deepSpaceSig,
     wormholeSig,
     resSig,
@@ -205,92 +220,67 @@ export function mountSystemHud(
   }
 
   function renderHarvesterInspector(): void {
-    const playerHarvesters = sim
-      .getAllHarvesters()
-      .filter((h) => h.ownerId === playerId);
     const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
     const selectedHarvester = selectedHarvesterId
       ? sim.getHarvesterById(selectedHarvesterId)
       : undefined;
 
-    const harvesterButtonsHtml = playerHarvesters
-      .map((h, idx) => {
-        const isSel = h.id === selectedHarvesterId;
-        const pct = Math.round((h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100);
-        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-harvester="${h.id}">
-          Harvester #${idx + 1}
-          <span class="hud-badge">${h.cargoType.toUpperCase()} ${pct}%</span>
-        </button>`;
-      })
-      .join('');
-
-    let detailCardHtml = '';
-    if (selectedHarvester) {
-      const pct = Math.min(
-        100,
-        Math.round(
-          (selectedHarvester.cargoAmount / Math.max(1, selectedHarvester.cargoCapacity)) *
-            100,
-        ),
-      );
-      const isCameraPinned = sceneManager.cameraController.isPinned();
-      const targetResourceLabel =
-        selectedHarvester.cargoType === 'ore'
-          ? 'Ore Deposit (Silicate/Iron Boulder)'
-          : 'Crystal Deposit (Pale Ice-Blue Cluster)';
-
-      const homeLookup = sim.getStructureById(selectedHarvester.homeStructureId);
-      const homeLabel = homeLookup
-        ? `${ORBITAL_STRUCTURES[homeLookup.structure.structureId].displayName} (${homeLookup.planetState.planet.name})`
-        : 'Reassigning...';
-
-      detailCardHtml = `
-        <div class="harvester-telemetry-card">
-          <div class="telemetry-row">
-            <div>
-              <strong>Selected: ${selectedHarvester.id.replace('_', ' #')}</strong>
-              <span class="hud-badge">${formatHarvesterState(selectedHarvester.state, selectedHarvester.cargoType)}</span>
-            </div>
-            <div class="telemetry-actions">
-              <button class="hud-btn ${isCameraPinned ? 'active' : ''}" data-action="repin-harvester">
-                ${isCameraPinned ? 'Camera Pinned (Pan to Break)' : 'Pin Camera to Follow'}
-              </button>
-              <button class="hud-btn" data-action="deselect-harvester">Close</button>
-            </div>
-          </div>
-          <div class="telemetry-meta">
-            <span><strong>Target:</strong> ${targetResourceLabel}</span>
-            <span><strong>Home:</strong> ${homeLabel}</span>
-            <span><strong>Speed:</strong> ${selectedHarvester.currentSpeed.toFixed(1)} u/s</span>
-          </div>
-          <div class="telemetry-progress-wrap">
-            <div class="telemetry-progress-label">
-              <span>Mined Cargo (${selectedHarvester.cargoType.toUpperCase()})</span>
-              <strong>${selectedHarvester.cargoAmount.toFixed(1)} / ${selectedHarvester.cargoCapacity} (${pct}%)</strong>
-            </div>
-            <div class="telemetry-progress-bar">
-              <div class="telemetry-progress-fill ${selectedHarvester.cargoType}" style="width: ${pct}%;"></div>
-            </div>
-          </div>
-        </div>
-      `;
+    if (!selectedHarvester) {
+      harvesterInspectorEl.innerHTML = '';
+      harvesterInspectorEl.style.display = 'none';
+      return;
     }
 
-    harvesterInspectorEl.innerHTML = `
-      <div class="hud-label">Harvester Fleet (Click in 3D Space or Below to Inspect & Pin Camera)</div>
-      <div class="hud-btn-row">${harvesterButtonsHtml}</div>
-      ${detailCardHtml}
-    `;
+    harvesterInspectorEl.style.display = '';
 
-    harvesterInspectorEl
-      .querySelectorAll<HTMLButtonElement>('[data-select-harvester]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const hId = btn.dataset.selectHarvester ?? null;
-          sceneManager.selectAndPinHarvester(hId);
-          renderHarvesterInspector();
-        });
-      });
+    const pct = Math.min(
+      100,
+      Math.round(
+        (selectedHarvester.cargoAmount / Math.max(1, selectedHarvester.cargoCapacity)) *
+          100,
+      ),
+    );
+    const isCameraPinned = sceneManager.cameraController.isPinned();
+    const targetResourceLabel =
+      selectedHarvester.cargoType === 'ore'
+        ? 'Ore Deposit (Silicate/Iron Boulder)'
+        : 'Crystal Deposit (Pale Ice-Blue Cluster)';
+
+    const homeLookup = sim.getStructureById(selectedHarvester.homeStructureId);
+    const homeLabel = homeLookup
+      ? `${ORBITAL_STRUCTURES[homeLookup.structure.structureId].displayName} (${homeLookup.planetState.planet.name})`
+      : 'Reassigning...';
+
+    harvesterInspectorEl.innerHTML = `
+      <div class="harvester-telemetry-card">
+        <div class="telemetry-row">
+          <div>
+            <strong>Selected: ${selectedHarvester.id.replace('_', ' #')}</strong>
+            <span class="hud-badge">${formatHarvesterState(selectedHarvester.state, selectedHarvester.cargoType)}</span>
+          </div>
+          <div class="telemetry-actions">
+            <button class="hud-btn ${isCameraPinned ? 'active' : ''}" data-action="repin-harvester">
+              ${isCameraPinned ? 'Camera Pinned (Pan to Break)' : 'Pin Camera to Follow'}
+            </button>
+            <button class="hud-btn" data-action="deselect-harvester">Close</button>
+          </div>
+        </div>
+        <div class="telemetry-meta">
+          <span><strong>Target:</strong> ${targetResourceLabel}</span>
+          <span><strong>Home:</strong> ${homeLabel}</span>
+          <span><strong>Speed:</strong> ${selectedHarvester.currentSpeed.toFixed(1)} u/s</span>
+        </div>
+        <div class="telemetry-progress-wrap">
+          <div class="telemetry-progress-label">
+            <span>Mined Cargo (${selectedHarvester.cargoType.toUpperCase()})</span>
+            <strong>${selectedHarvester.cargoAmount.toFixed(1)} / ${selectedHarvester.cargoCapacity} (${pct}%)</strong>
+          </div>
+          <div class="telemetry-progress-bar">
+            <div class="telemetry-progress-fill ${selectedHarvester.cargoType}" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+      </div>
+    `;
 
     harvesterInspectorEl
       .querySelector<HTMLButtonElement>('[data-action="repin-harvester"]')
@@ -429,9 +419,18 @@ export function mountSystemHud(
       const maxDocks = sim.getMaxConcurrentDocks(selectedStruct);
       const dockStatusText = `Unload: ${unloadRateLabel}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${maxDocks} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`;
 
+      const assignedHarvesters = isDropoffPlatform
+        ? sim
+            .getAllHarvesters()
+            .filter(
+              (h) => h.ownerId === playerId && h.homeStructureId === selectedStruct.id,
+            )
+        : [];
+      const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
+
       const focusControlsHtml = isDropoffPlatform
         ? `<div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">MINING FOCUS:</span>
+            <span class="econ-label" style="margin-right: 4px;">MINING FOCUS (${assignedHarvesters.length} HARVESTER${assignedHarvesters.length === 1 ? '' : 'S'}):</span>
             ${(['auto', 'ore', 'crystal'] as const)
               .map((focus) => {
                 const isActive = selectedStruct.targetResource === focus;
@@ -444,6 +443,28 @@ export function mountSystemHud(
                 return `<button class="hud-btn ${isActive ? 'active' : ''}" data-set-focus="${focus}" data-focus-struct="${selectedStruct.id}">${label}</button>`;
               })
               .join('')}
+          </div>`
+        : '';
+
+      const assignedHarvestersHtml = isDropoffPlatform
+        ? `<div class="hud-btn-row" style="margin-top: 6px;">
+            <span class="econ-label" style="margin-right: 4px;">ASSIGNED HARVESTERS (${assignedHarvesters.length}):</span>
+            ${
+              assignedHarvesters.length > 0
+                ? assignedHarvesters
+                    .map((h, idx) => {
+                      const isSel = h.id === selectedHarvesterId;
+                      const pct = Math.round(
+                        (h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100,
+                      );
+                      return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-harvester="${h.id}" title="Click to inspect and follow this Harvester">
+                        Harvester #${idx + 1}
+                        <span class="hud-badge">${h.cargoType.toUpperCase()} ${pct}%</span>
+                      </button>`;
+                    })
+                    .join('')
+                : '<span class="econ-label" style="opacity: 0.7;">None assigned</span>'
+            }
           </div>`
         : '';
 
@@ -485,6 +506,7 @@ export function mountSystemHud(
             }
           </div>
           ${focusControlsHtml}
+          ${assignedHarvestersHtml}
           ${queueItemsHtml}
         </div>
       `;
@@ -650,10 +672,21 @@ export function mountSystemHud(
         btn.addEventListener('click', () => {
           const wormholeId = btn.dataset.wormholeId;
           if (wormholeId) {
-            sceneManager.focusAndToggleWormhole(wormholeId);
+            sceneManager.focusWormhole(wormholeId);
             renderHarvesterInspector();
             renderMainPanel();
           }
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-select-harvester]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const hId = btn.dataset.selectHarvester ?? null;
+          sceneManager.selectAndPinHarvester(hId);
+          renderHarvesterInspector();
+          renderMainPanel();
         });
       });
 

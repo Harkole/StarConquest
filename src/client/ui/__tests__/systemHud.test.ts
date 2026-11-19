@@ -86,4 +86,38 @@ describe('systemHud — computeMainPanelSignature', () => {
     const finishedHubSig = computeMainPanelSignature(sim, baseParams);
     expect(finishedHubSig).not.toBe(almostDoneHubSig);
   });
+
+  it('updates signature when assigned Harvesters on the selected platform change cargo or count', () => {
+    const sim = new GameSimulation('standard_tactical');
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+    const cnc = homeworld.structures[0];
+    expect(cnc).toBeDefined();
+    if (!cnc) {
+      return;
+    }
+
+    const cncParams: MainPanelSignatureParams = {
+      activeSystemId: 'system_starter_1',
+      selectedPlanetId: homeworld.planet.id,
+      selectedSlotIndex: 0,
+      selectedHarvesterId: null,
+      pendingDeepSpace: null,
+      statusBannerMessage: '',
+      wormholeStates: [{ id: 'wh_1', isOpen: false }],
+    };
+
+    const initialSig = computeMainPanelSignature(sim, cncParams);
+    const assigned = sim
+      .getAllHarvesters()
+      .find((h) => h.homeStructureId === cnc.id);
+    expect(assigned).toBeDefined();
+    if (!assigned) {
+      return;
+    }
+
+    // Cargo progress on a Harvester belonging to the selected C&C changes the panel signature
+    assigned.cargoAmount = 20;
+    const updatedCargoSig = computeMainPanelSignature(sim, cncParams);
+    expect(updatedCargoSig).not.toBe(initialSig);
+  });
 });
