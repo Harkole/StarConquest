@@ -305,3 +305,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Shield Visual Effects & Energized Hull Plating Art Pass
 * **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
+
+### Per-Platform Harvester Ownership & HUD Relocation
+* **Known Issue**: In `src/client/ui/systemHud.ts`, all Harvesters are listed in a single flat `HARVESTER FLEET` panel at the top of the HUD, which grows vertically and clutters the screen as more Harvesters are built and gives no indication of which Command & Control or Orbital Refinery each Harvester belongs to.
+* **Planned Fix**: Remove the global Harvester list from the top of the HUD and instead display each platform's assigned Harvesters (count + clickable inspect/follow badges) inside the selected C&C / Refinery building panel alongside its `Auto` / `Ore` / `Crystal` Mining Focus controls, so players can immediately see how many Harvesters belong to a platform and will be affected by a Mining Focus change.
