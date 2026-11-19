@@ -324,10 +324,3 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
   * **Live Data-Driven Unit & Structure Reference**: Automatically pulls costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/` so stats never drift out of sync with balance changes.
   * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
-
-### Titan Orbital Dockyard Bay 1 Dreadnought Protrusion Bug
-* **Known Issue**: Inside the **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard` in `src/client/renderer/stationModels.ts`), the **Imperator Dreadnought** staged in Slot 1 (`Primary Dreadnought Bay`) protrudes out the rear bulkhead of the dockyard.
-* **Planned Fix**: Extend the Dreadnought dry-dock slipway length (and shift the fabrication cradle forward) so the full Imperator Dreadnought hull fits cleanly inside the bay with clearance on both stern and bow.
-
-### Dynamic Empty-When-Idle Dockyard Slipways
-* **Planned Design Change**: Orbital Dockyards already construct **2 ships simultaneously** in `src/shared/sim/gameSimulation.ts` (`DOCKYARD_MAX_PARALLEL_BAYS = 2`). Update the 3D `buildTitanOrbitalDockyard` renderer in `src/client/renderer/stationModels.ts` so both dry-dock slipways stay empty when idle and dynamically render the exact queued ship class model being fabricated in each active bay.

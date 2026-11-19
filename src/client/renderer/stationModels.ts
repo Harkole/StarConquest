@@ -4,16 +4,27 @@ import type {
   OrbitalStructureId,
 } from '../../shared/config/index.ts';
 import { createProceduralHullTextures } from './proceduralHullTextures.ts';
-import { ShipModelLibrary } from './shipModels.ts';
+import {
+  ShipModelLibrary,
+  type CombatShipClassId,
+} from './shipModels.ts';
 
 export type StationOrDeepSpaceStructureId = OrbitalStructureId | DeepSpaceStructureId;
 
 /**
+ * Live construction order metadata for a single Titan Orbital Dockyard dry-dock slipway.
+ */
+export interface DockyardBayOrderInfo {
+  readonly shipClassId: CombatShipClassId;
+  readonly progressRatio: number;
+}
+
+/**
  * Radial standoff beyond `orbitalRingRadius` for the Aegis Heavy Orbital Defense Platform's
  * 3 remote vertical sentry turrets. Exceeds the outward reach of the largest orbital structure
- * (Titan Orbital Dockyard slipways at ~19.5u) plus sentry radius and safety clearance.
+ * (Titan Orbital Dockyard extended slipways at ~22.5u) plus sentry radius and safety clearance.
  */
-export const AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET = 28;
+export const AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET = 31;
 
 /**
  * Shared 3D Orbital Platform & Station Model Builder following `docs/artstyle.md`.
@@ -345,22 +356,22 @@ export class StationModelLibrary {
     new THREE.BoxGeometry(0.55, 0.32, 4.2),
   );
   private readonly dockOuterPierGeom = this.registerGeom(
-    new THREE.BoxGeometry(14.6, 1.65, 2.5),
+    new THREE.BoxGeometry(17.0, 1.65, 2.5),
   );
   private readonly dockCenterPierGeom = this.registerGeom(
-    new THREE.BoxGeometry(14.2, 1.85, 2.8),
+    new THREE.BoxGeometry(16.6, 1.85, 2.8),
   );
   private readonly dockVentralSpineGeom = this.registerGeom(
-    new THREE.CylinderGeometry(1.35, 0.85, 13.4, 8),
+    new THREE.CylinderGeometry(1.35, 0.85, 15.8, 8),
   );
   private readonly dockSlipwayFloorGeom = this.registerGeom(
-    new THREE.BoxGeometry(13.6, 0.34, 5.4),
+    new THREE.BoxGeometry(16.0, 0.34, 5.4),
   );
   private readonly dockSmallCraftAlcoveGeom = this.registerGeom(
     new THREE.BoxGeometry(3.4, 0.75, 1.45),
   );
   private readonly dockThermalRailGeom = this.registerGeom(
-    new THREE.BoxGeometry(13.8, 0.18, 0.22),
+    new THREE.BoxGeometry(16.2, 0.18, 0.22),
   );
   private readonly dockElevatorTrackGeom = this.registerGeom(
     new THREE.BoxGeometry(0.32, 2.6, 0.42),
@@ -593,12 +604,17 @@ export class StationModelLibrary {
     stationGroup: THREE.Group,
     elapsedSeconds: number,
     activeBuildProgressRatio: number | null = null,
+    dockyardBayOrders: readonly (DockyardBayOrderInfo | null)[] = [],
   ): void {
     const animateFn = stationGroup.userData.animateStation as
-      | ((elapsed: number, progressRatio: number | null) => void)
+      | ((
+          elapsed: number,
+          progressRatio: number | null,
+          bayOrders: readonly (DockyardBayOrderInfo | null)[],
+        ) => void)
       | undefined;
     if (animateFn) {
-      animateFn(elapsedSeconds, activeBuildProgressRatio);
+      animateFn(elapsedSeconds, activeBuildProgressRatio, dockyardBayOrders);
     }
   }
 
@@ -1275,9 +1291,10 @@ export class StationModelLibrary {
     slipwaysGroup.scale.setScalar(dockScale);
     root.add(slipwaysGroup);
 
-    const bayCenterX = 7.4;
-    const bay1Z = -4.35; // Slot 1: Primary Dreadnought Bay
-    const bay2Z = 4.35; // Slot 2: Cruiser / Carrier Bay
+    const bayCenterX = 8.6;
+    const bayShipCenterX = 8.9;
+    const bay1Z = -4.35; // Slot 1: Parallel Dry-Dock Slipway 1 (supports up to Imperator Dreadnought)
+    const bay2Z = 4.35; // Slot 2: Parallel Dry-Dock Slipway 2 (supports up to Imperator Dreadnought)
     const outerPierZ = 8.45;
 
     // Central Dividing Pier + Bulbous Ventral Central Manufacturing Spine (Front View schematic)
@@ -1365,7 +1382,7 @@ export class StationModelLibrary {
 
       // 6 Sequential Launch-Corridor Runway Strobes per bay leading out to the open launch mouth (+X)
       for (let sIdx = 0; sIdx < 6; sIdx++) {
-        const strobeX = 2.8 + sIdx * 2.1;
+        const strobeX = 2.8 + sIdx * 2.5;
         for (const railSide of [-1, 1]) {
           const strobe = new THREE.Mesh(
             this.dockRunwayStrobeGeom,
@@ -1380,6 +1397,7 @@ export class StationModelLibrary {
 
     // 4. Four Colossal Gantry Crane Structures & Articulated Welding Booms (2 per slipway)
     interface GantryCraneRig {
+      readonly bayIdx: number;
       readonly bridgeGroup: THREE.Group;
       readonly baseX: number;
       readonly travelAmplitude: number;
@@ -1391,7 +1409,7 @@ export class StationModelLibrary {
 
     for (const [bayIdx, bayZ] of [bay1Z, bay2Z].entries()) {
       for (let cIdx = 0; cIdx < 2; cIdx++) {
-        const baseX = 4.6 + cIdx * 5.2;
+        const baseX = 5.4 + cIdx * 6.0;
         const bridgeGroup = new THREE.Group();
         bridgeGroup.position.set(baseX, 0, bayZ);
 
@@ -1427,15 +1445,17 @@ export class StationModelLibrary {
 
         const weldingFlareMesh = new THREE.Mesh(this.dockWeldingFlareGeom, flareMat);
         weldingFlareMesh.position.set(0, -1.42, 0);
+        weldingFlareMesh.visible = false;
         lowerBoomGroup.add(weldingFlareMesh);
 
         bridgeGroup.add(lowerBoomGroup);
         slipwaysGroup.add(bridgeGroup);
 
         gantries.push({
+          bayIdx,
           bridgeGroup,
           baseX,
-          travelAmplitude: 1.65,
+          travelAmplitude: 1.9,
           phaseOffset: bayIdx * 1.7 + cIdx * 2.4,
           lowerBoomGroup,
           weldingFlareMesh,
@@ -1443,86 +1463,137 @@ export class StationModelLibrary {
       }
     }
 
-    // 5. Progressive 3D Fleet Hull Assemblies Inside Slot 1 (Imperator Dreadnought Bay) & Slot 2 (Cruiser Bay)
-    const buildStagedImperatorAssembly = (wireframe: boolean): THREE.Group => {
-      const shipGroup = this.shipModels.buildImperatorDreadnoughtMesh({
-        wireframe,
-        staged: true,
-        scale: 0.72,
-      });
-      shipGroup.rotation.y = Math.PI / 2;
-      shipGroup.position.set(7.6, 0.35, bay1Z);
-      return shipGroup;
+    // 5. Dynamic Empty-When-Idle Parallel Dry-Dock Slipways (Bay 1 & Bay 2)
+    // Both slipways stay empty when idle and dynamically stage the exact queued ship class being built.
+    const slipwayScaleByClass: Record<CombatShipClassId, number> = {
+      fighter: 1.6,
+      destroyer: 1.15,
+      cruiser: 1.0,
+      carrier: 0.9,
+      dreadnought: 0.78,
     };
 
-    // Slot 1 (Bay 1): Wireframe skeletal cradle + solid armored Imperator hull that progressive-fills + laser scanner plane
-    const bay1WireframeHull = buildStagedImperatorAssembly(true);
-    slipwaysGroup.add(bay1WireframeHull);
+    interface DynamicSlipwayBay {
+      readonly mount: THREE.Group;
+      readonly scanner: THREE.Mesh;
+      activeClass: CombatShipClassId | null;
+      solidHull: THREE.Group | null;
+      baseScale: number;
+    }
 
-    const bay1SolidHull = buildStagedImperatorAssembly(!isComplete);
-    slipwaysGroup.add(bay1SolidHull);
+    const dynamicBays: DynamicSlipwayBay[] = [bay1Z, bay2Z].map((bayZ, idx) => {
+      const mount = new THREE.Group();
+      mount.name = `dockyard_bay_${idx + 1}_mount`;
+      mount.position.set(bayShipCenterX, 0.35, bayZ);
+      slipwaysGroup.add(mount);
 
-    const laserScannerPlane = new THREE.Mesh(
-      this.dockLaserScannerPlaneGeom,
-      scannerMat,
-    );
-    laserScannerPlane.position.set(7.5, 0.55, bay1Z);
-    slipwaysGroup.add(laserScannerPlane);
+      const scanner = new THREE.Mesh(this.dockLaserScannerPlaneGeom, scannerMat);
+      scanner.name = `dockyard_bay_${idx + 1}_scanner`;
+      scanner.position.set(bayShipCenterX, 0.55, bayZ);
+      scanner.visible = false;
+      slipwaysGroup.add(scanner);
 
-    // Slot 2 (Bay 2): Approved Cruiser hull staged under assembly
-    const bay2Cruiser = this.shipModels.buildCruiserMesh({
-      wireframe: !isComplete,
-      staged: true,
-      scale: 1.0,
+      return {
+        mount,
+        scanner,
+        activeClass: null,
+        solidHull: null,
+        baseScale: 1.0,
+      };
     });
-    bay2Cruiser.rotation.y = Math.PI / 2;
-    bay2Cruiser.position.set(7.4, 0.35, bay2Z);
-    slipwaysGroup.add(bay2Cruiser);
 
     // Attach live per-frame shipyard animation hook to root.userData
     root.userData.animateStation = (
       elapsedSeconds: number,
       activeBuildProgressRatio: number | null,
+      dockyardBayOrders: readonly (DockyardBayOrderInfo | null)[] = [],
     ): void => {
       if (!isComplete) {
         return;
       }
 
-      const isActivelyBuilding = activeBuildProgressRatio !== null;
-      const speedMult = isActivelyBuilding ? 2.4 : 1.0;
-      const progress =
-        activeBuildProgressRatio !== null
-          ? Math.max(0.05, Math.min(1.0, activeBuildProgressRatio))
-          : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(elapsedSeconds * 0.45));
+      const bayHasOrder: [boolean, boolean] = [false, false];
 
-      // 1. Rotate Dockyard Control Tower Radar Sphere
+      // 1. Sync Dynamic Dual-Bay Slipway Models & Progressive Solidification
+      for (let bIdx = 0; bIdx < dynamicBays.length; bIdx++) {
+        const bay = dynamicBays[bIdx]!;
+        const order = dockyardBayOrders[bIdx] ?? null;
+
+        if (!order) {
+          if (bay.activeClass !== null || bay.mount.children.length > 0) {
+            bay.mount.clear();
+            bay.activeClass = null;
+            bay.solidHull = null;
+          }
+          bay.scanner.visible = false;
+          continue;
+        }
+
+        bayHasOrder[bIdx] = true;
+        const bayScale = slipwayScaleByClass[order.shipClassId];
+
+        if (bay.activeClass !== order.shipClassId) {
+          bay.mount.clear();
+          const wireframeHull = this.shipModels.buildShipMesh(order.shipClassId, {
+            wireframe: true,
+            staged: true,
+            scale: bayScale,
+          });
+          wireframeHull.rotation.y = Math.PI / 2;
+          wireframeHull.position.set(0, 0, 0);
+          bay.mount.add(wireframeHull);
+
+          const solidHull = this.shipModels.buildShipMesh(order.shipClassId, {
+            wireframe: false,
+            staged: true,
+            scale: bayScale,
+          });
+          solidHull.rotation.y = Math.PI / 2;
+          solidHull.position.set(0, 0, 0);
+          bay.mount.add(solidHull);
+
+          bay.activeClass = order.shipClassId;
+          bay.solidHull = solidHull;
+          bay.baseScale = bayScale;
+        }
+
+        const progress = Math.max(0.05, Math.min(1.0, order.progressRatio));
+        if (bay.solidHull) {
+          bay.solidHull.scale.set(bay.baseScale, bay.baseScale, bay.baseScale * progress);
+          bay.solidHull.position.set(0, 0, 0);
+        }
+        bay.scanner.visible = true;
+        bay.scanner.position.x = 3.0 + progress * 11.6;
+      }
+
+      const anyBayActive =
+        bayHasOrder[0] || bayHasOrder[1] || activeBuildProgressRatio !== null;
+      const speedMult = anyBayActive ? 2.2 : 1.0;
+
+      // 2. Rotate Dockyard Control Tower Radar Sphere
       if (radarDishGroup) {
         radarDishGroup.rotation.y = elapsedSeconds * 0.85 * speedMult;
       }
 
-      // 2. Sweep Laser-Fabrication Scanner Plane & Progressive Hull Solidification in Slot 1 Bay
-      const scannerX = 2.6 + progress * 9.8;
-      laserScannerPlane.position.x = scannerX;
-      bay1SolidHull.scale.set(progress, 1.0, 1.0);
-      bay1SolidHull.position.x = 2.4 * (1.0 - progress);
-
-      // 3. Traverse Colossal Gantry Cranes & Flicker Articulated Welding Arcs
+      // 3. Traverse Colossal Gantry Cranes & Flicker Articulated Welding Arcs (active bay only)
       for (const gantry of gantries) {
-        const wave = Math.sin(elapsedSeconds * 0.75 * speedMult + gantry.phaseOffset);
+        const bayActive = bayHasOrder[gantry.bayIdx] ?? false;
+        const baySpeed = bayActive ? 2.2 : 0.45;
+        const wave = Math.sin(elapsedSeconds * 0.75 * baySpeed + gantry.phaseOffset);
         gantry.bridgeGroup.position.x = gantry.baseX + wave * gantry.travelAmplitude;
         gantry.lowerBoomGroup.rotation.z =
-          Math.sin(elapsedSeconds * 1.9 * speedMult + gantry.phaseOffset) * 0.28;
+          Math.sin(elapsedSeconds * 1.9 * baySpeed + gantry.phaseOffset) * 0.28;
         gantry.lowerBoomGroup.rotation.x =
-          Math.cos(elapsedSeconds * 1.4 * speedMult + gantry.phaseOffset) * 0.22;
+          Math.cos(elapsedSeconds * 1.4 * baySpeed + gantry.phaseOffset) * 0.22;
 
-        // Pulse welding arc flare at manipulator tip
-        const sparkPulse =
-          0.5 +
-          0.5 * Math.sin(elapsedSeconds * 16.0 * speedMult + gantry.phaseOffset * 3.1);
-        const flareScale = isActivelyBuilding
-          ? 0.65 + sparkPulse * 0.95
-          : 0.25 + sparkPulse * 0.45;
-        gantry.weldingFlareMesh.scale.setScalar(flareScale);
+        gantry.weldingFlareMesh.visible = bayActive;
+        if (bayActive) {
+          const sparkPulse =
+            0.5 +
+            0.5 *
+              Math.sin(elapsedSeconds * 16.0 * baySpeed + gantry.phaseOffset * 3.1);
+          gantry.weldingFlareMesh.scale.setScalar(0.65 + sparkPulse * 0.95);
+        }
       }
 
       // 4. Shuttle Material Transport Elevators up and down between lower spine and crane deck

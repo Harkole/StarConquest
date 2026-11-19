@@ -709,16 +709,31 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(violetCount).toBe(0);
     ships.dispose();
 
-    // Verify Titan Orbital Dockyard Slot 2 stages the approved Cruiser hull
+    // Verify Titan Orbital Dockyard bays start empty when idle and dynamically stage a Cruiser when queued
     const stations = new StationModelLibrary();
     const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    const bay1Mount = dockyard.getObjectByName('dockyard_bay_1_mount');
+    const bay2Mount = dockyard.getObjectByName('dockyard_bay_2_mount');
+    expect(bay1Mount).toBeDefined();
+    expect(bay2Mount).toBeDefined();
+    expect(bay1Mount?.children).toHaveLength(0);
+    expect(bay2Mount?.children).toHaveLength(0);
+
+    stations.updateStationAnimation(dockyard, 1.5, 0.6, [
+      null,
+      { shipClassId: 'cruiser', progressRatio: 0.6 },
+    ]);
     let stagedCruiserCount = 0;
-    dockyard.traverse((obj) => {
+    bay2Mount?.traverse((obj) => {
       if (obj.name === 'ship_cruiser') {
         stagedCruiserCount += 1;
       }
     });
-    expect(stagedCruiserCount).toBe(1);
+    expect(stagedCruiserCount).toBe(2);
+
+    // Clearing the queue returns the slipway to empty
+    stations.updateStationAnimation(dockyard, 2.5, null, [null, null]);
+    expect(bay2Mount?.children).toHaveLength(0);
     stations.dispose();
   });
 
@@ -778,16 +793,39 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(violetCount).toBe(0);
     ships.dispose();
 
-    // Verify Titan Orbital Dockyard Slot 1 fabricates the approved Imperator Dreadnought (wireframe + solid pair)
+    // Verify Titan Orbital Dockyard dynamically fabricates an Imperator Dreadnought in Bay 1
+    // without protruding through the rear bulkhead at any construction progress ratio
     const stations = new StationModelLibrary();
     const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
-    let bay1ImperatorCount = 0;
-    dockyard.traverse((obj) => {
-      if (obj.name === 'ship_dreadnought_imperator') {
-        bay1ImperatorCount += 1;
-      }
-    });
-    expect(bay1ImperatorCount).toBe(2);
+    const bay1Mount = dockyard.getObjectByName('dockyard_bay_1_mount')!;
+    const bay2Mount = dockyard.getObjectByName('dockyard_bay_2_mount')!;
+    expect(bay1Mount.children).toHaveLength(0);
+    expect(bay2Mount.children).toHaveLength(0);
+
+    for (const progress of [0.1, 0.5, 1.0]) {
+      stations.updateStationAnimation(dockyard, 2.0 + progress, progress, [
+        { shipClassId: 'dreadnought', progressRatio: progress },
+        { shipClassId: 'carrier', progressRatio: progress },
+      ]);
+      let bay1ImperatorCount = 0;
+      bay1Mount.traverse((obj) => {
+        if (obj.name === 'ship_dreadnought_imperator') {
+          bay1ImperatorCount += 1;
+        }
+      });
+      expect(bay1ImperatorCount).toBe(2);
+
+      // Rear force-field bulkhead sits at x = 1.55 * 1.25 = 1.9375u; stern must stay strictly forward of it
+      const bay1Box = new THREE.Box3().setFromObject(bay1Mount);
+      expect(bay1Box.min.x).toBeGreaterThan(2.5);
+      // Launch mouth sits at x = 16.6 * 1.25 = 20.75u; bow must stay inside the extended slipway
+      expect(bay1Box.max.x).toBeLessThan(20.5);
+    }
+
+    // Idle state clears both slipways
+    stations.updateStationAnimation(dockyard, 4.0, null, [null, null]);
+    expect(bay1Mount.children).toHaveLength(0);
+    expect(bay2Mount.children).toHaveLength(0);
     stations.dispose();
   });
 
