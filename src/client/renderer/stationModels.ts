@@ -3,40 +3,76 @@ import type {
   DeepSpaceStructureId,
   OrbitalStructureId,
 } from '../../shared/config/index.ts';
+import { createProceduralHullTextures } from './proceduralHullTextures.ts';
 
 export type StationOrDeepSpaceStructureId = OrbitalStructureId | DeepSpaceStructureId;
 
 /**
  * Shared 3D Orbital Platform & Station Model Builder following `docs/artstyle.md`.
- * Currently houses the full "Prometheus" Command & Control model alongside baseline
- * models for secondary orbital structures (to be upgraded one-by-one).
  */
 export class StationModelLibrary {
-  // Standardized PBR Materials per docs/artstyle.md
+  private readonly hullTextures = createProceduralHullTextures();
+
+  // Standardized PBR Materials with procedural industrial hull textures per docs/artstyle.md
   private readonly primaryHullMat = new THREE.MeshStandardMaterial({
-    color: 0x3e4652,
+    name: 'hull_gunmetal_slate',
+    color: 0x46505e,
+    map: this.hullTextures.hullPlating.map,
+    bumpMap: this.hullTextures.hullPlating.bumpMap,
+    bumpScale: 0.08,
+    roughnessMap: this.hullTextures.hullPlating.roughnessMap,
     metalness: 0.68,
-    roughness: 0.42,
+    roughness: 0.58,
   });
   private readonly accentOchreMat = new THREE.MeshStandardMaterial({
-    color: 0xc27d2c,
+    name: 'hull_weathered_ochre',
+    color: 0xcd8734,
+    map: this.hullTextures.weatheredOchre.map,
+    bumpMap: this.hullTextures.weatheredOchre.bumpMap,
+    bumpScale: 0.08,
+    roughnessMap: this.hullTextures.weatheredOchre.roughnessMap,
     metalness: 0.55,
-    roughness: 0.48,
+    roughness: 0.64,
   });
   private readonly darkFrameMat = new THREE.MeshStandardMaterial({
-    color: 0x1e232a,
+    name: 'hull_dark_charcoal',
+    color: 0x242a33,
+    map: this.hullTextures.darkRibbing.map,
+    bumpMap: this.hullTextures.darkRibbing.bumpMap,
+    bumpScale: 0.07,
+    roughnessMap: this.hullTextures.darkRibbing.roughnessMap,
     metalness: 0.78,
-    roughness: 0.35,
+    roughness: 0.52,
   });
   private readonly steelTrimMat = new THREE.MeshStandardMaterial({
-    color: 0x64748b,
-    metalness: 0.75,
-    roughness: 0.32,
+    name: 'hull_steel_trim',
+    color: 0x6b7c93,
+    map: this.hullTextures.machinedSteel.map,
+    bumpMap: this.hullTextures.machinedSteel.bumpMap,
+    bumpScale: 0.05,
+    roughnessMap: this.hullTextures.machinedSteel.roughnessMap,
+    metalness: 0.76,
+    roughness: 0.48,
+  });
+  private readonly turretBarrelMat = new THREE.MeshStandardMaterial({
+    name: 'turret_barrel_steel',
+    color: 0x8492a6,
+    map: this.hullTextures.machinedSteel.map,
+    bumpMap: this.hullTextures.machinedSteel.bumpMap,
+    bumpScale: 0.06,
+    roughnessMap: this.hullTextures.machinedSteel.roughnessMap,
+    metalness: 0.84,
+    roughness: 0.38,
   });
   private readonly crimsonProwMat = new THREE.MeshStandardMaterial({
-    color: 0xb91c1c,
+    name: 'hull_crimson_prow',
+    color: 0xc22222,
+    map: this.hullTextures.hullPlating.map,
+    bumpMap: this.hullTextures.hullPlating.bumpMap,
+    bumpScale: 0.06,
+    roughnessMap: this.hullTextures.hullPlating.roughnessMap,
     metalness: 0.45,
-    roughness: 0.5,
+    roughness: 0.64,
   });
   private readonly solarPanelMat = new THREE.MeshStandardMaterial({
     color: 0x1e3a5f,
@@ -604,6 +640,7 @@ export class StationModelLibrary {
     this.accentOchreMat.dispose();
     this.darkFrameMat.dispose();
     this.steelTrimMat.dispose();
+    this.turretBarrelMat.dispose();
     this.crimsonProwMat.dispose();
     this.solarPanelMat.dispose();
     this.observationWindowMat.dispose();
@@ -619,6 +656,7 @@ export class StationModelLibrary {
     this.techHoloSurfaceMat.dispose();
     this.techTranslucentDomeMat.dispose();
     this.buildingWireframeMat.dispose();
+    this.hullTextures.dispose();
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
@@ -850,12 +888,13 @@ export class StationModelLibrary {
     }
 
     // 6. Twin Dorsal Point Defence Turret Mounts
+    const cncBarrelMat = isComplete ? this.turretBarrelMat : this.buildingWireframeMat;
     for (const side of [-1, 1]) {
       const turretGroup = new THREE.Group();
       turretGroup.position.set(1.35, 1.62, side * 1.15);
 
       turretGroup.add(new THREE.Mesh(this.cncTurretBaseGeom, frameMat));
-      const barrel = new THREE.Mesh(this.cncTurretBarrelGeom, trimMat);
+      const barrel = new THREE.Mesh(this.cncTurretBarrelGeom, cncBarrelMat);
       barrel.rotation.z = -Math.PI / 3;
       barrel.position.set(0.28, 0.18, 0);
       turretGroup.add(barrel);
@@ -998,6 +1037,7 @@ export class StationModelLibrary {
     const halfSpan = ((segmentCount - 1) * segmentArcSpacing) * 0.5;
     const centerIdx = Math.floor(segmentCount / 2);
 
+    const outpostBarrelMat = isComplete ? this.turretBarrelMat : this.buildingWireframeMat;
     const buildPdGatlingTurret = (yaw: number): THREE.Group => {
       const turretGroup = new THREE.Group();
       turretGroup.add(new THREE.Mesh(this.outpostPdPedestalGeom, frameMat));
@@ -1012,7 +1052,7 @@ export class StationModelLibrary {
         drum.position.set(drumSide * 0.36, -0.04, -0.04);
         head.add(drum);
 
-        const barrel = new THREE.Mesh(this.outpostPdBarrelGeom, trimMat);
+        const barrel = new THREE.Mesh(this.outpostPdBarrelGeom, outpostBarrelMat);
         barrel.rotation.x = Math.PI / 2.2;
         barrel.position.set(drumSide * 0.12, 0.06, 0.52);
         head.add(barrel);
@@ -1871,7 +1911,7 @@ export class StationModelLibrary {
     const obsMat = isComplete ? this.observationWindowMat : this.buildingWireframeMat;
     const cabinMat = isComplete ? this.warmCabinMat : this.buildingWireframeMat;
     const latticeMat = isComplete ? this.geodesicLatticeMat : this.buildingWireframeMat;
-    const plasmaMat = isComplete ? this.techQuantumVioletMat : this.buildingWireframeMat;
+    const barrelMat = isComplete ? this.turretBarrelMat : this.buildingWireframeMat;
 
     const ringR = Math.max(18, orbitalRingRadius);
     const mainPlatformGroup = new THREE.Group();
@@ -1971,14 +2011,14 @@ export class StationModelLibrary {
       ammoFeed.position.set(-1.35, -0.08, 0);
       spinalTurret.add(ammoFeed);
 
-      // 3 Parallel Glowing Violet-Blue Heavy Plasma Barrels extending forward (+X outward)
+      // 3 Parallel Machined Steel Heavy Spinal Barrels extending forward (+X outward)
       for (const barrelZ of [-0.62, 0, 0.62]) {
-        const barrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, plasmaMat);
+        const barrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, barrelMat);
         barrel.rotation.z = -Math.PI / 2.15; // Slight upward elevation matching Side View
         barrel.position.set(2.15, 0.25, barrelZ);
         spinalTurret.add(barrel);
 
-        const collar = new THREE.Mesh(this.aegisSpinalMuzzleCollarGeom, trimMat);
+        const collar = new THREE.Mesh(this.aegisSpinalMuzzleCollarGeom, frameMat);
         collar.rotation.z = -Math.PI / 2.15;
         collar.position.set(1.1, 0.14, barrelZ);
         spinalTurret.add(collar);
@@ -1993,9 +2033,9 @@ export class StationModelLibrary {
       macroTurret.position.set(1.15, 1.55, side * 2.35);
       macroTurret.rotation.y = macroBaseYaw;
 
-      macroTurret.add(new THREE.Mesh(this.aegisMacroTurretHousingGeom, trimMat));
+      macroTurret.add(new THREE.Mesh(this.aegisMacroTurretHousingGeom, hullMat));
       for (const mbZ of [-0.28, 0.28]) {
-        const mb = new THREE.Mesh(this.aegisMacroBarrelGeom, plasmaMat);
+        const mb = new THREE.Mesh(this.aegisMacroBarrelGeom, barrelMat);
         mb.rotation.z = -Math.PI / 2.2;
         mb.position.set(1.15, 0.12, mbZ);
         macroTurret.add(mb);
@@ -2095,8 +2135,7 @@ export class StationModelLibrary {
     const frameMat = isComplete ? this.darkFrameMat : this.buildingWireframeMat;
     const trimMat = isComplete ? this.steelTrimMat : this.buildingWireframeMat;
     const heatMat = isComplete ? this.moltenHeatSinkMat : this.buildingWireframeMat;
-    const plasmaMat = isComplete ? this.techQuantumVioletMat : this.buildingWireframeMat;
-    const barrelMat = variant === 'point_defence' ? trimMat : plasmaMat;
+    const barrelMat = isComplete ? this.turretBarrelMat : this.buildingWireframeMat;
 
     // 1. Cylindrical Vertical Sentry Gun Column, Rib Collars & Radial Power Conduits (allows 360° turret rotation)
     sentryRoot.add(new THREE.Mesh(this.aegisSentrySpineGeom, hullMat));
@@ -2129,7 +2168,7 @@ export class StationModelLibrary {
     sentryRoot.add(reactorCollar);
 
     for (const thrustYaw of [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2]) {
-      const thruster = new THREE.Mesh(this.aegisSentryThrusterNozzleGeom, barrelMat);
+      const thruster = new THREE.Mesh(this.aegisSentryThrusterNozzleGeom, trimMat);
       thruster.position.set(
         Math.cos(thrustYaw) * 1.18,
         -3.15,
@@ -2147,10 +2186,10 @@ export class StationModelLibrary {
     crownTurretPivot.position.set(0, 2.98, 0);
 
     if (variant === 'hull_breaker') {
-      // Heavy Anti-Capital Plasma Crown Cannon (reuses Aegis remote turret design as-is)
+      // Heavy Anti-Capital Crown Cannon with machined steel grey barrel
       crownTurretPivot.add(new THREE.Mesh(this.aegisSentryTopTurretGeom, ochreMat));
 
-      const topBarrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, plasmaMat);
+      const topBarrel = new THREE.Mesh(this.aegisSpinalPlasmaBarrelGeom, barrelMat);
       topBarrel.scale.set(0.78, 0.68, 0.78);
       topBarrel.rotation.z = -Math.PI / 2;
       topBarrel.position.set(1.45, 0.06, 0);
@@ -2167,7 +2206,7 @@ export class StationModelLibrary {
         crownTurretPivot.add(ammoDrum);
 
         for (const barY of [-0.1, 0.14]) {
-          const barrel = new THREE.Mesh(this.aegisSentryPdBarrelGeom, trimMat);
+          const barrel = new THREE.Mesh(this.aegisSentryPdBarrelGeom, barrelMat);
           barrel.rotation.z = -Math.PI / 2;
           barrel.position.set(0.78, barY, side * 0.22);
           crownTurretPivot.add(barrel);

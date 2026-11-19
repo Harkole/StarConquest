@@ -8,7 +8,7 @@
 
 **StarConquest** ships and orbital platforms follow a **grounded, heavy-industrial sci-fi aesthetic**:
 * **Functional Silhouette & Modularity**: Every vessel and station looks engineered for deep-space industry or naval combat—built from chamfered armor hull sections, exposed dark structural ribbing, modular external pods, sensor masts, and clustered thruster bells.
-* **High-Contrast Material Readability**: Models combine matte/satin **gunmetal slate armor** with **weathered ochre/amber industrial paneling** and **dark charcoal mechanical frames**, punctuated by **warm amber cockpit windows** and **cool cyan-blue containment/thruster glow**.
+* **High-Contrast Material Readability & Procedural PBR Surface Detail**: Models combine matte/satin **gunmetal slate armor** with **weathered ochre/amber industrial paneling**, **dark charcoal mechanical frames**, and **machined steel grey weapon barrels** (`#8492a6`), punctuated by **warm amber cockpit windows** and **cool cyan-blue containment/thruster glow**. All primary hull, ochre, structural ribbing, and machined steel materials use deterministic procedural PBR textures (`src/client/renderer/proceduralHullTextures.ts`: albedo panel variation, recessed seams, rivets, weathering streaks, bump relief, and roughness breakup) so large stations and ships never read as flat mono-colored meshes.
 * **Controlled HDR Bloom**: Emissive surfaces (cabin windows, cargo containment slits, sensor strips) are kept at moderate intensity (`0.5–0.9`) so they read crisply without washing out the hull, while **HDR bloom (`> 1.1`)** is reserved for active weapon/mining beams, molten impact sparks, and thruster exhaust cores.
 
 ---
@@ -22,7 +22,8 @@ To ensure every ship and orbital platform shares a cohesive visual language acro
 | **Primary Hull Armor (Gunmetal Slate)** | `#3e4652` | `0.68` | `0.42` | Main fuselage spine, outer nacelle casings, primary armor plates |
 | **Secondary Accent Armor (Weathered Ochre / Amber)** | `#c27d2c` | `0.55` | `0.48` | Forward cheek armor, engine cowlings, industrial hazard panels |
 | **Structural Frame & Ribs (Dark Charcoal Iron)** | `#1e232a` | `0.78` | `0.35` | Cargo pod rib bands, wing pylons, drill barrels, landing gear, turret rings |
-| **Trim & Mechanical Detail (Steel Grey)** | `#64748b` | `0.75` | `0.32` | Piston rods, dorsal hatches, muzzle collars, antenna masts |
+| **Trim & Mechanical Detail (Steel Grey)** | `#64748b` | `0.76` | `0.48` | Piston rods, dorsal hatches, muzzle collars, antenna masts (brushed steel PBR map) |
+| **Weapon & Turret Barrels (Machined Gunmetal Steel)** | `#8492a6` | `0.84` | `0.38` | All orbital & deep-space turret barrels (brushed metallic steel PBR map, never violet) |
 | **Cockpit / Bridge Interior (Warm Cabin Amber)** | `#fbbf24` | `0.15` | `0.20` | Emissive `#d97706` (`0.85` intensity) behind dark canopy frame struts |
 | **Crystal / Ion Containment Glow (Subspace Cyan)** | `#38bdf8` | `0.20` | `0.18` | Emissive `#0284c7` (`0.75` intensity) for cargo pod windows & intake slits |
 | **Ore Containment / Molten Glow (Warm Industrial Amber)** | `#f59e0b` | `0.20` | `0.22` | Emissive `#b45309` (`0.75` intensity) when cargo pods carry Ore |
@@ -196,8 +197,8 @@ Each ship and orbital platform is designed and locked in one at a time.
 1. **Twin Joined Octagonal Weapon Bastions Across 2 Orbital Slots (`aegis_main_platform`)**:
    * **Central Fire-Control & Shield-Generation Core**: Anchored at the midpoint between the two occupied orbital slots, topped by a stepped ochre fire-control tower and a glowing geodesic sensor dome.
    * **Slot 1 (Primary Heavy Battery) & Slot 2 (Secondary Bombardment Array)**: Twin stepped octagonal armored bastions (`1.35x` scale at `±8.4u` along the curved orbital arc, `~33u` total span) equipped with glowing copper-orange **Coolant System Radiators**, vertical **Ammunition Hoist Systems**, and **Planetary Shield Emitter Pylons**.
-2. **Articulated Triple-Barrel Spinal-Mount Heavy Plasma Cannons & Macro-Turrets (Inset Detail)**:
-   * Each bastion lobe mounts a massive swiveling **Spinal-Mount Heavy Plasma Cannon Battery** with rear ochre ammunition feed drums and **three parallel glowing violet-blue plasma barrels** (`#c084fc`), flanked by a twin-barrel **Turreted Macro-Cannon Battery** (`65` Heavy DPS + `45` Point Defence DPS).
+2. **Articulated Triple-Barrel Spinal-Mount Heavy Cannons & Macro-Turrets (Inset Detail)**:
+   * Each bastion lobe mounts a massive swiveling **Spinal-Mount Heavy Cannon Battery** with rear ochre ammunition feed drums and **three parallel machined steel grey barrels** (`#8492a6`), flanked by a twin-barrel **Turreted Macro-Cannon Battery** (`65` Heavy DPS + `45` Point Defence DPS).
    * Static always-on shield bubble meshes are intentionally omitted from the bastion hull so the gunmetal-and-ochre industrial detail stays crisp; shield visuals are reserved for a dedicated future shield VFX art pass.
 3. **3 Remote-Controlled Vertical Sentry Turrets (`aegis_remote_sentry_turrets`)**:
    * Built simultaneously with the main platform at `theta = -108°`, `180°` (far opposite side of the planet), and `+108°` just outside the orbital ring (`orbitalRingRadius + 7.2u`), ensuring visual line-of-sight coverage against hostile fleets approaching from behind the planet.

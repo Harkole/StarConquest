@@ -313,12 +313,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Shield Visual Effects & Energized Hull Plating Art Pass
 * **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
 
-### Turret Barrel Coloring & Procedural Hull Texturing / Realism Pass
-* **Known Issue**: The glowing violet (`#c084fc`) material on the **Aegis Heavy Orbital Defense Platform** and **Remote Vertical Sentry Turret** gun barrels looks overly saturated, childish, or like a missing-texture placeholder. In addition, solid untextured PBR colors across large station hulls can make platforms look mono-colored.
-* **Planned Fix**:
-  * **Quick Fix**: Replace the violet gun barrel material on the Aegis batteries and remote sentry turrets with **Steel Grey (`#64748b` / `steelTrimMat`)** so the barrels contrast cleanly against the darker Gunmetal (`#3e4652`) and Dark Charcoal (`#1e232a`) turret housings.
-  * **Realism & Texturing Pass**: Explore procedural PBR hull-plating textures, normal/roughness micro-detail, panel seam lines, weathering gradients, and metallic barrel finishes so buildings and ships have realistic surface breakup instead of flat mono-colored meshes.
-
 ### Aegis Remote Sentry Turret Orbital Standoff Clearance
 * **Known Issue**: The 3 remote vertical sentry turrets spawned by `buildAegisHeavyDefensePlatform` (`src/client/renderer/stationModels.ts`) currently sit at `orbitalRingRadius + 7.2u`, which is too close to the orbital ring and can intersect outward-projecting platforms on other slots (such as the **Titan Orbital Dockyard**, whose parallel slipways extend `~19u` outward from the ring).
 * **Planned Fix**: Increase `sentryStandoffRadius` beyond the largest orbital building's outward radial reach plus a safety clearance buffer (e.g., `orbitalRingRadius + 24u` or higher) so remote sentry turrets never intersect any orbital ring installation.

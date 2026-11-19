@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { HarvesterUnitState } from '../../shared/sim/gameSimulation.ts';
+import { createProceduralHullTextures } from './proceduralHullTextures.ts';
 
 interface HarvesterRenderInstance {
   readonly group: THREE.Group;
@@ -30,26 +31,48 @@ interface HarvesterRenderInstance {
 export class HarvesterFleetRenderer {
   public readonly rootGroup = new THREE.Group();
 
-  // Standardized PBR Materials per docs/artstyle.md
+  private readonly hullTextures = createProceduralHullTextures();
+
+  // Standardized PBR Materials with procedural industrial hull textures per docs/artstyle.md
   private readonly primaryHullMat = new THREE.MeshStandardMaterial({
-    color: 0x3e4652,
+    name: 'hull_gunmetal_slate',
+    color: 0x46505e,
+    map: this.hullTextures.hullPlating.map,
+    bumpMap: this.hullTextures.hullPlating.bumpMap,
+    bumpScale: 0.08,
+    roughnessMap: this.hullTextures.hullPlating.roughnessMap,
     metalness: 0.68,
-    roughness: 0.42,
+    roughness: 0.58,
   });
   private readonly accentOchreMat = new THREE.MeshStandardMaterial({
-    color: 0xc27d2c,
+    name: 'hull_weathered_ochre',
+    color: 0xcd8734,
+    map: this.hullTextures.weatheredOchre.map,
+    bumpMap: this.hullTextures.weatheredOchre.bumpMap,
+    bumpScale: 0.08,
+    roughnessMap: this.hullTextures.weatheredOchre.roughnessMap,
     metalness: 0.55,
-    roughness: 0.48,
+    roughness: 0.64,
   });
   private readonly darkFrameMat = new THREE.MeshStandardMaterial({
-    color: 0x1e232a,
+    name: 'hull_dark_charcoal',
+    color: 0x242a33,
+    map: this.hullTextures.darkRibbing.map,
+    bumpMap: this.hullTextures.darkRibbing.bumpMap,
+    bumpScale: 0.07,
+    roughnessMap: this.hullTextures.darkRibbing.roughnessMap,
     metalness: 0.78,
-    roughness: 0.35,
+    roughness: 0.52,
   });
   private readonly steelTrimMat = new THREE.MeshStandardMaterial({
-    color: 0x64748b,
-    metalness: 0.75,
-    roughness: 0.32,
+    name: 'hull_steel_trim',
+    color: 0x6b7c93,
+    map: this.hullTextures.machinedSteel.map,
+    bumpMap: this.hullTextures.machinedSteel.bumpMap,
+    bumpScale: 0.05,
+    roughnessMap: this.hullTextures.machinedSteel.roughnessMap,
+    metalness: 0.76,
+    roughness: 0.48,
   });
   private readonly cockpitGlassMat = new THREE.MeshStandardMaterial({
     color: 0xfbbf24,
@@ -270,6 +293,7 @@ export class HarvesterFleetRenderer {
     this.selectionRingMat.dispose();
     this.targetRockRingMat.dispose();
     this.hitSphereMat.dispose();
+    this.hullTextures.dispose();
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {

@@ -6,6 +6,7 @@ import {
   createLivingPlanetGroup,
 } from '../../renderer/planetFactory.ts';
 import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
+import { createProceduralHullTextures } from '../../renderer/proceduralHullTextures.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from '../../renderer/stationModels.ts';
 import {
@@ -404,6 +405,71 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     library.updateStationAnimation(hullBreaker, 2.0, null);
     library.updateStationAnimation(pointDefence, 2.0, null);
     expect(hbPivots.crownTurretPivot.rotation.y).toBe(0);
+
+    library.dispose();
+  });
+
+  it('applies procedural PBR hull textures and machined steel grey turret barrels with zero violet guns across all armed platforms', () => {
+    const bundle = createProceduralHullTextures(64);
+    for (const set of [
+      bundle.hullPlating,
+      bundle.weatheredOchre,
+      bundle.darkRibbing,
+      bundle.machinedSteel,
+    ]) {
+      expect(set.map).toBeInstanceOf(THREE.DataTexture);
+      expect(set.bumpMap).toBeInstanceOf(THREE.DataTexture);
+      expect(set.roughnessMap).toBeInstanceOf(THREE.DataTexture);
+      const pixels = set.map.image.data as Uint8Array;
+      let minVal = 255;
+      let maxVal = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const v = pixels[i] ?? 0;
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      // Verify real panel/seam tonal breakup rather than flat mono-colored pixels
+      expect(maxVal - minVal).toBeGreaterThan(60);
+    }
+    bundle.dispose();
+
+    const library = new StationModelLibrary();
+    const armedPlatforms = [
+      'command_and_control',
+      'planetary_outpost',
+      'heavy_defense_platform',
+      'hull_breaker_tower',
+      'point_defence_tower',
+    ] as const;
+
+    for (const id of armedPlatforms) {
+      const group = library.buildStationMesh(id, true, 42.56);
+      let greyBarrelCount = 0;
+      let texturedHullCount = 0;
+      let violetMeshCount = 0;
+
+      group.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        const mat = obj.material;
+        if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+        if (mat.name === 'turret_barrel_steel') {
+          greyBarrelCount += 1;
+          expect(mat.map).toBeInstanceOf(THREE.DataTexture);
+          expect(mat.bumpMap).toBeInstanceOf(THREE.DataTexture);
+          expect(mat.roughnessMap).toBeInstanceOf(THREE.DataTexture);
+        }
+        if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+          texturedHullCount += 1;
+        }
+        if (mat.color.getHex() === 0xc084fc) {
+          violetMeshCount += 1;
+        }
+      });
+
+      expect(greyBarrelCount).toBeGreaterThan(0);
+      expect(texturedHullCount).toBeGreaterThan(0);
+      expect(violetMeshCount).toBe(0);
+    }
 
     library.dispose();
   });
