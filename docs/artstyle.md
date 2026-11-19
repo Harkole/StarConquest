@@ -262,3 +262,37 @@ Each ship and orbital platform is designed and locked in one at a time.
    * Short armored stub wings carry vertically stacked upper/lower cylindrical engine pods (`4` outboard pods total), complemented by `2` upper dorsal shoulder pods and a `2x2` quad rear main thruster bell cluster with Ion Blue-White (`#7dd3fc`) exhaust cores when airborne.
 5. **Hangar-Staged Variant (`staged: true`)**:
    * Deploys compact twin ventral landing skids and powers down engine exhaust cores when parked on Atlas Logistics Hub or Carrier launch decks.
+
+---
+
+### Hull-Based Gamified Ship Scale Progression
+
+Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.ts`) with a gamified curve so Dreadnoughts and Carriers look massive without shrinking Fighters and Destroyers into unreadable dots:
+
+| Ship Class | `maxHull` | Canonical 3D Length | Relative to Fighter |
+| :--- | :---: | :---: | :---: |
+| **Light Fighter "Stinger"** | `110` | `~1.2u` | `1.0x` |
+| **Resource Harvester "Prospector"** | `300` | `~3.0u` | `2.5x` |
+| **Destroyer "Havoc"** | `420` | `~4.8u` | `4.0x` |
+| **Cruiser** *(upcoming)* | `750` | `~7.5u` | `6.2x` |
+| **Fleet Carrier** *(upcoming)* | `1,100` | `~10.5u` | `8.7x` |
+| **Dreadnought** *(upcoming)* | `2,400` | `~14.5u` | `12.0x` |
+
+---
+
+### 12. Destroyer — Fast Hull-Only Flanker "Havoc"
+
+* **Concept Reference**: ![Havoc Destroyer Concept Art](./destroyer-havoc-concept.jpg)
+* **Orthographic Blueprint**: ![Havoc Destroyer Orthographic Reference](./destroyer-havoc-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildHavocDestroyerMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also docked in Titan Orbital Dockyard outer escort alcoves via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown ("Havoc" Class — `~4.8u` Length, `4.0x` Stinger)
+1. **Elongated Rectangular Armored Bow & Central Spine Plating (`+Z` Bow)**:
+   * Long heavy-industrial gunmetal slate forward hull (`~4.8u` length × `~2.0u` aft pod span × `~1.05u` height) with raised dark charcoal **Central Spine Plating**, horizontal **Weathered Ochre (`#cd8734`)** flank stripes, a recessed armored prow intake cavity, and glowing warm-amber forward navigation slits.
+2. **Paired Side-Mounted Multi-Tier Command Bridge Modules**:
+   * Recessed port and starboard mid-aft armored bridge bays featuring warm amber (`#fbbf24`) multi-tier observation windows divided by dark charcoal mullions.
+3. **Dorsal Twin-Barrel Medium Anti-Ship Turret & Light Flak PD Batteries**:
+   * Raised octagonal dorsal pedestal mounting `havoc_dorsal_turret` — a chunky gunmetal turret with ochre bustle and **twin long machined steel grey (`#8492a6`) barrels** (`Medium Anti-Ship Autoloaders`).
+   * **4 side-mounted** (2 port, 2 starboard) and **2 underslung ventral** twin-barrel **Light Flak Point Defence** turrets along the forward hull, exposed via `userData.turretPivots` for target tracking.
+4. **Quad Articulated Outboard Engine Cluster Pods & Quad Stern Thrusters**:
+   * Four cylindrical outboard engine pods (`2x2` port/starboard) featuring tapered gunmetal cowlings, dark rib collars, **glowing cyan-blue (`#38bdf8`) forward intakes**, and rear ion thruster bells, paired with a `2x2` quad rear main thruster cluster.

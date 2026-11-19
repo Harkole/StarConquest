@@ -617,4 +617,56 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(stagedStingerCount).toBe(24);
     stations.dispose();
   });
+
+  it('constructs the Havoc Destroyer at ~4x Stinger scale with machined steel turrets, PBR hull, and docks 4 on Titan Orbital Dockyard', () => {
+    const ships = new ShipModelLibrary();
+    const fighter = ships.buildShipMesh('fighter');
+    const destroyer = ships.buildShipMesh('destroyer');
+
+    expect(destroyer.name).toBe('ship_destroyer_havoc');
+    expect(destroyer.getObjectByName('havoc_dorsal_turret')).toBeDefined();
+    expect(destroyer.userData.turretPivots).toBeDefined();
+
+    const fBox = new THREE.Box3().setFromObject(fighter);
+    const dBox = new THREE.Box3().setFromObject(destroyer);
+    const fighterLen = fBox.max.z - fBox.min.z;
+    const destroyerLen = dBox.max.z - dBox.min.z;
+
+    // Hull-based gamified scale: Destroyer (~4.8u) is roughly 4x Stinger Light Fighter (~1.2u)
+    expect(destroyerLen).toBeGreaterThan(4.2);
+    expect(destroyerLen).toBeLessThan(5.4);
+    expect(destroyerLen / fighterLen).toBeGreaterThan(3.4);
+    expect(destroyerLen / fighterLen).toBeLessThan(4.6);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    destroyer.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    // 2 dorsal medium cannon barrels + 12 light flak PD barrels (6 twin turrets) = 14
+    expect(greyBarrelCount).toBe(14);
+    expect(texturedHullCount).toBeGreaterThan(15);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Titan Orbital Dockyard docks 4 approved Havoc Destroyers in its outer escort alcoves
+    const stations = new StationModelLibrary();
+    const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    let dockedHavocCount = 0;
+    dockyard.traverse((obj) => {
+      if (obj.name === 'ship_destroyer_havoc') {
+        dockedHavocCount += 1;
+      }
+    });
+    expect(dockedHavocCount).toBe(4);
+    stations.dispose();
+  });
 });

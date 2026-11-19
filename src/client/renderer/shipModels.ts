@@ -80,6 +80,22 @@ export class ShipModelLibrary {
     metalness: 0.25,
     roughness: 0.14,
   });
+  private readonly warmCabinMat = new THREE.MeshStandardMaterial({
+    name: 'ship_warm_cabin',
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.85,
+    metalness: 0.15,
+    roughness: 0.2,
+  });
+  private readonly intakeCyanMat = new THREE.MeshStandardMaterial({
+    name: 'ship_intake_cyan',
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.75,
+    metalness: 0.2,
+    roughness: 0.18,
+  });
   private readonly engineCoreMat = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0.35, 0.85, 1.35),
   });
@@ -154,6 +170,86 @@ export class ShipModelLibrary {
     new THREE.BoxGeometry(0.05, 0.022, 0.2),
   );
 
+  // Destroyer "Havoc" reusable geometries (canonical ~4.8u length x ~1.72u width x ~1.05u height, ~4x Stinger)
+  private readonly havocForwardHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.92, 0.58, 2.35),
+  );
+  private readonly havocForwardSpineGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.46, 0.16, 2.15),
+  );
+  private readonly havocProwCavityGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.56, 0.4, 0.22),
+  );
+  private readonly havocProwWindowGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.18, 0.08, 0.06),
+  );
+  private readonly havocOchreStripeGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.955, 0.12, 1.85),
+  );
+  private readonly havocMidHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.16, 0.68, 1.25),
+  );
+  private readonly havocAftHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.02, 0.62, 1.15),
+  );
+  private readonly havocAftOchrePatchGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.98, 0.06, 0.42),
+  );
+  private readonly havocSideBridgeFrameGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.24, 0.46, 0.62),
+  );
+  private readonly havocSideBridgeGlassGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.26, 0.32, 0.46),
+  );
+  private readonly havocBridgeMullionGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.275, 0.04, 0.48),
+  );
+  private readonly havocTurretPedestalGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.32, 0.4, 0.2, 8),
+  );
+  private readonly havocTurretHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.42, 0.24, 0.56),
+  );
+  private readonly havocTurretBustleGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.36, 0.14, 0.22),
+  );
+  private readonly havocMainBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.036, 0.044, 0.92, 8).rotateX(Math.PI / 2),
+  );
+  private readonly havocPdHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.16, 0.12, 0.2),
+  );
+  private readonly havocPdBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.018, 0.022, 0.28, 6).rotateX(Math.PI / 2),
+  );
+  private readonly havocPodMainGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.2, 0.23, 1.05, 12).rotateX(Math.PI / 2),
+  );
+  private readonly havocPodCollarGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.245, 0.245, 0.1, 12).rotateX(Math.PI / 2),
+  );
+  private readonly havocPodIntakeRimGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.14, 0.2, 0.16, 12).rotateX(Math.PI / 2),
+  );
+  private readonly havocPodIntakeGlowGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.11, 0.11, 0.04, 12).rotateX(Math.PI / 2),
+  );
+  private readonly havocPodNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.14, 0.18, 0.24, 12).rotateX(Math.PI / 2),
+  );
+  private readonly havocExhaustCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.115, 0.115, 0.05, 12).rotateX(Math.PI / 2),
+  );
+  private readonly havocSternNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.12, 0.16, 0.26, 10).rotateX(Math.PI / 2),
+  );
+  private readonly havocSternCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.095, 0.095, 0.05, 10).rotateX(Math.PI / 2),
+  );
+  private readonly havocPodPylonGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.32, 0.18, 0.65),
+  );
+
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
     this.geometries.push(geom);
     return geom;
@@ -169,6 +265,8 @@ export class ShipModelLibrary {
     this.steelTrimMat.dispose();
     this.turretBarrelMat.dispose();
     this.cockpitCanopyMat.dispose();
+    this.warmCabinMat.dispose();
+    this.intakeCyanMat.dispose();
     this.engineCoreMat.dispose();
     this.buildingWireframeMat.dispose();
     this.hullTextures.dispose();
@@ -184,9 +282,11 @@ export class ShipModelLibrary {
     switch (shipClassId) {
       case 'fighter':
         return this.buildStingerFighterMesh(options);
+      case 'destroyer':
+        return this.buildHavocDestroyerMesh(options);
       default:
-        // Remaining 4 combat ship classes (destroyer, cruiser, carrier, dreadnought) will be added one by one
-        return this.buildStingerFighterMesh({ ...options, scale: options.scale ?? 1.0 });
+        // Remaining 3 combat ship classes (cruiser, carrier, dreadnought) will be added one by one
+        return this.buildHavocDestroyerMesh({ ...options, scale: options.scale ?? 1.0 });
     }
   }
 
@@ -348,6 +448,211 @@ export class ShipModelLibrary {
         const skid = new THREE.Mesh(this.stingerLandingSkidGeom, trimMat);
         skid.position.set(side * 0.14, -0.22, -0.22);
         root.add(skid);
+      }
+    }
+
+    if (scale !== 1.0) {
+      root.scale.setScalar(scale);
+    }
+
+    return root;
+  }
+
+  /**
+   * Builds the Destroyer "Havoc" (docs/artstyle.md #12):
+   * - Hull-based scale: ~4.8u long x ~1.72u wide x ~1.05u tall (~4x Stinger Light Fighter).
+   * - Elongated heavy-industrial rectangular bow (+Z) with central spine plating, weathered ochre
+   *   flank stripes, recessed prow intake cavity, and warm amber bow navigation slits.
+   * - Paired side-mounted multi-tier armored Command Bridge modules with warm amber windows.
+   * - Prominent dorsal twin-barrel Medium Anti-Ship Turret (`havoc_dorsal_turret`) with machined
+   *   steel grey barrels (`#8492a6`), plus 4 side-mounted and 2 ventral Light Flak PD turrets.
+   * - 4 articulated outboard cylindrical Engine Cluster Pods (with glowing cyan intakes) plus
+   *   a 2x2 quad rear main thruster bell cluster.
+   */
+  public buildHavocDestroyerMesh(options: ShipModelBuildOptions = {}): THREE.Group {
+    const wireframe = options.wireframe ?? false;
+    const staged = options.staged ?? false;
+    const scale = options.scale ?? 1.0;
+
+    const root = new THREE.Group();
+    root.name = 'ship_destroyer_havoc';
+
+    const hullMat = wireframe ? this.buildingWireframeMat : this.primaryHullMat;
+    const ochreMat = wireframe ? this.buildingWireframeMat : this.accentOchreMat;
+    const frameMat = wireframe ? this.buildingWireframeMat : this.darkFrameMat;
+    const barrelMat = wireframe ? this.buildingWireframeMat : this.turretBarrelMat;
+    const cabinMat = wireframe ? this.buildingWireframeMat : this.warmCabinMat;
+    const intakeMat = wireframe ? this.buildingWireframeMat : this.intakeCyanMat;
+    const exhaustMat = wireframe ? this.buildingWireframeMat : this.engineCoreMat;
+
+    // 1. Elongated Rectangular Armored Bow, Central Spine Plating & Weathered Ochre Flank Stripes (+Z Bow)
+    const forwardHull = new THREE.Mesh(this.havocForwardHullGeom, hullMat);
+    forwardHull.position.set(0, 0, 1.15);
+    root.add(forwardHull);
+
+    const forwardSpine = new THREE.Mesh(this.havocForwardSpineGeom, frameMat);
+    forwardSpine.position.set(0, 0.34, 1.05);
+    root.add(forwardSpine);
+
+    const ochreStripe = new THREE.Mesh(this.havocOchreStripeGeom, ochreMat);
+    ochreStripe.position.set(0, 0.14, 1.12);
+    root.add(ochreStripe);
+
+    const prowCavity = new THREE.Mesh(this.havocProwCavityGeom, frameMat);
+    prowCavity.position.set(0, -0.02, 2.26);
+    root.add(prowCavity);
+
+    const prowTopSlit = new THREE.Mesh(this.havocProwWindowGeom, cabinMat);
+    prowTopSlit.position.set(0, 0.22, 2.34);
+    root.add(prowTopSlit);
+
+    const prowBotSlit = new THREE.Mesh(this.havocProwWindowGeom, cabinMat);
+    prowBotSlit.scale.set(0.75, 0.8, 1.0);
+    prowBotSlit.position.set(0, -0.2, 2.34);
+    root.add(prowBotSlit);
+
+    // 2. Mid-Aft Armored Hull, Aft Dorsal Ochre Armor Patches & Side-Mounted Command Bridge Modules
+    const midHull = new THREE.Mesh(this.havocMidHullGeom, hullMat);
+    midHull.position.set(0, 0.03, -0.42);
+    root.add(midHull);
+
+    const aftHull = new THREE.Mesh(this.havocAftHullGeom, hullMat);
+    aftHull.position.set(0, 0.02, -1.52);
+    root.add(aftHull);
+
+    const aftOchreMid = new THREE.Mesh(this.havocAftOchrePatchGeom, ochreMat);
+    aftOchreMid.position.set(0, 0.37, -1.22);
+    root.add(aftOchreMid);
+
+    const aftOchreRear = new THREE.Mesh(this.havocAftOchrePatchGeom, ochreMat);
+    aftOchreRear.scale.set(0.75, 1.0, 0.72);
+    aftOchreRear.position.set(0, 0.35, -1.92);
+    root.add(aftOchreRear);
+
+    // Paired Port & Starboard Armored Side Command Bridge Bays (warm amber multi-tier windows)
+    for (const side of [-1, 1]) {
+      const bridgeFrame = new THREE.Mesh(this.havocSideBridgeFrameGeom, frameMat);
+      bridgeFrame.position.set(side * 0.56, 0.0, -0.45);
+      root.add(bridgeFrame);
+
+      const bridgeGlass = new THREE.Mesh(this.havocSideBridgeGlassGeom, cabinMat);
+      bridgeGlass.position.set(side * 0.58, 0.0, -0.45);
+      root.add(bridgeGlass);
+
+      const mullion = new THREE.Mesh(this.havocBridgeMullionGeom, frameMat);
+      mullion.position.set(side * 0.59, 0.0, -0.45);
+      root.add(mullion);
+    }
+
+    // 3. Prominent Dorsal Twin-Barrel Medium Anti-Ship Turret (`havoc_dorsal_turret`)
+    const pedestal = new THREE.Mesh(this.havocTurretPedestalGeom, frameMat);
+    pedestal.position.set(0, 0.46, -0.25);
+    root.add(pedestal);
+
+    const dorsalTurretPivot = new THREE.Group();
+    dorsalTurretPivot.name = 'havoc_dorsal_turret';
+    dorsalTurretPivot.position.set(0, 0.62, -0.25);
+
+    dorsalTurretPivot.add(new THREE.Mesh(this.havocTurretHousingGeom, hullMat));
+
+    const bustle = new THREE.Mesh(this.havocTurretBustleGeom, ochreMat);
+    bustle.position.set(0, 0.05, -0.32);
+    dorsalTurretPivot.add(bustle);
+
+    for (const barrelX of [-0.075, 0.075]) {
+      const barrel = new THREE.Mesh(this.havocMainBarrelGeom, barrelMat);
+      barrel.position.set(barrelX, 0.03, 0.65);
+      dorsalTurretPivot.add(barrel);
+    }
+    root.add(dorsalTurretPivot);
+
+    // 4. Side-Mounted (x4) & Ventral (x2) Light Flak Point-Defence Batteries
+    const pdPivots: THREE.Group[] = [];
+    for (const side of [-1, 1]) {
+      for (const zPos of [1.25, 0.42]) {
+        const pd = new THREE.Group();
+        pd.position.set(side * 0.52, -0.05, zPos);
+        pd.rotation.y = side * (Math.PI / 2);
+        pd.add(new THREE.Mesh(this.havocPdHousingGeom, frameMat));
+        for (const bx of [-0.032, 0.032]) {
+          const b = new THREE.Mesh(this.havocPdBarrelGeom, barrelMat);
+          b.position.set(bx, 0.01, 0.16);
+          pd.add(b);
+        }
+        root.add(pd);
+        pdPivots.push(pd);
+      }
+    }
+
+    for (const zPos of [1.15, 0.35]) {
+      const vpd = new THREE.Group();
+      vpd.position.set(0, -0.34, zPos);
+      vpd.add(new THREE.Mesh(this.havocPdHousingGeom, frameMat));
+      for (const bx of [-0.032, 0.032]) {
+        const b = new THREE.Mesh(this.havocPdBarrelGeom, barrelMat);
+        b.position.set(bx, -0.02, 0.16);
+        vpd.add(b);
+      }
+      root.add(vpd);
+      pdPivots.push(vpd);
+    }
+
+    // Expose turret pivots for Step 4 combat target tracking (stationary while idle)
+    root.userData.turretPivots = {
+      dorsalTurretPivot,
+      pdTurretPivots: pdPivots,
+    };
+
+    // 5. Quad Articulated Outboard Engine Cluster Pods (2x2 Port/Starboard) + Quad Stern Thrusters
+    for (const side of [-1, 1]) {
+      const pylon = new THREE.Mesh(this.havocPodPylonGeom, frameMat);
+      pylon.position.set(side * 0.62, 0.0, -1.45);
+      root.add(pylon);
+
+      for (const podY of [0.24, -0.22]) {
+        const pod = new THREE.Group();
+        pod.position.set(side * 0.78, podY, -1.48);
+
+        pod.add(new THREE.Mesh(this.havocPodMainGeom, hullMat));
+
+        const collar = new THREE.Mesh(this.havocPodCollarGeom, frameMat);
+        collar.position.set(0, 0, -0.08);
+        pod.add(collar);
+
+        const intakeRim = new THREE.Mesh(this.havocPodIntakeRimGeom, frameMat);
+        intakeRim.position.set(0, 0, 0.56);
+        pod.add(intakeRim);
+
+        const intakeGlow = new THREE.Mesh(this.havocPodIntakeGlowGeom, intakeMat);
+        intakeGlow.position.set(0, 0, 0.64);
+        pod.add(intakeGlow);
+
+        const nozzle = new THREE.Mesh(this.havocPodNozzleGeom, frameMat);
+        nozzle.position.set(0, 0, -0.62);
+        pod.add(nozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.havocExhaustCoreGeom, exhaustMat);
+          core.position.set(0, 0, -0.74);
+          pod.add(core);
+        }
+
+        root.add(pod);
+      }
+    }
+
+    // 2x2 Rear Stern Main Thruster Bells
+    for (const side of [-1, 1]) {
+      for (const rowY of [-0.15, 0.18]) {
+        const sternNozzle = new THREE.Mesh(this.havocSternNozzleGeom, frameMat);
+        sternNozzle.position.set(side * 0.28, rowY, -2.22);
+        root.add(sternNozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.havocSternCoreGeom, exhaustMat);
+          core.position.set(side * 0.28, rowY, -2.35);
+          root.add(core);
+        }
       }
     }
 

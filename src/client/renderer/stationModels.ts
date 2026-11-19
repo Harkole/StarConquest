@@ -371,9 +371,6 @@ export class StationModelLibrary {
   private readonly dockSmallCraftAlcoveGeom = this.registerGeom(
     new THREE.BoxGeometry(3.4, 0.75, 1.45),
   );
-  private readonly dockSmallCraftHullGeom = this.registerGeom(
-    new THREE.ConeGeometry(0.44, 1.85, 5),
-  );
   private readonly dockThermalRailGeom = this.registerGeom(
     new THREE.BoxGeometry(13.8, 0.18, 0.22),
   );
@@ -1344,15 +1341,19 @@ export class StationModelLibrary {
       innerRail.position.set(bayCenterX, 1.32, side * 1.28);
       slipwaysGroup.add(innerRail);
 
-      // Outer Small-Craft Dry-Dock Alcoves (2 per outer flank with docked fighter/escort frames)
+      // Outer Small-Craft Dry-Dock Alcoves (2 per outer flank with docked Havoc Destroyers)
       for (const alcoveX of [4.8, 10.2]) {
         const alcove = new THREE.Mesh(this.dockSmallCraftAlcoveGeom, frameMat);
         alcove.position.set(alcoveX, 0.05, side * (outerPierZ + 1.65));
         slipwaysGroup.add(alcove);
 
-        const escortHull = new THREE.Mesh(this.dockSmallCraftHullGeom, trimMat);
-        escortHull.rotation.z = -Math.PI / 2;
-        escortHull.position.set(alcoveX, 0.55, side * (outerPierZ + 1.65));
+        const escortHull = this.shipModels.buildHavocDestroyerMesh({
+          wireframe: !isComplete,
+          staged: true,
+          scale: 0.68,
+        });
+        escortHull.rotation.y = Math.PI / 2;
+        escortHull.position.set(alcoveX, 0.68, side * (outerPierZ + 1.65));
         slipwaysGroup.add(escortHull);
       }
 
