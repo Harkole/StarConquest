@@ -301,6 +301,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 3. **Combat Fleet Production, Navigation & Planetary Obstacle Avoidance (`feature/fleet-navigation`)**: Wire Orbital Dockyard production queues (with auto-repeat) for all 5 combat ship classes, Rally Points, Patrol Routes, wormhole transit, and a shared 2D planetary obstacle-avoidance steering solver used by both Harvesters and combat fleets.
 4. **Combat RPS Simulation, Turret Tracking & Shield VFX (`feature/combat-and-vfx`)**: Implement the 5-class Shield vs. Hull RPS combat math, Fleet Stances, Carrier/Hub fighter tether rules, active target-tracking rotation for Defence Tower `turretPivots`, weapon tracers/salvos, and the dedicated Shield impact VFX art pass.
 5. **Pre-Match Lobby & AI Opponents (`feature/lobby-and-ai`)**: Build the pre-match mode selector (Blitz Skirmish, Standard Tactical, Grand Conquest) with configurable Human/AI slots and `GameCommand`-driven AI bots for full 4-player local matches.
+6. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**: Add an in-game encyclopaedia documenting every ship, orbital platform, deep-space installation, how-to-play mechanics, and victory goals, complete with an interactive 3D preview viewport (orbit, zoom, and pan) rendering live models from `ShipModelLibrary` and `StationModelLibrary` alongside live data-driven stats from `src/shared/config/`.
 
 ### Harvester Planetary Collision & Orbit Avoidance *(Deferred to Fleet Navigation Branch)*
 * **Known Issue**: Harvesters currently travel in a direct straight line (`moveToward` in `src/shared/sim/gameSimulation.ts`) between their home orbital platform, asteroid belts, and wormholes, which causes them to fly straight through the interior of a planet whenever their target lies on the opposite side of the planet.
@@ -309,3 +310,9 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Shield Visual Effects & Energized Hull Plating Art Pass
 * **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
+
+### In-Game Codex / Wiki & Interactive 3D Model Viewer
+* **Planned Feature (`feature/ingame-codex-wiki`)**: Build an in-game wiki/codex overlay accessible from the tactical HUD and pre-match lobby with:
+  * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
+  * **Live Data-Driven Unit & Structure Reference**: Automatically pulls costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/` so stats never drift out of sync with balance changes.
+  * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
