@@ -250,6 +250,74 @@ export class ShipModelLibrary {
     new THREE.BoxGeometry(0.32, 0.18, 0.65),
   );
 
+  // Cruiser reusable geometries (canonical ~7.5u length x ~2.55u width x ~1.65u height, ~1.56x Havoc)
+  private readonly cruiserForeHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.38, 0.88, 3.65),
+  );
+  private readonly cruiserAftHullGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.56, 0.96, 3.35),
+  );
+  private readonly cruiserDorsalSpineGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.76, 0.24, 5.15),
+  );
+  private readonly cruiserOchreStripeGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.43, 0.16, 2.95),
+  );
+  private readonly cruiserAftOchreBandGeom = this.registerGeom(
+    new THREE.BoxGeometry(1.6, 0.14, 1.15),
+  );
+  private readonly cruiserProwCavityGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.84, 0.58, 0.34),
+  );
+  private readonly cruiserProwSlitGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.28, 0.11, 0.08),
+  );
+  private readonly cruiserSideBulkheadGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.42, 0.46, 0.24, 8).rotateZ(Math.PI / 2),
+  );
+  private readonly cruiserBridgeBayGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.22, 0.44, 0.68),
+  );
+  private readonly cruiserBarbetteGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.46, 0.56, 0.26, 12),
+  );
+  private readonly cruiserHeavyTurretHousingGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.62, 0.34, 0.78),
+  );
+  private readonly cruiserHeavyTurretCapGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.52, 0.14, 0.44),
+  );
+  private readonly cruiserHeavyBarrelGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.052, 0.062, 1.32, 8).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserPodMainGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.3, 0.34, 1.55, 12).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserPodCollarGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.365, 0.365, 0.14, 12).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserPodIntakeRimGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.22, 0.3, 0.22, 12).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserPodIntakeGlowGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.18, 0.18, 0.05, 12).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserPodNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.22, 0.27, 0.34, 12).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserExhaustCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.18, 0.18, 0.06, 12).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserSternNozzleGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.18, 0.23, 0.36, 10).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserSternCoreGeom = this.registerGeom(
+    new THREE.CylinderGeometry(0.14, 0.14, 0.06, 10).rotateX(Math.PI / 2),
+  );
+  private readonly cruiserPodPylonGeom = this.registerGeom(
+    new THREE.BoxGeometry(0.46, 0.26, 0.96),
+  );
+
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
     this.geometries.push(geom);
     return geom;
@@ -284,9 +352,11 @@ export class ShipModelLibrary {
         return this.buildStingerFighterMesh(options);
       case 'destroyer':
         return this.buildHavocDestroyerMesh(options);
+      case 'cruiser':
+        return this.buildCruiserMesh(options);
       default:
-        // Remaining 3 combat ship classes (cruiser, carrier, dreadnought) will be added one by one
-        return this.buildHavocDestroyerMesh({ ...options, scale: options.scale ?? 1.0 });
+        // Remaining 2 combat ship classes (carrier, dreadnought) will be added next
+        return this.buildCruiserMesh({ ...options, scale: options.scale ?? 1.0 });
     }
   }
 
@@ -651,6 +721,216 @@ export class ShipModelLibrary {
         if (!staged) {
           const core = new THREE.Mesh(this.havocSternCoreGeom, exhaustMat);
           core.position.set(side * 0.28, rowY, -2.35);
+          root.add(core);
+        }
+      }
+    }
+
+    if (scale !== 1.0) {
+      root.scale.setScalar(scale);
+    }
+
+    return root;
+  }
+
+  /**
+   * Builds the Cruiser (docs/artstyle.md #13):
+   * - Hull-based scale: ~7.5u long x ~2.55u wide x ~1.65u tall (~1.56x Havoc Destroyer, ~6.2x Stinger).
+   * - Shielded & armored fleet backbone with continuous dorsal spine ridge, horizontal weathered
+   *   ochre flank stripes, octagonal armored mid-aft side bulkheads, and recessed warm-amber bridge bays.
+   * - Twin elevated dorsal Heavy Turrets (`cruiser_dorsal_turret_fore` & `cruiser_dorsal_turret_aft`)
+   *   with machined steel grey (`#8492a6`) dual heavy barrels.
+   * - Dense Rapid Point-Defence Arrays: 6 side-mounted (3 per broadside), 2 ventral, and 1 bow dorsal
+   *   twin-barrel PD turret (22 machined steel barrels total), exposed via `userData.turretPivots`.
+   * - Heavy 2x2 quad outboard Engine Cluster Pods (with glowing cyan intakes) + 2x2 stern thrusters.
+   */
+  public buildCruiserMesh(options: ShipModelBuildOptions = {}): THREE.Group {
+    const wireframe = options.wireframe ?? false;
+    const staged = options.staged ?? false;
+    const scale = options.scale ?? 1.0;
+
+    const root = new THREE.Group();
+    root.name = 'ship_cruiser';
+
+    const hullMat = wireframe ? this.buildingWireframeMat : this.primaryHullMat;
+    const ochreMat = wireframe ? this.buildingWireframeMat : this.accentOchreMat;
+    const frameMat = wireframe ? this.buildingWireframeMat : this.darkFrameMat;
+    const trimMat = wireframe ? this.buildingWireframeMat : this.steelTrimMat;
+    const barrelMat = wireframe ? this.buildingWireframeMat : this.turretBarrelMat;
+    const cabinMat = wireframe ? this.buildingWireframeMat : this.warmCabinMat;
+    const intakeMat = wireframe ? this.buildingWireframeMat : this.intakeCyanMat;
+    const exhaustMat = wireframe ? this.buildingWireframeMat : this.engineCoreMat;
+
+    // 1. Heavy Broadside Armored Hull, Continuous Dorsal Spine Ridge & Weathered Ochre Stripes (+Z Bow)
+    const foreHull = new THREE.Mesh(this.cruiserForeHullGeom, hullMat);
+    foreHull.position.set(0, 0, 1.85);
+    root.add(foreHull);
+
+    const aftHull = new THREE.Mesh(this.cruiserAftHullGeom, hullMat);
+    aftHull.position.set(0, 0.04, -1.62);
+    root.add(aftHull);
+
+    const dorsalSpine = new THREE.Mesh(this.cruiserDorsalSpineGeom, frameMat);
+    dorsalSpine.position.set(0, 0.56, 0.05);
+    root.add(dorsalSpine);
+
+    const ochreStripe = new THREE.Mesh(this.cruiserOchreStripeGeom, ochreMat);
+    ochreStripe.position.set(0, 0.22, 1.85);
+    root.add(ochreStripe);
+
+    const aftOchreBand = new THREE.Mesh(this.cruiserAftOchreBandGeom, ochreMat);
+    aftOchreBand.position.set(0, 0.34, -2.35);
+    root.add(aftOchreBand);
+
+    const prowCavity = new THREE.Mesh(this.cruiserProwCavityGeom, frameMat);
+    prowCavity.position.set(0, -0.02, 3.58);
+    root.add(prowCavity);
+
+    const prowTopSlit = new THREE.Mesh(this.cruiserProwSlitGeom, cabinMat);
+    prowTopSlit.position.set(0, 0.33, 3.68);
+    root.add(prowTopSlit);
+
+    const prowBotSlit = new THREE.Mesh(this.cruiserProwSlitGeom, cabinMat);
+    prowBotSlit.scale.set(0.75, 0.85, 1.0);
+    prowBotSlit.position.set(0, -0.28, 3.68);
+    root.add(prowBotSlit);
+
+    // Paired Octagonal Armored Side Bulkheads & Recessed Warm-Amber Bridge Observation Bays
+    for (const side of [-1, 1]) {
+      const bulkhead = new THREE.Mesh(this.cruiserSideBulkheadGeom, trimMat);
+      bulkhead.position.set(side * 0.78, -0.04, -1.05);
+      root.add(bulkhead);
+
+      const bridgeBay = new THREE.Mesh(this.cruiserBridgeBayGeom, cabinMat);
+      bridgeBay.position.set(side * 0.75, 0.06, -0.45);
+      root.add(bridgeBay);
+    }
+
+    // 2. Twin Elevated Dorsal Heavy Turret Emplacements (Fore & Aft)
+    const heavyTurretPivots: THREE.Group[] = [];
+    const heavySpecs: readonly { readonly name: string; readonly z: number }[] = [
+      { name: 'cruiser_dorsal_turret_fore', z: 1.45 },
+      { name: 'cruiser_dorsal_turret_aft', z: -1.85 },
+    ];
+    for (const spec of heavySpecs) {
+      const barbette = new THREE.Mesh(this.cruiserBarbetteGeom, frameMat);
+      barbette.position.set(0, 0.74, spec.z);
+      root.add(barbette);
+
+      const turretPivot = new THREE.Group();
+      turretPivot.name = spec.name;
+      turretPivot.position.set(0, 0.96, spec.z);
+
+      turretPivot.add(new THREE.Mesh(this.cruiserHeavyTurretHousingGeom, hullMat));
+
+      const cap = new THREE.Mesh(this.cruiserHeavyTurretCapGeom, trimMat);
+      cap.position.set(0, 0.2, -0.06);
+      turretPivot.add(cap);
+
+      for (const barrelX of [-0.11, 0.11]) {
+        const barrel = new THREE.Mesh(this.cruiserHeavyBarrelGeom, barrelMat);
+        barrel.position.set(barrelX, 0.03, 0.92);
+        turretPivot.add(barrel);
+      }
+
+      root.add(turretPivot);
+      heavyTurretPivots.push(turretPivot);
+    }
+
+    // 3. Dense Rapid Point-Defence Arrays (6 Broadside + 2 Ventral + 1 Bow Dorsal = 9 Twin-Barrel PD Turrets)
+    const pdTurretPivots: THREE.Group[] = [];
+    for (const side of [-1, 1]) {
+      for (const zPos of [2.45, 1.35, 0.25]) {
+        const pd = new THREE.Group();
+        pd.position.set(side * 0.74, -0.08, zPos);
+        pd.rotation.y = side * (Math.PI / 2);
+        pd.add(new THREE.Mesh(this.havocPdHousingGeom, frameMat));
+        for (const bx of [-0.035, 0.035]) {
+          const b = new THREE.Mesh(this.havocPdBarrelGeom, barrelMat);
+          b.position.set(bx, 0.01, 0.17);
+          pd.add(b);
+        }
+        root.add(pd);
+        pdTurretPivots.push(pd);
+      }
+    }
+
+    for (const zPos of [2.15, 0.95]) {
+      const vpd = new THREE.Group();
+      vpd.position.set(0, -0.48, zPos);
+      vpd.add(new THREE.Mesh(this.havocPdHousingGeom, frameMat));
+      for (const bx of [-0.035, 0.035]) {
+        const b = new THREE.Mesh(this.havocPdBarrelGeom, barrelMat);
+        b.position.set(bx, -0.02, 0.17);
+        vpd.add(b);
+      }
+      root.add(vpd);
+      pdTurretPivots.push(vpd);
+    }
+
+    const bowPd = new THREE.Group();
+    bowPd.position.set(0, 0.49, 3.05);
+    bowPd.add(new THREE.Mesh(this.havocPdHousingGeom, frameMat));
+    for (const bx of [-0.035, 0.035]) {
+      const b = new THREE.Mesh(this.havocPdBarrelGeom, barrelMat);
+      b.position.set(bx, 0.02, 0.17);
+      bowPd.add(b);
+    }
+    root.add(bowPd);
+    pdTurretPivots.push(bowPd);
+
+    root.userData.turretPivots = {
+      heavyTurretPivots,
+      pdTurretPivots,
+    };
+
+    // 4. Heavy 2x2 Quad Outboard Engine Cluster Pods (Glowing Cyan Intakes) + 2x2 Stern Main Thrusters
+    for (const side of [-1, 1]) {
+      const pylon = new THREE.Mesh(this.cruiserPodPylonGeom, frameMat);
+      pylon.position.set(side * 0.92, 0.0, -2.35);
+      root.add(pylon);
+
+      for (const podY of [0.36, -0.34]) {
+        const pod = new THREE.Group();
+        pod.position.set(side * 1.15, podY, -2.38);
+
+        pod.add(new THREE.Mesh(this.cruiserPodMainGeom, hullMat));
+
+        const collar = new THREE.Mesh(this.cruiserPodCollarGeom, frameMat);
+        collar.position.set(0, 0, -0.12);
+        pod.add(collar);
+
+        const intakeRim = new THREE.Mesh(this.cruiserPodIntakeRimGeom, frameMat);
+        intakeRim.position.set(0, 0, 0.82);
+        pod.add(intakeRim);
+
+        const intakeGlow = new THREE.Mesh(this.cruiserPodIntakeGlowGeom, intakeMat);
+        intakeGlow.position.set(0, 0, 0.93);
+        pod.add(intakeGlow);
+
+        const nozzle = new THREE.Mesh(this.cruiserPodNozzleGeom, frameMat);
+        nozzle.position.set(0, 0, -0.9);
+        pod.add(nozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.cruiserExhaustCoreGeom, exhaustMat);
+          core.position.set(0, 0, -1.08);
+          pod.add(core);
+        }
+
+        root.add(pod);
+      }
+    }
+
+    for (const side of [-1, 1]) {
+      for (const rowY of [-0.22, 0.26]) {
+        const sternNozzle = new THREE.Mesh(this.cruiserSternNozzleGeom, frameMat);
+        sternNozzle.position.set(side * 0.42, rowY, -3.45);
+        root.add(sternNozzle);
+
+        if (!staged) {
+          const core = new THREE.Mesh(this.cruiserSternCoreGeom, exhaustMat);
+          core.position.set(side * 0.42, rowY, -3.64);
           root.add(core);
         }
       }

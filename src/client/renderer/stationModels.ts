@@ -410,12 +410,6 @@ export class StationModelLibrary {
   private readonly dockDreadBridgeGeom = this.registerGeom(
     new THREE.BoxGeometry(2.1, 0.72, 1.35),
   );
-  private readonly dockCruiserHullMidGeom = this.registerGeom(
-    new THREE.BoxGeometry(5.2, 0.85, 1.72),
-  );
-  private readonly dockCruiserHullBowGeom = this.registerGeom(
-    new THREE.ConeGeometry(1.02, 2.9, 6),
-  );
   private readonly dockLaserScannerPlaneGeom = this.registerGeom(
     new THREE.BoxGeometry(0.16, 2.1, 4.4),
   );
@@ -1515,23 +1509,15 @@ export class StationModelLibrary {
     laserScannerPlane.position.set(7.5, 0.55, bay1Z);
     slipwaysGroup.add(laserScannerPlane);
 
-    // Slot 2 (Bay 2): Secondary Cruiser / Carrier hull under assembly
-    const bay2CruiserGroup = new THREE.Group();
-    bay2CruiserGroup.position.set(0, 0, bay2Z);
-    const cruiserMid = new THREE.Mesh(this.dockCruiserHullMidGeom, hullMat);
-    cruiserMid.position.set(6.4, 0.15, 0);
-    bay2CruiserGroup.add(cruiserMid);
-
-    const cruiserBow = new THREE.Mesh(this.dockCruiserHullBowGeom, ochreMat);
-    cruiserBow.rotation.z = -Math.PI / 2;
-    cruiserBow.position.set(10.2, 0.15, 0);
-    bay2CruiserGroup.add(cruiserBow);
-
-    const cruiserBridge = new THREE.Mesh(this.dockDreadBridgeGeom, trimMat);
-    cruiserBridge.scale.set(0.75, 0.75, 0.75);
-    cruiserBridge.position.set(5.2, 0.76, 0);
-    bay2CruiserGroup.add(cruiserBridge);
-    slipwaysGroup.add(bay2CruiserGroup);
+    // Slot 2 (Bay 2): Approved Cruiser hull staged under assembly
+    const bay2Cruiser = this.shipModels.buildCruiserMesh({
+      wireframe: !isComplete,
+      staged: true,
+      scale: 1.0,
+    });
+    bay2Cruiser.rotation.y = Math.PI / 2;
+    bay2Cruiser.position.set(7.4, 0.35, bay2Z);
+    slipwaysGroup.add(bay2Cruiser);
 
     // Attach live per-frame shipyard animation hook to root.userData
     root.userData.animateStation = (

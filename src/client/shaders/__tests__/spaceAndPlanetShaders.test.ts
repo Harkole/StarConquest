@@ -669,4 +669,56 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(dockedHavocCount).toBe(4);
     stations.dispose();
   });
+
+  it('constructs the Cruiser at ~7.5u scale with twin heavy dorsal turrets, 9 PD arrays, and stages 1 in Titan Dockyard Slot 2', () => {
+    const ships = new ShipModelLibrary();
+    const destroyer = ships.buildShipMesh('destroyer');
+    const cruiser = ships.buildShipMesh('cruiser');
+
+    expect(cruiser.name).toBe('ship_cruiser');
+    expect(cruiser.getObjectByName('cruiser_dorsal_turret_fore')).toBeDefined();
+    expect(cruiser.getObjectByName('cruiser_dorsal_turret_aft')).toBeDefined();
+    expect(cruiser.userData.turretPivots).toBeDefined();
+
+    const dBox = new THREE.Box3().setFromObject(destroyer);
+    const cBox = new THREE.Box3().setFromObject(cruiser);
+    const destroyerLen = dBox.max.z - dBox.min.z;
+    const cruiserLen = cBox.max.z - cBox.min.z;
+
+    // Cruiser (~7.5u) is ~1.5x larger than Havoc Destroyer (~4.8u)
+    expect(cruiserLen).toBeGreaterThan(6.8);
+    expect(cruiserLen).toBeLessThan(8.2);
+    expect(cruiserLen).toBeGreaterThan(destroyerLen * 1.35);
+
+    let greyBarrelCount = 0;
+    let texturedHullCount = 0;
+    let violetCount = 0;
+    cruiser.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (mat.name === 'turret_barrel_steel') greyBarrelCount += 1;
+      if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+        texturedHullCount += 1;
+      }
+      if (mat.color.getHex() === 0xc084fc) violetCount += 1;
+    });
+    // 4 heavy dorsal barrels + 18 rapid PD barrels (9 twin turrets) = 22
+    expect(greyBarrelCount).toBe(22);
+    expect(texturedHullCount).toBeGreaterThan(15);
+    expect(violetCount).toBe(0);
+    ships.dispose();
+
+    // Verify Titan Orbital Dockyard Slot 2 stages the approved Cruiser hull
+    const stations = new StationModelLibrary();
+    const dockyard = stations.buildStationMesh('orbital_dockyard', true, 42.56);
+    let stagedCruiserCount = 0;
+    dockyard.traverse((obj) => {
+      if (obj.name === 'ship_cruiser') {
+        stagedCruiserCount += 1;
+      }
+    });
+    expect(stagedCruiserCount).toBe(1);
+    stations.dispose();
+  });
 });

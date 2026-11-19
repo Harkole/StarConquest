@@ -274,7 +274,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 | **Light Fighter "Stinger"** | `110` | `~1.2u` | `1.0x` |
 | **Resource Harvester "Prospector"** | `300` | `~3.0u` | `2.5x` |
 | **Destroyer "Havoc"** | `420` | `~4.8u` | `4.0x` |
-| **Cruiser** *(upcoming)* | `750` | `~7.5u` | `6.2x` |
+| **Cruiser** | `750` | `~7.5u` | `6.2x` |
 | **Fleet Carrier** *(upcoming)* | `1,100` | `~10.5u` | `8.7x` |
 | **Dreadnought** *(upcoming)* | `2,400` | `~14.5u` | `12.0x` |
 
@@ -296,3 +296,21 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
    * **4 side-mounted** (2 port, 2 starboard) and **2 underslung ventral** twin-barrel **Light Flak Point Defence** turrets along the forward hull, exposed via `userData.turretPivots` for target tracking.
 4. **Quad Articulated Outboard Engine Cluster Pods & Quad Stern Thrusters**:
    * Four cylindrical outboard engine pods (`2x2` port/starboard) featuring tapered gunmetal cowlings, dark rib collars, **glowing cyan-blue (`#38bdf8`) forward intakes**, and rear ion thruster bells, paired with a `2x2` quad rear main thruster cluster.
+
+---
+
+### 13. Cruiser — Shielded & Armored Fleet Backbone
+
+* **Concept Reference**: ![Cruiser Concept Art](./cruiser-concept.jpg)
+* **Orthographic Blueprint**: ![Cruiser Orthographic Reference](./cruiser-orthographic.jpg)
+* **Renderer Implementation**: `ShipModelLibrary.buildCruiserMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also staged in Titan Orbital Dockyard Slot 2 via [stationModels.ts](../src/client/renderer/stationModels.ts))
+
+#### Anatomical Breakdown (Cruiser Class — `~7.5u` Length, `~1.56x` Havoc)
+1. **Heavy Broadside Armored Hull & Continuous Dorsal Spine Ridge (`+Z` Bow)**:
+   * Elongated shielded capital-escort hull (`~7.5u` length × `~2.95u` aft pod span × `~1.65u` height) in procedural PBR Gunmetal Slate (`#46505e`) with a continuous raised Dark Charcoal (`#1e232a`) dorsal spine ridge, horizontal **Weathered Ochre (`#cd8734`)** flank stripes, octagonal armored mid-aft side bulkheads, and recessed warm-amber (`#fbbf24`) bridge observation bays.
+2. **Twin Elevated Dorsal Heavy Turret Emplacements (`cruiser_dorsal_turret_fore` & `cruiser_dorsal_turret_aft`)**:
+   * Fore and aft circular armored barbettes mounting chunky gunmetal turrets with **dual heavy machined steel grey (`#8492a6`) barrels** (`Dual Heavy Turrets`).
+3. **Dense Rapid Point-Defence Arrays (9 Twin-Barrel PD Turrets)**:
+   * **6 broadside** (3 port, 3 starboard), **2 ventral**, and **1 bow dorsal** twin-barrel Point-Defence turrets (22 machined steel barrels total, exposed via `userData.turretPivots`) built to shred Fighter swarms.
+4. **Heavy Quad Outboard Engine Cluster Pods & Quad Stern Thrusters**:
+   * Four heavy cylindrical outboard engine pods (`2x2` port/starboard) with glowing cyan-blue (`#38bdf8`) forward intakes and Ion Blue-White (`#7dd3fc`) exhaust cores, backed by a `2x2` stern main thruster cluster.
