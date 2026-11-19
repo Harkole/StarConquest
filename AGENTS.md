@@ -4,8 +4,8 @@ This file defines the architectural, visual, and gameplay invariants for **StarC
 
 ## 0. Mandatory Blueprint Rule (`README.md` is the Source of Truth)
 
-* **[README.md](./README.md) is the canonical blueprint and single source of truth** for the entire game.
-* **Always Reference `README.md` First**: Before designing, implementing, or modifying any game system, UI, shader, or network layer, the agent **must** read [README.md](./README.md) to verify alignment with the blueprint.
+* **[README.md](./README.md) is the canonical blueprint and single source of truth** for the entire game, and **[docs/artstyle.md](./docs/artstyle.md) is the canonical 3D art style and model construction guide** for all ships and orbital platforms.
+* **Always Reference `README.md` & `docs/artstyle.md` First**: Before designing, implementing, or modifying any game system, UI, shader, 3D model, or network layer, the agent **must** read [README.md](./README.md) (and [docs/artstyle.md](./docs/artstyle.md) when working on 3D ship or platform models) to verify alignment with the blueprint.
 * **Always Keep `README.md` Up to Date**: Whenever the user and agent agree on a new design choice, balance adjustment, build option, or architectural change, the agent **must** update [README.md](./README.md) in the same turn so it never drifts out of sync with the project.
 
 ---
@@ -88,8 +88,8 @@ Do not alter these core mechanics without explicit user direction:
    * Players do **not** micro-manage individual ships in combat.
    * Players control the war via **Dockyard production queues (with auto-repeat)**, **Rally Points**, **Patrol Routes**, and **Fleet Stances**. Fleets engage and prioritize targets automatically using combat AI.
 2. **5-System Hub-and-Spoke Galaxy**:
-   * **4 Starter Systems** (each with 1 guaranteed **Large** 10-slot Homeworld + randomized **Small** 6-slot / **Medium** 8-slot planets, and an asymmetric Ore/Crystal skew).
-   * **1 Central Neutral System** (anchored by 1 **Super-Earth** 12-slot planet + rich asteroid belts + 4 permanent open wormholes connecting to all 4 starter systems, even empty ones).
+   * **4 Starter Systems** (each with 1 guaranteed **Large** 10-slot Homeworld + randomized **Small** 6-slot / **Medium** 8-slot planets, and an identical balanced Ore-heavy / Crystal-scarce finite resource profile whose inner belt depletes quickly).
+   * **1 Central Neutral System** (anchored by 1 **Super-Earth** 12-slot planet + enriched `1.6x` high-yield asteroid belts + 4 permanent open wormholes connecting to all 4 starter systems, even empty ones).
 3. **Planetary Orbital Slots & Building Costs**:
    * **Planet Capacities**: Small = `6`, Medium = `8`, Large = `10`, Super-Earth = `12`.
    * **2-Slot Structures**: Command & Control (Unique Homeworld HQ; losing it = defeat), Orbital Dockyard (Shipyard), Heavy Orbital Defense Platform / Planetary Shield.

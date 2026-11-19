@@ -8,6 +8,8 @@ export type PlayerSlotId = 'player_1' | 'player_2' | 'player_3' | 'player_4';
 
 export type FleetStance = 'aggressive_push' | 'hold_choke_point' | 'hunt_backline';
 
+export type ResourceTargetFocus = 'auto' | 'ore' | 'crystal';
+
 export interface Vector2D {
   readonly x: number;
   readonly z: number;
@@ -57,9 +59,25 @@ export interface SetPatrolRouteCommand {
   readonly stance: FleetStance;
 }
 
+export interface SetRefineryTargetCommand {
+  readonly type: 'SET_REFINERY_TARGET';
+  readonly playerId: PlayerSlotId;
+  readonly structureId: string;
+  readonly targetResource: ResourceTargetFocus;
+}
+
+export interface CancelQueuedShipCommand {
+  readonly type: 'CANCEL_QUEUED_SHIP';
+  readonly playerId: PlayerSlotId;
+  readonly structureId: string;
+  readonly queueItemId: string;
+}
+
 export type GameCommand =
   | BuildOrbitalStructureCommand
   | BuildDeepSpaceStructureCommand
   | QueueShipCommand
   | SetRallyPointCommand
-  | SetPatrolRouteCommand;
+  | SetPatrolRouteCommand
+  | SetRefineryTargetCommand
+  | CancelQueuedShipCommand;

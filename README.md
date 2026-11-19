@@ -1,6 +1,8 @@
 # StarConquest
 
-> **Blueprint & Source of Truth**: This document is the canonical design and technical blueprint for **StarConquest**. Every gameplay system, balance rule, visual standard, and architectural decision is recorded here and must be kept up to date as the project evolves.
+[![StarConquest CI/CD](https://github.com/Harkole/StarConquest/actions/workflows/node.js.yml/badge.svg?branch=main)](https://github.com/Harkole/StarConquest/actions/workflows/node.js.yml)
+
+> **Blueprint & Source of Truth**: This document is the canonical design and technical blueprint for **StarConquest**. Every gameplay system, balance rule, visual standard, and architectural decision is recorded here and must be kept up to date as the project evolves. All 3D ship and orbital platform art decisions, reference sheets, and modeling rules are held in [docs/artstyle.md](./docs/artstyle.md) and must be used whenever generating or updating 3D models.
 
 **StarConquest** is a browser-based, 4-player real-time strategy (RTS) game set in deep space. Presented in a **2.5D/3D space view with an orbital camera**, it combines **macro-focused tug-of-war fleet command** with **orbital base management**, **spatial tower defence**, and a **5-class Rock-Paper-Scissors (RPS) combat loop**.
 
@@ -12,7 +14,7 @@ Rather than relying on high-APM individual unit micro, players focus on grand st
 
 1. **Macro-Focused Tug-of-War RTS**: Players command fleets via rally points, patrol routes, and automated engagement stances rather than twitch micro-management.
 2. **Orbital Ring Base Building**: Planets have a fixed number of orbital slots based on their size. Every slot matters—forcing meaningful trade-offs between economy, ship production, tech specialization, and planetary defense.
-3. **Asymmetric Economy & Forced Conflict**: Starting systems have skewed resource distributions (Ore-heavy or Crystal-heavy), compelling players to expand into a contested central system.
+3. **Depleting Starter Belts & Forced Expansion**: All 4 starter systems begin with an identical, fair **Ore-heavy / Crystal-scarce** resource profile and finite tiered reserves whose inner Homeworld ring runs dry quickly, compelling players to expand into the contested **Central Nexus** (where enriched high-yield deposits await).
 4. **Tactical Choke-Point Fortification**: Wormholes are open spatial corridors. Players project power around them using fragile Logistics Hubs that enable forward Defence Towers and Fighter operations.
 5. **Tactical Rock-Paper-Scissors Combat**: Five distinct combat ship classes interact through a directional counter-matrix driven by weapon tracking, shields vs. hull mechanics, and fleet screening.
 
@@ -32,11 +34,15 @@ flowchart TD
 ```
 
 ### System Rules
-* **Starter Systems (x4)**:
-  * Each player begins in a unique outer system containing a guaranteed **Large Homeworld** (10 orbital slots) and a randomized number of secondary **Small** (6 slots) or **Medium** (8 slots) planets.
-  * Contains enough initial Ore and Crystal asteroid belts to bootstrap a base and early fleet, but with an **asymmetric resource mix** (e.g., rich in Ore but scarce in Crystals, or vice versa).
-* **Central Neutral System (x1)**:
-  * A resource-rich contested hub anchored by a single **Super-Earth** (12 orbital slots) alongside randomized Small/Medium planets and dense asteroid belts.
+* **Starter Systems (x4 — Identical Balanced Ore-Heavy / Crystal-Scarce Start)**:
+  * Each player begins in a unique outer system containing a guaranteed **Large Homeworld** (10 orbital slots) and secondary **Small** (6 slots) and **Medium** (8 slots) planets.
+  * Every starter system has the **exact same resource profile (`6,960` base Ore and `1,160` base Crystal — `6:1` Ore-to-Crystal ratio)** so all 4 players have an identical, fair start:
+    * **Inner Homeworld Belt (`r ~ 420`)**: Fast-access early vein (`1,920` Ore and only `320` Crystal) that depletes within the first few minutes, forcing Harvesters away from the safety of the Homeworld C&C.
+    * **Mid-System & Outer Pockets (`r ~ 1,120–1,620`)**: Mid-game reserves (`5,040` Ore and `840` Crystal) near the outer perimeter that also deplete as the game progresses.
+    * Because **Crystals are strictly scarce in starter systems** (`1,160` total base Crystal), players can always build basic Ore-based defences and raiders at home, but **must venture outside their starter system** once local Crystals (or Ore) run dry to fund mid/late-game capital fleets (**Cruisers, Carriers, Dreadnoughts**) and **Hull Breaker Towers**.
+* **Central Neutral System (x1 — Enriched High-Yield Hub)**:
+  * A resource-rich contested hub anchored by a single **Super-Earth** (12 orbital slots) alongside secondary Small/Medium planets and massive, balanced asteroid belts (`22,800` base Ore and `22,800` base Crystal).
+  * **Enriched High-Purity Deposits (`1.6x` Extraction Speed)**: Asteroid and Crystal clusters in the Central Nexus extract **`1.6x` faster** (`~7.8s` to fill a 40-unit Harvester cargo bay instead of `12.5s` in starter systems).
   * Always generates **4 wormholes**—one leading to each of the 4 player starter systems, even in matches with fewer than 4 human/AI players (allowing flanking or expansion into empty starter systems).
 * **Wormholes & System Scale**:
   * Wormholes are **open spatial choke points** located on the outer perimeter of each star system (`1,850–2,050` units from the central planet), while secondary planets orbit `850–1,250+` units away in separate quadrants.
@@ -53,8 +59,16 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
 * **Crystals**: The high-tech resource. Required for advanced capital ships (Cruisers, Carriers, Dreadnoughts), shield systems, heavy weaponry, and specialization modules.
 
 ### Refineries & Harvesters
-* **Automated Harvesting**: Constructing a **Refinery** (or using the starting Command & Control's built-in drop-off) automatically provides **1 free Harvester**, with the option to queue additional Harvesters at the Refinery.
-* **Mining Loop**: Harvesters automatically fly to the nearest safe asteroid belt, extract Ore or Crystals, and return them to the nearest friendly Refinery or Command & Control.
+* **Automated Harvesting**: Constructing a **Refinery** (or using the starting Command & Control's built-in drop-off) automatically provides **1 free Harvester**, with the option to queue additional Harvesters (`9s` build time, sequential 1-at-a-time queue capped at `5` orders; resources deducted upfront and refunded immediately if cancelled).
+* **Mining Loop, Speeds & Single-Rock Lock**:
+  * **Outward vs. Laden Speed**: Harvesters travel at `41.3 u/s` when empty (`-25%` from base cruise) and slow to `27.6 u/s` when full (`-50%` from base cruise), making laden Harvesters prime targets for raiders.
+  * **12.5-Second Standard vs. 7.8-Second Enriched Extraction**: Each Harvester holds `40` Ore or Crystals per mining session. In starter systems (`1.0x` Standard Yield), extraction takes `12.5 seconds` (`3.2 u/s`); in the Central Nexus (`1.6x` Enriched Yield), high-purity deposits fill the 40-unit bay in **`~7.8 seconds`** (`5.12 u/s`). During extraction, the Harvester locks onto a **single specific Ore asteroid or Crystal cluster**, drifts alongside that rock as the belt rotates, and keeps its mining laser locked onto that rock's center.
+  * **Visual Belt Depletion & Automatic Wormhole Expansion**: As a deposit's reserves are mined down, its 3D asteroid/crystal cluster visually shrinks and disappears completely when exhausted. Harvesters naturally deplete the nearby Inner Homeworld Belt (`r ~ 420`) first, then push out to the Mid/Outer pockets (`r ~ 1,120–1,620`), and **automatically transit the wormhole into the Central Nexus** once their starter system runs out of their target resource.
+  * **Selection & Camera Pin**: Clicking any Harvester (or Planet) in 3D space or the HUD pins the camera to follow it and displays its target resource and live cargo progress (`x / 40`); panning manually with the mouse or `WASD` breaks the camera pin.
+  * **Home Platform & Unload Rates**: Every Harvester docks directly at its originating **Refinery** (`10` units/sec unload) or **Command & Control** (`4` units/sec unload) orbital platform.
+  * **Platform Docking Capacity (Queueing)**: A **Refinery** can unload **`2` Harvester frigates simultaneously** (`20/s` max), while a **Command & Control** is capped at **`1` concurrent Harvester dock** in Standard Tactical / Grand Conquest (`2` in **Blitz Skirmish**). Additional arriving Harvesters wait in a holding queue until a docking pad clears, making Refineries essential for scaling income.
+  * **Platform Mining Focus**: Players can set each Refinery or C&C platform's mining target to **`Auto`**, **`Ore Only`**, or **`Crystal Only`**, directing all Harvesters assigned to that platform to focus on the needed resource.
+  * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
 * **The Central Super-Earth Advantage**:
   * Mining in the Central Neutral System without a local base forces Harvesters to transit back through wormholes to their home system—making them slow and vulnerable to enemy raids.
   * Capturing the central **Super-Earth** (or a neutral secondary planet) and constructing a local **Refinery** allows Harvesters to process resources locally in the central hub, massively accelerating income.
@@ -81,7 +95,7 @@ Structures are built in a visible **orbital ring** around planets. Each planet c
 | **Orbital Dockyard (Shipyard)** | **2 Slots** | Constructs combat ships via manual queues or **toggleable auto-repeat**. Players set rally points or patrol routes directly from Dockyards. Initial Dockyards only build basic craft until expanded via Tech Modules. |
 | **Refinery** | **1 Slot** | Local drop-off and processing center for Ore and Crystals. Spawns 1 free Harvester on completion and can queue additional Harvesters. |
 | **Tech / Specialization Module** | **1 Slot** | Orbital expansion modules that unlock advanced ship hulls (Cruisers, Carriers, Dreadnoughts), increase **Fleet Supply**, or grant doctrine bonuses (e.g., enhanced fighter bays, heavy siege calibration, shield boosters). |
-| **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries and planetary shielding to protect orbital infrastructure against enemy fleets. |
+| **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries, figure-8 planetary shielding, and **3 remote-controlled perimeter sentry turrets** stationed around the far sides of the planet so hostile fleets never have a line-of-sight blind spot (if any gun has line of sight, full platform DPS applies; destroying the main platform destroys its remote sentry turrets). |
 
 ---
 
@@ -91,7 +105,8 @@ Outside of planetary rings, players cannot build structures freely in open space
 
 ### Logistics Hubs
 * **Role**: Forward deep-space support stations placed near wormholes, asteroid belts, or staging zones.
-* **Attributes**: Moderate resource cost, low hull/shield durability, and a generous **Build & Operational Radius**.
+* **3D Click-to-Place Deployment (`BUILD_DEEP_SPACE_STRUCTURE`)**: Selecting **+ Place Logistics Hub** in the HUD enters interactive 3D placement mode, projecting a holographic wireframe preview of the **Atlas Logistics Hub** and its `180`-unit operational radius ring onto the star system's orbital plane (`y = 0`). Clicking any valid deep-space coordinate (clear of planetary orbital rings and other installations) deducts `250 Ore / 100 Crystal` and begins its `20s` construction.
+* **Attributes**: Moderate resource cost, low hull/shield durability, and a generous **Build & Operational Radius (`180` units)**.
 * **Functions**:
   1. **Tower Construction Radius**: Enables the placement of Defence Towers within its radius.
   2. **Fighter Operations**: Acts as a forward carrier base, allowing short-range **Fighters** to operate and refuel in the area.
@@ -185,13 +200,16 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
      * **Animated Magma Fissures**: Emissive procedural lava cracks and caldera pools that slowly pulse and flow using UV/noise distortion, glowing brightly through the HDR bloom pass.
      * **Scorched Atmosphere**: Warm orange/ember Fresnel rim haze.
 3. **Orbital Rings, Wormholes & Combat VFX**:
-   * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) where constructed stations lock into orbit (including the 2-slot Command & Control flagship station on starter Homeworlds).
+   * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) on empty slots where stations can be constructed. Once a 1-slot or 2-slot platform occupies a slot (such as the 2-slot Command & Control flagship station on starter Homeworlds), its blue orbital build slot marker is automatically hidden so only genuinely free slots remain visible.
    * **Wormholes (DS9-Style Proximity Opening Event)**: Wormholes (`src/client/shaders/wormholeShader.ts` & `src/client/renderer/spaceEnvironmentFactory.ts`) rest as a compact, shimmering subspace anomaly marker when idle. When a ship approaches within proximity (`240` units—or when triggered from the HUD for inspection), the wormhole erupts with a Deep Space 9-inspired gravimetric cross-flare and shockwave ring before unfurling into a 3D depth-displaced swirling cloud funnel and luminous tunnel throat.
    * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`), Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
 4. **Orbital Camera & Sector Navigation (`src/client/renderer/orbitalCamera.ts` & `src/client/ui/systemHud.ts`)**:
    * **Pan**: Left-drag, middle-drag, or `WASD` / Arrow keys across the star system plane.
    * **Orbit & Tilt**: Right-drag to rotate azimuth and polar viewing angles.
    * **Zoom & Planet Focus**: Mouse wheel zooms smoothly from system-wide tactical overview down to close-up planetary surface/cloud inspection; clicking any planet or system in the HUD smoothly glides the camera to that target.
+5. **Ship & Orbital Platform 3D Art Style ([docs/artstyle.md](./docs/artstyle.md))**:
+   * All 3D ship and orbital platform models follow the **Grounded Industrial Space Opera** style guide and master material palette defined in [docs/artstyle.md](./docs/artstyle.md) (gunmetal slate `#3e4652`, weathered ochre `#c27d2c`, dark charcoal iron `#1e232a` ribbing, warm amber `#fbbf24` bridges, and cool cyan `#38bdf8` / amber `#f59e0b` containment & thruster lighting).
+   * Whenever generating or modifying any ship or orbital platform model, always consult and update [docs/artstyle.md](./docs/artstyle.md), building and approving one model at a time.
 
 ---
 
@@ -199,8 +217,8 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
 
 ### Tech Stack
 * **Language & Tooling**: **TypeScript (Strict Mode)** + **Vite** (HMR & GLSL shader bundling) + **Vitest** (unit & headless balance tests).
-* **Rendering**: **Three.js** + **`postprocessing`** with a decoupled HTML/CSS tactical HUD overlay.
-* **Simulation Core (`src/shared/`)**: A pure TypeScript, fixed-tick authoritative simulation engine and AI bot controller with zero rendering or DOM dependencies.
+* **Rendering**: **Three.js** + **`postprocessing`** with a decoupled HTML/CSS tactical HUD overlay (`src/client/ui/systemHud.ts`) and 3D Harvester fleet renderer (`src/client/renderer/harvesterFleetRenderer.ts`).
+* **Simulation Core (`src/shared/sim/gameSimulation.ts`)**: A pure TypeScript, fixed-tick authoritative simulation engine and AI bot controller (`src/shared/ai/aiController.ts`) with zero rendering or DOM dependencies, managing orbital ring slot construction (`1-slot` vs. `2-slot` occupancy, secondary planet `Planetary Outpost` claiming), Ore/Crystal stockpiles, Fleet Supply, and automated Harvester mining/wormhole transit loops.
 
 ### Hosting & Networking Model
 Because the simulation core is **transport-agnostic** and interacts with players and AI exclusively via serializable `GameCommand` actions and `StateSnapshot` updates, the game supports three execution modes from the same codebase:
@@ -245,7 +263,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 | **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
 | **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
 | **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.18` tracking) |
-| **Resource Harvester** | 100 / 20 | 10s | 0 | 0 *(Hull Only)* | 300 | 38 | 0.20 | 1 spawned free with C&C and each Refinery; queues at Refineries |
+| **Resource Harvester** | 100 / 20 | 9s | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine), max queue `5` |
 
 ### Deep-Space Structures (`src/shared/config/structures.ts`)
 
@@ -261,8 +279,8 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Project Commands
 * `npm install` — Install dependencies (`three`, `postprocessing`, `vite`, `vitest`, `typescript`).
-* `npm run dev` — Start the Vite development server at `http://localhost:5173`.
-* `npm run build` — Run strict TypeScript typechecking (`tsc --noEmit`) and bundle for production (`vite build`).
+* `npm run dev` — Start the Vite development server at `http://localhost:5173` (`base: '/'`).
+* `npm run build` — Run strict TypeScript typechecking (`tsc --noEmit`) and bundle for production (`vite build`, using `base: '/StarConquest/'` in `vite.config.ts` for GitHub Pages static asset resolution).
 * `npm test` — Execute the Vitest unit and balance invariant test suite (`vitest run`).
 
 ### Git Branching & Pull Request Rules
@@ -272,3 +290,18 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * `task/<descriptive-name>` (e.g., `task/scaffold-vite-three`)
 * **Pre-Commit Verification**: Code must compile cleanly (`npm run build`) and pass all unit tests (`npm test`) prior to every commit on the working branch.
 * **Human PR Approval**: All Pull Requests require human review and approval before merging into `main`.
+
+---
+
+## 12. Future Work & Known Bug Fixes
+
+### Harvester Planetary Collision & Orbit Avoidance *(Deferred to Fleet Navigation Branch)*
+* **Known Issue**: Harvesters currently travel in a direct straight line (`moveToward` in `src/shared/sim/gameSimulation.ts`) between their home orbital platform, asteroid belts, and wormholes, which causes them to fly straight through the interior of a planet whenever their target lies on the opposite side of the planet.
+* **Timing & Rationale**: Intentionally deferred to the upcoming **Fleet Navigation & Movement** branch so Harvesters, combat fleets, rally points, and patrol routes all share one unified 2D planetary obstacle-avoidance / tangential-arc steering solver in `src/shared/sim/` instead of implementing a throwaway Harvester-only workaround.
+* **Planned Fix**: Build a shared planetary obstacle avoidance and tangential waypoint steering helper around planet radii (plus atmospheric clearance) and apply it to both Harvesters and combat ships.
+
+### Orbital Dockyard Slipway, Tech Module Hologram & Logistics Hub Fighter Models
+* **Planned Upgrade**: The **Titan Orbital Dockyard** (`buildTitanOrbitalDockyard`), **Minerva Tech & Specialization Module** (`buildMinervaTechModule`), and **Atlas Deep-Space Logistics Hub** (`buildAtlasLogisticsHub` in `src/client/renderer/stationModels.ts`) currently display procedural proxy hulls inside the Dockyard's dry-dock bays, the Tech Module's holographic R&D projection courts, and the Logistics Hub's 4 diagonal Fighter Hangar Bays. Once the 5 combat ship 3D models (`fighter`, `destroyer`, `cruiser`, `carrier`, and `dreadnought`) are designed and approved in `docs/artstyle.md`, swap those proxies for the real ship meshes.
+
+### Shield Visual Effects & Energized Hull Plating Art Pass
+* **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.

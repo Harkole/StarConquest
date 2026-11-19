@@ -5,7 +5,10 @@ import {
   computeOrbitalSlotPositions,
   createLivingPlanetGroup,
 } from '../../renderer/planetFactory.ts';
+import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
+import { createProceduralHullTextures } from '../../renderer/proceduralHullTextures.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
+import { StationModelLibrary } from '../../renderer/stationModels.ts';
 import {
   ASTEROID_ROCK_FRAGMENT_SHADER,
   createCraggyAsteroidGeometry,
@@ -153,5 +156,408 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       }
       env.dispose();
     }
+  });
+
+  it('constructs the Prospector Mining Frigate 3D model and dual-layer mining laser', () => {
+    const renderer = new HarvesterFleetRenderer();
+    renderer.syncHarvesters(
+      [
+        {
+          id: 'harvester_1',
+          ownerId: 'player_1',
+          homeStructureId: 'struct_1',
+          homeSystemId: 'system_starter_1',
+          homePlanetId: 'system_starter_1_homeworld',
+          currentSystemId: 'system_starter_1',
+          position: { x: 400, z: 0 },
+          headingRadians: 0,
+          currentSpeed: 41.325,
+          state: 'mining',
+          targetBeltId: 'belt_1',
+          targetRockWorldPos: { x: 411.5, y: 1.2, z: 0 },
+          miningStandoffAngle: 0,
+          cargoType: 'ore',
+          cargoAmount: 20,
+          depositAccumulator: 0,
+          cargoCapacity: 40,
+          mineCrossSystemHub: false,
+        },
+      ],
+      'harvester_1',
+    );
+
+    expect(renderer.rootGroup.children).toHaveLength(1);
+    renderer.dispose();
+  });
+
+  it('constructs the triple-tower Prometheus Command & Control station with planetary atmosphere clearance', () => {
+    const library = new StationModelLibrary();
+    const cncGroup = library.buildStationMesh('command_and_control', true, 42.56);
+    expect(cncGroup.children.length).toBeGreaterThanOrEqual(5); // 1 center + 2 wing towers + 2 skybridges
+
+    const bbox = new THREE.Box3().setFromObject(cncGroup);
+    // Inward (-X) radial reach must stay strictly inside the 11.06u Homeworld atmosphere clearance
+    const inwardRadialReach = Math.abs(bbox.min.x);
+    expect(inwardRadialReach).toBeLessThan(10.5);
+    // Tangent Z span fills the 2-slot orbital section (~34u across)
+    expect(bbox.max.z - bbox.min.z).toBeGreaterThan(25);
+
+    library.dispose();
+  });
+
+  it('curves the Hephaes Orbital Refinery segments along the host planet orbital ring', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const refineryGroup = library.buildStationMesh('refinery', true, ringRadius);
+
+    expect(refineryGroup.children).toHaveLength(7);
+    // Outer arc segments should curve inward (-X) relative to the center segment (x = 0)
+    const firstSeg = refineryGroup.children[0];
+    const centerSeg = refineryGroup.children[3];
+    const lastSeg = refineryGroup.children[6];
+    expect(centerSeg?.position.x).toBeCloseTo(0, 4);
+    expect(firstSeg?.position.x).toBeLessThan(0);
+    expect(lastSeg?.position.x).toBeLessThan(0);
+
+    library.dispose();
+  });
+
+  it('hides orbital ring slot dot and halo meshes when slots are occupied by a platform', () => {
+    const galaxy = createFiveSystemGalaxy();
+    const homeworld = galaxy.systems[0]?.planets[0];
+    expect(homeworld).toBeDefined();
+
+    if (homeworld) {
+      const handle = createLivingPlanetGroup(homeworld, new THREE.Vector3(1, 0.5, -1));
+
+      // Homeworld starts with a 2-slot Command & Control occupying slots 0 and 1
+      for (const occupiedIdx of [0, 1]) {
+        const node = handle.rootGroup.getObjectByName(`orbital_slot_node_${occupiedIdx}`);
+        const halo = handle.rootGroup.getObjectByName(`orbital_slot_halo_${occupiedIdx}`);
+        expect(node?.visible).toBe(false);
+        expect(halo?.visible).toBe(false);
+      }
+
+      // Free slots 2..9 remain visible
+      for (let freeIdx = 2; freeIdx < homeworld.orbitalSlots; freeIdx += 1) {
+        const node = handle.rootGroup.getObjectByName(`orbital_slot_node_${freeIdx}`);
+        const halo = handle.rootGroup.getObjectByName(`orbital_slot_halo_${freeIdx}`);
+        expect(node?.visible).toBe(true);
+        expect(halo?.visible).toBe(true);
+      }
+
+      handle.dispose();
+    }
+  });
+
+  it('constructs the curved rectangular Vanguard Planetary Outpost to fill 1 orbital slot', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 27.36; // Medium 8-slot planet orbital ring radius
+    const outpostGroup = library.buildStationMesh('planetary_outpost', true, ringRadius);
+
+    expect(outpostGroup.children).toHaveLength(7);
+    const firstSeg = outpostGroup.children[0];
+    const centerSeg = outpostGroup.children[3];
+    const lastSeg = outpostGroup.children[6];
+    expect(centerSeg?.position.x).toBeCloseTo(0, 4);
+    expect(firstSeg?.position.x).toBeLessThan(0);
+    expect(lastSeg?.position.x).toBeLessThan(0);
+
+    const bbox = new THREE.Box3().setFromObject(outpostGroup);
+    const arcSpanZ = bbox.max.z - bbox.min.z;
+    const radialWidthX = bbox.max.x - bbox.min.x;
+    // Rectangular aspect ratio: tangential arc span (~21u) is significantly longer than radial width (~8.5u)
+    expect(arcSpanZ).toBeGreaterThan(19);
+    expect(arcSpanZ).toBeGreaterThan(radialWidthX * 1.8);
+
+    library.dispose();
+  });
+
+  it('constructs the 2-slot Titan Orbital Dockyard with outward parallel slipways, planet clearance, and live crane/hull animation', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const dockyardGroup = library.buildStationMesh('orbital_dockyard', true, ringRadius);
+
+    // 2 top-level groups: curved rear fabrication core + outward parallel slipways
+    expect(dockyardGroup.children).toHaveLength(2);
+    expect(typeof dockyardGroup.userData.animateStation).toBe('function');
+
+    const bbox = new THREE.Box3().setFromObject(dockyardGroup);
+    // Inward (-X) radial reach stays well within the 11.06u Homeworld atmosphere clearance
+    expect(Math.abs(bbox.min.x)).toBeLessThan(8.5);
+    // Outward (+X) parallel slipways extend into deep space (> 15u) and span the 2-slot width (> 28u)
+    expect(bbox.max.x).toBeGreaterThan(15);
+    expect(bbox.max.z - bbox.min.z).toBeGreaterThan(28);
+
+    // Verify live shipyard animation hook executes cleanly for both idle and active build queue ratios
+    library.updateStationAnimation(dockyardGroup, 3.5, null);
+    library.updateStationAnimation(dockyardGroup, 4.2, 0.65);
+
+    library.dispose();
+  });
+
+  it('constructs the curved 1-slot Minerva C&C Tech & Specialization Module with holographic R&D projections', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const techGroup = library.buildStationMesh('tech_module', true, ringRadius);
+
+    expect(techGroup.children).toHaveLength(7);
+    expect(typeof techGroup.userData.animateStation).toBe('function');
+
+    const firstSeg = techGroup.children[0];
+    const centerSeg = techGroup.children[3];
+    const lastSeg = techGroup.children[6];
+    expect(centerSeg?.position.x).toBeCloseTo(0, 4);
+    expect(firstSeg?.position.x).toBeLessThan(0);
+    expect(lastSeg?.position.x).toBeLessThan(0);
+
+    const bbox = new THREE.Box3().setFromObject(techGroup);
+    const arcSpanZ = bbox.max.z - bbox.min.z;
+    const radialWidthX = bbox.max.x - bbox.min.x;
+    expect(arcSpanZ).toBeGreaterThan(19);
+    expect(arcSpanZ).toBeGreaterThan(radialWidthX * 1.8);
+
+    library.updateStationAnimation(techGroup, 2.75, null);
+    library.dispose();
+  });
+
+  it('constructs the 2-slot Aegis Heavy Orbital Defense Platform and its 3 remote vertical sentry turrets around the planet', () => {
+    const library = new StationModelLibrary();
+    const ringRadius = 42.56;
+    const defenseGroup = library.buildStationMesh(
+      'heavy_defense_platform',
+      true,
+      ringRadius,
+    );
+
+    const mainPlatform = defenseGroup.getObjectByName('aegis_main_platform');
+    const remoteTurrets = defenseGroup.getObjectByName('aegis_remote_sentry_turrets');
+    expect(mainPlatform).toBeDefined();
+    expect(remoteTurrets).toBeDefined();
+    expect(remoteTurrets?.children).toHaveLength(3);
+
+    if (mainPlatform && remoteTurrets) {
+      const mainBbox = new THREE.Box3().setFromObject(mainPlatform);
+      // Main 2-slot double-bastion spans > 28u tangentially and stays clear of the planet's 11.06u atmosphere
+      expect(mainBbox.max.z - mainBbox.min.z).toBeGreaterThan(28);
+      expect(Math.abs(mainBbox.min.x)).toBeLessThan(10.5);
+
+      // Middle remote sentry turret (idx 1, theta = PI) is stationed on the far opposite side of the planet
+      const farSideSentry = remoteTurrets.children[1];
+      expect(farSideSentry?.position.x).toBeLessThan(-ringRadius * 2.1);
+
+      // Compute the maximum outward radial reach from planet center (-ringRadius, 0, 0) across all orbital buildings
+      const orbitalIds = [
+        'command_and_control',
+        'orbital_dockyard',
+        'heavy_defense_platform',
+        'refinery',
+        'planetary_outpost',
+        'tech_module',
+      ] as const;
+      let maxBuildingRadialReach = 0;
+      for (const id of orbitalIds) {
+        const mesh = library.buildStationMesh(id, true, ringRadius);
+        const target =
+          id === 'heavy_defense_platform'
+            ? (mesh.getObjectByName('aegis_main_platform') ?? mesh)
+            : mesh;
+        const b = new THREE.Box3().setFromObject(target);
+        for (const cx of [b.min.x, b.max.x]) {
+          for (const cz of [b.min.z, b.max.z]) {
+            const radialDist = Math.hypot(cx + ringRadius, cz);
+            if (radialDist > maxBuildingRadialReach) {
+              maxBuildingRadialReach = radialDist;
+            }
+          }
+        }
+      }
+
+      // Every remote sentry turret must sit strictly outside the largest orbital building + safety clearance
+      for (const sentry of remoteTurrets.children) {
+        const sb = new THREE.Box3().setFromObject(sentry);
+        let closestSentryRadialDist = Infinity;
+        for (const cx of [sb.min.x, sb.max.x]) {
+          for (const cz of [sb.min.z, sb.max.z]) {
+            const radialDist = Math.hypot(cx + ringRadius, cz);
+            if (radialDist < closestSentryRadialDist) {
+              closestSentryRadialDist = radialDist;
+            }
+          }
+        }
+        expect(closestSentryRadialDist).toBeGreaterThan(maxBuildingRadialReach + 3);
+      }
+    }
+
+    library.updateStationAnimation(defenseGroup, 5.0, null);
+    library.dispose();
+  });
+
+  it('constructs the radial free-floating Atlas Deep-Space Logistics Hub with 4 diagonal fighter bays and pagoda command spire', () => {
+    const library = new StationModelLibrary();
+    const hubGroup = library.buildStationMesh('logistics_hub', true);
+
+    expect(hubGroup.children.length).toBeGreaterThanOrEqual(15);
+    expect(typeof hubGroup.userData.animateStation).toBe('function');
+
+    const bbox = new THREE.Box3().setFromObject(hubGroup);
+    const spanX = bbox.max.x - bbox.min.x;
+    const spanZ = bbox.max.z - bbox.min.z;
+    const heightY = bbox.max.y - bbox.min.y;
+
+    // Symmetrical 360-degree radial saucer (~20.8u diameter in X and Z) and tall pagoda command spire (> 11u)
+    expect(spanX).toBeGreaterThan(19);
+    expect(Math.abs(spanX - spanZ)).toBeLessThan(0.5);
+    expect(heightY).toBeGreaterThan(11);
+
+    library.updateStationAnimation(hubGroup, 3.25, null);
+    library.dispose();
+  });
+
+  it('constructs vertical sentry Hull Breaker and Point Defence deep-space towers with 360-degree column pivots and no idle gun animation', () => {
+    const library = new StationModelLibrary();
+    const hullBreaker = library.buildStationMesh('hull_breaker_tower', true);
+    const pointDefence = library.buildStationMesh('point_defence_tower', true);
+
+    expect(hullBreaker.name).toBe('deep_space_hull_breaker_tower');
+    expect(pointDefence.name).toBe('deep_space_point_defence_tower');
+    expect(hullBreaker.userData.animateStation).toBeUndefined();
+    expect(pointDefence.userData.animateStation).toBeUndefined();
+    expect(hullBreaker.userData.turretPivots).toBeDefined();
+    expect(pointDefence.userData.turretPivots).toBeDefined();
+
+    const hbPivots = hullBreaker.userData.turretPivots as {
+      crownTurretPivot: THREE.Group;
+      pdTurretPivots: THREE.Group[];
+    };
+    expect(hbPivots.pdTurretPivots).toHaveLength(3);
+    // Concentric column pivots at x=0, z=0 allow unobstructed 360-degree gun rotation
+    for (const pivot of hbPivots.pdTurretPivots) {
+      expect(pivot.position.x).toBe(0);
+      expect(pivot.position.z).toBe(0);
+    }
+
+    const hbBox = new THREE.Box3().setFromObject(hullBreaker);
+    const pdBox = new THREE.Box3().setFromObject(pointDefence);
+    expect(hbBox.max.y - hbBox.min.y).toBeGreaterThan(8);
+    expect(pdBox.max.y - pdBox.min.y).toBeGreaterThan(7);
+    expect(hbBox.max.x - hbBox.min.x).toBeGreaterThan(pdBox.max.x - pdBox.min.x);
+
+    // Guns stay stationary while idle (no target tracked)
+    library.updateStationAnimation(hullBreaker, 2.0, null);
+    library.updateStationAnimation(pointDefence, 2.0, null);
+    expect(hbPivots.crownTurretPivot.rotation.y).toBe(0);
+
+    library.dispose();
+  });
+
+  it('applies procedural PBR hull textures and machined steel grey turret barrels with zero violet guns across all armed platforms', () => {
+    const bundle = createProceduralHullTextures(64);
+    for (const set of [
+      bundle.hullPlating,
+      bundle.weatheredOchre,
+      bundle.darkRibbing,
+      bundle.machinedSteel,
+    ]) {
+      expect(set.map).toBeInstanceOf(THREE.DataTexture);
+      expect(set.bumpMap).toBeInstanceOf(THREE.DataTexture);
+      expect(set.roughnessMap).toBeInstanceOf(THREE.DataTexture);
+      const pixels = set.map.image.data as Uint8Array;
+      let minVal = 255;
+      let maxVal = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const v = pixels[i] ?? 0;
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      // Verify real panel/seam tonal breakup rather than flat mono-colored pixels
+      expect(maxVal - minVal).toBeGreaterThan(60);
+    }
+    bundle.dispose();
+
+    const library = new StationModelLibrary();
+    const armedPlatforms = [
+      'command_and_control',
+      'planetary_outpost',
+      'heavy_defense_platform',
+      'hull_breaker_tower',
+      'point_defence_tower',
+    ] as const;
+
+    for (const id of armedPlatforms) {
+      const group = library.buildStationMesh(id, true, 42.56);
+      let greyBarrelCount = 0;
+      let texturedHullCount = 0;
+      let violetMeshCount = 0;
+
+      group.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        const mat = obj.material;
+        if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+        if (mat.name === 'turret_barrel_steel') {
+          greyBarrelCount += 1;
+          expect(mat.map).toBeInstanceOf(THREE.DataTexture);
+          expect(mat.bumpMap).toBeInstanceOf(THREE.DataTexture);
+          expect(mat.roughnessMap).toBeInstanceOf(THREE.DataTexture);
+        }
+        if (mat.name.startsWith('hull_') && mat.map && mat.bumpMap && mat.roughnessMap) {
+          texturedHullCount += 1;
+        }
+        if (mat.color.getHex() === 0xc084fc) {
+          violetMeshCount += 1;
+        }
+      });
+
+      expect(greyBarrelCount).toBeGreaterThan(0);
+      expect(texturedHullCount).toBeGreaterThan(0);
+      expect(violetMeshCount).toBe(0);
+    }
+
+    library.dispose();
+  });
+
+  it('omits atmospheric halo and rim haze on airless barren_rock planets while keeping them on terran and volcanic worlds', () => {
+    expect(PLANET_SHADER_THEME_PARAMS.barren_rock.hasAtmosphere).toBe(false);
+    expect(PLANET_SHADER_THEME_PARAMS.barren_rock.atmosphereIntensity).toBe(0);
+    expect(PLANET_SHADER_THEME_PARAMS.barren_rock.atmosphereColor).toEqual([0, 0, 0]);
+    expect(PLANET_SHADER_THEME_PARAMS.terran.hasAtmosphere).toBe(true);
+    expect(PLANET_SHADER_THEME_PARAMS.super_earth.hasAtmosphere).toBe(true);
+    expect(PLANET_SHADER_THEME_PARAMS.volcanic_lava.hasAtmosphere).toBe(true);
+
+    const sunDir = new THREE.Vector3(1, 0.3, 0.5).normalize();
+    const barrenHandle = createLivingPlanetGroup(
+      {
+        id: 'test_barren',
+        systemId: 'system_starter_1',
+        name: 'Test Barren',
+        planetClass: 'small',
+        visualTheme: 'barren_rock',
+        orbitalSlots: 6,
+        position: { x: 0, z: 0 },
+        ownerId: null,
+      },
+      sunDir,
+    );
+    // bodyGroup is the first child of rootGroup: airless barren_rock should only have the 1 surface sphere mesh
+    const barrenBody = barrenHandle.rootGroup.children[0] as THREE.Group;
+    expect(barrenBody.children).toHaveLength(1);
+    barrenHandle.dispose();
+
+    const volcanicHandle = createLivingPlanetGroup(
+      {
+        id: 'test_volcanic',
+        systemId: 'system_starter_1',
+        name: 'Test Volcanic',
+        planetClass: 'medium',
+        visualTheme: 'volcanic_lava',
+        orbitalSlots: 8,
+        position: { x: 0, z: 0 },
+        ownerId: null,
+      },
+      sunDir,
+    );
+    const volcanicBody = volcanicHandle.rootGroup.children[0] as THREE.Group;
+    expect(volcanicBody.children).toHaveLength(2);
+    volcanicHandle.dispose();
   });
 });

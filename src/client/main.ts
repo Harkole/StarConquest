@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
-import { createFiveSystemGalaxy } from '../shared/sim/galaxy.ts';
+import { LocalSimAdapter } from './net/localSimAdapter.ts';
 import { OrbitalCameraController } from './renderer/orbitalCamera.ts';
 import { SystemSceneManager } from './renderer/systemSceneManager.ts';
 import { mountSystemHud } from './ui/systemHud.ts';
@@ -12,7 +12,8 @@ function bootstrapClient(): void {
     throw new Error('Missing #app-canvas or #hud-overlay element');
   }
 
-  const galaxy = createFiveSystemGalaxy();
+  const simAdapter = new LocalSimAdapter('standard_tactical');
+  const galaxy = simAdapter.simulation.galaxy;
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -35,7 +36,13 @@ function bootstrapClient(): void {
   );
 
   const cameraController = new OrbitalCameraController(camera, canvas);
-  const sceneManager = new SystemSceneManager(scene, galaxy, cameraController);
+  const sceneManager = new SystemSceneManager(
+    scene,
+    galaxy,
+    cameraController,
+    simAdapter,
+    canvas,
+  );
   mountSystemHud(hudContainer, galaxy, sceneManager);
 
   const composer = new EffectComposer(renderer);

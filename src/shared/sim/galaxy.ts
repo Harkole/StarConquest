@@ -61,8 +61,10 @@ const STARTER_NEBULA_PALETTES = [
  *   have wide deep-space travel corridors between them (preventing instant wormhole firefights and
  *   providing stealth corridors for Harvesters and raiding fleets outside sensor ranges).
  * - 4 outer Starter Systems (each with 1 guaranteed Large 10-slot Homeworld + secondary Small/Medium planets,
- *   and an alternating Ore-heavy / Crystal-heavy resource skew).
- * - 1 Central Neutral System (anchored by 1 Super-Earth 12-slot planet + secondary worlds + 4 permanent open wormholes).
+ *   and an identical, balanced Ore-heavy / Crystal-scarce resource profile so all players have a fair start
+ *   and must expand outside their starter system once local Crystal and Inner Belt deposits deplete).
+ * - 1 Central Neutral System (anchored by 1 Super-Earth 12-slot planet + secondary worlds + enriched high-yield
+ *   Ore/Crystal deposits + 4 permanent open wormholes).
  */
 export function createFiveSystemGalaxy(): GalaxyTopology {
   const systems: StarSystemNode[] = [];
@@ -70,7 +72,7 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
 
   STARTER_SLOTS.forEach((slotId, index) => {
     const systemId = `system_starter_${index + 1}`;
-    const resourceSkew: ResourceSkew = index % 2 === 0 ? 'ore_heavy' : 'crystal_heavy';
+    const resourceSkew: ResourceSkew = 'ore_heavy';
     const nebulaPalette = STARTER_NEBULA_PALETTES[index] ?? 'cyan_magenta';
 
     const homeworld: PlanetNode = {

@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { PLANET_CLASSES } from '../../shared/config/index.ts';
 import type { PlanetNode } from '../../shared/sim/galaxy.ts';
 import {
+  ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC,
+  type PlanetRuntimeState,
+} from '../../shared/sim/gameSimulation.ts';
+import {
   ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
   DRIFTING_CLOUDS_FRAGMENT_SHADER,
   PLANET_COMMON_VERTEX_SHADER,
@@ -9,6 +13,7 @@ import {
   TERRAN_SURFACE_FRAGMENT_SHADER,
   VOLCANIC_ROCK_SURFACE_FRAGMENT_SHADER,
 } from '../shaders/planetShaders.ts';
+import { StationModelLibrary } from './stationModels.ts';
 
 export interface OrbitalSlotPoint {
   readonly slotIndex: number;
@@ -44,7 +49,8 @@ export interface AnimatedPlanetHandle {
   readonly orbitalRingRadius: number;
   isHabited(): boolean;
   setHabited(habited: boolean): void;
-  update(elapsedSeconds: number, deltaSeconds: number): void;
+  syncStructures(planetState: PlanetRuntimeState): void;
+  update(elapsedSeconds: number, deltaSeconds: number, simElapsedSeconds?: number): void;
   dispose(): void;
 }
 
@@ -153,33 +159,38 @@ export function createLivingPlanetGroup(
     bodyGroup.add(cloudMesh);
   }
 
-  // 3. Outer Fresnel Atmospheric Halo Shell
-  const atmosphereGeometry = new THREE.SphereGeometry(radius * 1.125, 48, 48);
-  disposables.push(atmosphereGeometry);
+  // 3. Outer Fresnel Atmospheric Halo Shell (omitted on airless barren_rock worlds)
+  if (themeParams.hasAtmosphere && themeParams.atmosphereIntensity > 0) {
+    const atmosphereGeometry = new THREE.SphereGeometry(radius * 1.125, 48, 48);
+    disposables.push(atmosphereGeometry);
 
-  const atmosphereMaterial = new THREE.ShaderMaterial({
-    vertexShader: PLANET_COMMON_VERTEX_SHADER,
-    fragmentShader: ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
-    uniforms: {
-      uSunDirection: { value: sunDirection.clone().normalize() },
-      uAtmosphereColor: {
-        value: new THREE.Color(...themeParams.atmosphereColor),
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: PLANET_COMMON_VERTEX_SHADER,
+      fragmentShader: ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uSunDirection: { value: sunDirection.clone().normalize() },
+        uAtmosphereColor: {
+          value: new THREE.Color(...themeParams.atmosphereColor),
+        },
+        uAtmosphereIntensity: { value: themeParams.atmosphereIntensity },
       },
-      uAtmosphereIntensity: { value: themeParams.atmosphereIntensity },
-    },
-  });
-  disposables.push(atmosphereMaterial);
+    });
+    disposables.push(atmosphereMaterial);
 
-  const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-  bodyGroup.add(atmosphereMesh);
+    const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    bodyGroup.add(atmosphereMesh);
+  }
 
-  // 4. Orbital Ring Track & Slot Nodes (6, 8, 10, or 12 slots)
+  // 4. Orbital Ring Track & Dynamic Slot Stations (6, 8, 10, or 12 slots)
   const orbitalGroup = new THREE.Group();
   rootGroup.add(orbitalGroup);
+
+  const stationDynamicGroup = new THREE.Group();
+  orbitalGroup.add(stationDynamicGroup);
 
   const ringColor =
     planet.ownerId !== null
@@ -209,66 +220,126 @@ export function createLivingPlanetGroup(
   const freeSlotMaterial = new THREE.MeshStandardMaterial({
     color: 0x1e293b,
     emissive: ringColor,
-    emissiveIntensity: 0.75,
+    emissiveIntensity: 0.55,
     metalness: 0.7,
     roughness: 0.3,
   });
-  const occupiedSlotMaterial = new THREE.MeshStandardMaterial({
-    color: 0x0ea5e9,
-    emissive: 0x38bdf8,
-    emissiveIntensity: 1.6,
-    metalness: 0.8,
-    roughness: 0.2,
-  });
-  disposables.push(freeSlotMaterial, occupiedSlotMaterial);
+  disposables.push(freeSlotMaterial);
 
-  const hasStartingCommandAndControl =
-    planet.ownerId !== null && planet.planetClass === 'large';
+  const slotNodeMeshes: THREE.Mesh[] = [];
+  const slotHaloMeshes: THREE.Mesh[] = [];
 
   for (const slot of slotPoints) {
-    // Starting Command & Control occupies 2 orbital slots (slots 0 and 1) on Homeworld
-    const isOccupiedByCnC =
-      hasStartingCommandAndControl && (slot.slotIndex === 0 || slot.slotIndex === 1);
-    const nodeMat = isOccupiedByCnC ? occupiedSlotMaterial : freeSlotMaterial;
-
-    const nodeMesh = new THREE.Mesh(slotNodeGeometry, nodeMat);
+    const nodeMesh = new THREE.Mesh(slotNodeGeometry, freeSlotMaterial);
+    nodeMesh.name = `orbital_slot_node_${slot.slotIndex}`;
     nodeMesh.position.set(slot.x, 0, slot.z);
     orbitalGroup.add(nodeMesh);
+    slotNodeMeshes.push(nodeMesh);
 
-    const haloRing = new THREE.Mesh(slotRingGeometry, nodeMat);
+    const haloRing = new THREE.Mesh(slotRingGeometry, freeSlotMaterial);
+    haloRing.name = `orbital_slot_halo_${slot.slotIndex}`;
     haloRing.position.set(slot.x, 0, slot.z);
     orbitalGroup.add(haloRing);
+    slotHaloMeshes.push(haloRing);
   }
 
-  // Render the 2-Slot Command & Control (C&C) Orbital Station on starter Homeworlds
-  if (hasStartingCommandAndControl && slotPoints[0] && slotPoints[1]) {
-    const midAngle = (slotPoints[0].angleRadians + slotPoints[1].angleRadians) * 0.5;
-    const cncGroup = new THREE.Group();
-    cncGroup.position.set(
-      Math.cos(midAngle) * orbitalRingRadius,
-      0,
-      Math.sin(midAngle) * orbitalRingRadius,
-    );
-    cncGroup.rotation.y = -midAngle;
+  const stationModels = new StationModelLibrary();
+  disposables.push(stationModels);
 
-    const coreGeom = new THREE.OctahedronGeometry(4.2, 1);
-    const spireGeom = new THREE.CylinderGeometry(1.1, 1.8, 11, 8);
-    const bridgeWingGeom = new THREE.BoxGeometry(3.2, 1.4, 14);
-    disposables.push(coreGeom, spireGeom, bridgeWingGeom);
+  let lastSignature: string | null = null;
+  let latestPlanetState: PlanetRuntimeState | null = null;
+  const stationGroupsById = new Map<string, THREE.Group>();
 
-    const cncMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      emissive: 0x38bdf8,
-      emissiveIntensity: 1.4,
-      metalness: 0.85,
-      roughness: 0.2,
+  function syncStructures(planetState: PlanetRuntimeState): void {
+    latestPlanetState = planetState;
+    isHabitedUniform.value = planetState.ownerId !== null ? 1.0 : 0.0;
+    if (planetState.ownerId !== null) {
+      trackMaterial.color.setHex(0x38bdf8);
+    }
+
+    const sig = planetState.structures
+      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}:${s.occupiedSlots.join(',')}`)
+      .join('|');
+    if (sig === lastSignature) {
+      return;
+    }
+    lastSignature = sig;
+
+    stationDynamicGroup.clear();
+    stationGroupsById.clear();
+
+    const occupiedSet = new Set<number>();
+    for (const struct of planetState.structures) {
+      for (const slotIdx of struct.occupiedSlots) {
+        occupiedSet.add(slotIdx);
+      }
+
+      const p0 = slotPoints[struct.occupiedSlots[0] ?? 0];
+      if (!p0) {
+        continue;
+      }
+
+      let angle = p0.angleRadians;
+      if (struct.occupiedSlots.length === 2) {
+        const p1 = slotPoints[struct.occupiedSlots[1] ?? 0];
+        if (p1) {
+          // Handle wrap-around between last slot and slot 0
+          let a1 = p1.angleRadians;
+          if (a1 < angle) {
+            a1 += Math.PI * 2;
+          }
+          angle = (angle + a1) * 0.5;
+        }
+      }
+
+      const stationGroup = stationModels.buildStationMesh(
+        struct.structureId,
+        struct.isComplete,
+        orbitalRingRadius,
+      );
+      stationGroup.position.set(
+        Math.cos(angle) * orbitalRingRadius,
+        0,
+        Math.sin(angle) * orbitalRingRadius,
+      );
+      stationGroup.rotation.y = -angle;
+      stationDynamicGroup.add(stationGroup);
+      stationGroupsById.set(struct.id, stationGroup);
+    }
+
+    slotNodeMeshes.forEach((mesh, idx) => {
+      mesh.visible = !occupiedSet.has(idx);
     });
-    disposables.push(cncMat);
+    slotHaloMeshes.forEach((mesh, idx) => {
+      mesh.visible = !occupiedSet.has(idx);
+    });
+  }
 
-    cncGroup.add(new THREE.Mesh(coreGeom, cncMat));
-    cncGroup.add(new THREE.Mesh(spireGeom, cncMat));
-    cncGroup.add(new THREE.Mesh(bridgeWingGeom, cncMat));
-    orbitalGroup.add(cncGroup);
+  // Initialize default Homeworld C&C visual if owned at creation
+  if (planet.ownerId !== null && planet.planetClass === 'large') {
+    syncStructures({
+      planet,
+      ownerId: planet.ownerId,
+      structures: [
+        {
+          id: 'init_cnc',
+          structureId: 'command_and_control',
+          ownerId: planet.ownerId,
+          planetId: planet.id,
+          primarySlotIndex: 0,
+          occupiedSlots: [0, 1],
+          buildProgressSeconds: 0,
+          totalBuildTimeSeconds: 0,
+          isComplete: true,
+          shields: 3000,
+          hull: 8000,
+          targetResource: 'auto',
+          activeDockingHarvesterIds: [],
+          queuedDockingHarvesterIds: [],
+          productionQueue: [],
+        },
+      ],
+    });
   }
 
   return {
@@ -281,13 +352,36 @@ export function createLivingPlanetGroup(
     setHabited(habited: boolean): void {
       isHabitedUniform.value = habited ? 1.0 : 0.0;
     },
-    update(elapsedSeconds: number, deltaSeconds: number): void {
+    syncStructures,
+    update(
+      elapsedSeconds: number,
+      deltaSeconds: number,
+      simElapsedSeconds = elapsedSeconds,
+    ): void {
       for (const uniform of timeUniforms) {
         uniform.value = elapsedSeconds;
       }
-      // Slow planetary axial rotation + gentle orbital ring rotation
+      // Slow planetary axial rotation + deterministic orbital ring rotation synced with simulation
       surfaceMesh.rotation.y += deltaSeconds * 0.045;
-      orbitalGroup.rotation.y += deltaSeconds * 0.025;
+      orbitalGroup.rotation.y =
+        simElapsedSeconds * ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC;
+
+      if (latestPlanetState) {
+        for (const struct of latestPlanetState.structures) {
+          const stationGroup = stationGroupsById.get(struct.id);
+          if (stationGroup) {
+            const activeOrder = struct.productionQueue[0];
+            const progressRatio = activeOrder
+              ? activeOrder.progressSeconds / Math.max(0.1, activeOrder.buildTimeSeconds)
+              : null;
+            stationModels.updateStationAnimation(
+              stationGroup,
+              elapsedSeconds,
+              progressRatio,
+            );
+          }
+        }
+      }
     },
     dispose(): void {
       for (const item of disposables) {
