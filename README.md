@@ -295,9 +295,10 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ## 12. Future Work & Known Bug Fixes
 
-### Harvester Planetary Collision & Orbit Avoidance
+### Harvester Planetary Collision & Orbit Avoidance *(Deferred to Fleet Navigation Branch)*
 * **Known Issue**: Harvesters currently travel in a direct straight line (`moveToward` in `src/shared/sim/gameSimulation.ts`) between their home orbital platform, asteroid belts, and wormholes, which causes them to fly straight through the interior of a planet whenever their target lies on the opposite side of the planet.
-* **Planned Fix**: Add planetary obstacle avoidance / tangential waypoint steering around planet radii (plus atmospheric clearance) so Harvesters smoothly arc around the orbital perimeter rather than clipping through planets.
+* **Timing & Rationale**: Intentionally deferred to the upcoming **Fleet Navigation & Movement** branch so Harvesters, combat fleets, rally points, and patrol routes all share one unified 2D planetary obstacle-avoidance / tangential-arc steering solver in `src/shared/sim/` instead of implementing a throwaway Harvester-only workaround.
+* **Planned Fix**: Build a shared planetary obstacle avoidance and tangential waypoint steering helper around planet radii (plus atmospheric clearance) and apply it to both Harvesters and combat ships.
 
 ### Blitz Skirmish Economy Multiplier Scaling
 * **Known Issue**: `MATCH_PRESETS.blitz_skirmish.harvestRateMultiplier` (`1.6`) currently only speeds up the `12.5s` mining phase, yielding only ~12% faster total income over a full round trip.
