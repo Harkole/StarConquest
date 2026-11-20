@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { LocalSimAdapter } from './net/localSimAdapter.ts';
+import { AmbientMusicPlayer } from './audio/ambientMusicPlayer.ts';
 import { OrbitalCameraController } from './renderer/orbitalCamera.ts';
 import { SystemSceneManager } from './renderer/systemSceneManager.ts';
 import { mountSystemHud } from './ui/systemHud.ts';
@@ -43,7 +44,9 @@ function bootstrapClient(): void {
     simAdapter,
     canvas,
   );
-  mountSystemHud(hudContainer, galaxy, sceneManager);
+  const musicPlayer = new AmbientMusicPlayer();
+  musicPlayer.start();
+  mountSystemHud(hudContainer, galaxy, sceneManager, musicPlayer);
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));

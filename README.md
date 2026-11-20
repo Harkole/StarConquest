@@ -329,3 +329,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * **Double-Click Wormhole Camera Transit**: Double-clicking a wormhole in 3D space (or in the HUD) should switch the camera to the connected star system and focus directly on the wormhole's exit point.
 * **Right-Click Wormhole Fleet Transit**: Right-clicking a wormhole while a fleet is selected should order the fleet to transit through that wormhole and hold position at the exit point in the connected star system.
 * **Collapsible HUD Sections**: Add a collapse/expand toggle button (`Collapse ▲` / `Expand ▼`) to every tactical HUD section (matching the Fleet Command panel) so players can minimize sections they are not actively using.
+
+### Dynamic Soundtrack, Additional Tracks & Sound Design (`docs/sounds.md`)
+* **Canonical Audio Guide**: All music tracks, playback rules, and planned SFX are documented in [docs/sounds.md](./docs/sounds.md).
+* **Additional Tracks & Dynamic Combat Music Switching**: Expand the soundtrack beyond the initial ambient loop (*The View from Perigee*) with additional `ambient` tracks and intense tracks flagged as `"combat"`. When fleet combat breaks out, dynamically switch to `"combat"`-flagged tracks to heighten danger and urgency, then transition back to ambient music after a combat cooldown.
