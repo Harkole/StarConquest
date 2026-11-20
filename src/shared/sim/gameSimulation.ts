@@ -165,6 +165,8 @@ export interface OrbitalStructureInstance {
   rallyPoint?: DockyardRallyPoint | null;
   patrolWaypoints?: readonly DockyardWaypoint[];
   fleetStance?: FleetStance;
+  /** When true (default for Orbital Dockyards), automatically builds ships for active Fleet templates. */
+  fleetProductionEnabled?: boolean;
 }
 
 export type CombatShipActivityState =
@@ -756,6 +758,12 @@ export class GameSimulation {
         );
       case 'DISBAND_FLEET':
         return this.handleDisbandFleet(command.playerId, command.fleetId);
+      case 'SET_DOCKYARD_FLEET_BUILDING':
+        return this.handleSetDockyardFleetBuilding(
+          command.playerId,
+          command.dockyardId,
+          command.enabled,
+        );
       default:
         return { ok: true };
     }
@@ -1048,6 +1056,7 @@ export class GameSimulation {
       activeDockingHarvesterIds: [],
       queuedDockingHarvesterIds: [],
       productionQueue: [],
+      fleetProductionEnabled: structureId === 'orbital_dockyard' ? true : undefined,
     };
 
     planetState.structures.push(instance);
@@ -1771,6 +1780,23 @@ export class GameSimulation {
     return { ok: true };
   }
 
+  private handleSetDockyardFleetBuilding(
+    playerId: PlayerSlotId,
+    dockyardId: string,
+    enabled: boolean,
+  ): CommandResult {
+    const found = this.getStructureById(dockyardId);
+    if (
+      !found ||
+      found.structure.ownerId !== playerId ||
+      found.structure.structureId !== 'orbital_dockyard'
+    ) {
+      return { ok: false, reason: 'Requires an owned Orbital Dockyard' };
+    }
+    found.structure.fleetProductionEnabled = enabled;
+    return { ok: true };
+  }
+
   /**
    * Distributed smallest-first shipyard production scheduler.
    * For every fleet that still needs hulls (either initial template fill or Auto-Resupply),
@@ -1797,6 +1823,7 @@ export class GameSimulation {
             s.ownerId === fleet.ownerId &&
             s.structureId === 'orbital_dockyard' &&
             s.isComplete &&
+            s.fleetProductionEnabled !== false &&
             s.productionQueue.length < DOCKYARD_MAX_PARALLEL_BAYS
           ) {
             const dockPos = this.getStructureWorldPosition(planetState, s);

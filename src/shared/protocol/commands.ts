@@ -154,6 +154,13 @@ export interface DisbandFleetCommand {
   readonly fleetId: string;
 }
 
+export interface SetDockyardFleetBuildingCommand {
+  readonly type: 'SET_DOCKYARD_FLEET_BUILDING';
+  readonly playerId: PlayerSlotId;
+  readonly dockyardId: string;
+  readonly enabled: boolean;
+}
+
 export type GameCommand =
   | BuildOrbitalStructureCommand
   | BuildDeepSpaceStructureCommand
@@ -171,4 +178,5 @@ export type GameCommand =
   | OrderFleetPatrolCommand
   | SplitFleetCommand
   | MergeFleetsCommand
-  | DisbandFleetCommand;
+  | DisbandFleetCommand
+  | SetDockyardFleetBuildingCommand;

@@ -328,4 +328,3 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Fleet & Shipyard HUD Polish
 * **Click-to-Focus on Fleets**: Clicking a fleet in the Fleet Command HUD should jump/focus the camera directly to that fleet's current location (switching systems if needed).
 * **Collapsible Fleet Manager Panel**: Add a collapse/expand toggle to the Fleet Command window so having many active fleets does not consume excessive screen space.
-* **Simplified Orbital Dockyard Panel**: Replace the legacy per-ship queue, rally/patrol, stance, and individual ship list inside the selected Orbital Dockyard panel with a concise description of the dockyard and a single **Fleet Building: Enabled / Disabled** toggle (defaulting to **Enabled** so the dockyard automatically participates in supplying active fleet templates).

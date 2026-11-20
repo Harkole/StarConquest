@@ -3,7 +3,6 @@ import {
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
-  type CombatShipClassId,
   type DeepSpaceStructureId,
   type OrbitalStructureId,
 } from '../../shared/config/index.ts';
@@ -34,14 +33,6 @@ const BUILDABLE_DEEP_SPACE_IDS: readonly DeepSpaceStructureId[] = [
   'logistics_hub',
   'point_defence_tower',
   'hull_breaker_tower',
-];
-
-const BUILDABLE_COMBAT_SHIP_IDS: readonly CombatShipClassId[] = [
-  'fighter',
-  'destroyer',
-  'cruiser',
-  'carrier',
-  'dreadnought',
 ];
 
 const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label: string }[] = [
@@ -87,7 +78,8 @@ export function computeMainPanelSignature(
         ? `${s.rallyPoint.systemId}:${Math.round(s.rallyPoint.position.x)},${Math.round(s.rallyPoint.position.z)}`
         : 'none';
       const patrolSig = `${s.patrolWaypoints?.length ?? 0}`;
-      return `${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${s.fleetStance ?? 'default'}:${rallySig}:${patrolSig}:${queueIds}`;
+      const fleetBuildSig = s.fleetProductionEnabled === false ? 0 : 1;
+      return `${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${s.fleetStance ?? 'default'}:${rallySig}:${patrolSig}:${fleetBuildSig}:${queueIds}`;
     })
     .join(';');
 
@@ -179,7 +171,6 @@ export function mountSystemHud(
   let selectedSlotIndex = 2;
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
-  let autoRepeatDockyardOrders = false;
   let selectedFleetStance: FleetStance = 'aggressive';
 
   const topBarEl = document.createElement('div');
@@ -626,81 +617,16 @@ export function mountSystemHud(
 
       let dockyardControlsHtml = '';
       if (isOperationalDockyard) {
-        const pendingOrder = sceneManager.getPendingFleetOrder();
-        const isRallyPending =
-          pendingOrder?.mode === 'rally' &&
-          pendingOrder.dockyardId === selectedStruct.id;
-        const isPatrolPending =
-          pendingOrder?.mode === 'patrol' &&
-          pendingOrder.dockyardId === selectedStruct.id;
-        const currentStance = selectedStruct.fleetStance ?? selectedFleetStance;
-        const assignedCombatShips = sim
-          .getAllCombatShips()
-          .filter(
-            (s) => s.ownerId === playerId && s.homeDockyardId === selectedStruct.id,
-          );
-        const selectedCombatShipId = sceneManager.getSelectedCombatShipId();
-
-        const orderSummary =
-          selectedStruct.patrolWaypoints && selectedStruct.patrolWaypoints.length >= 2
-            ? `Patrol Route (${selectedStruct.patrolWaypoints.length} waypoints)`
-            : selectedStruct.rallyPoint
-              ? `Rally: ${galaxy.systems.find((sys) => sys.id === selectedStruct.rallyPoint?.systemId)?.name ?? selectedStruct.rallyPoint.systemId} (${Math.round(selectedStruct.rallyPoint.position.x)}, ${Math.round(selectedStruct.rallyPoint.position.z)})`
-              : 'Default Slipway Rally';
-
-        const shipButtonsHtml = BUILDABLE_COMBAT_SHIP_IDS.map((shipId) => {
-          const sCfg = SHIP_CLASSES[shipId];
-          const check = sim.validateCombatShipOrder(playerId, selectedStruct.id, shipId);
-          const lockTag = !check.ok && check.reason ? ` • ${check.reason}` : '';
-          return `<button class="hud-btn" data-queue-combat="${shipId}" data-dockyard-id="${selectedStruct.id}" title="${sCfg.displayName}: ${sCfg.cost.ore} Ore / ${sCfg.cost.crystal} Crystal / ${sCfg.supplyCost} Supply / ${sCfg.buildTimeSeconds}s${lockTag}">
-            + ${sCfg.displayName} (${sCfg.cost.ore}O/${sCfg.cost.crystal}C • ${sCfg.supplyCost}S • ${sCfg.buildTimeSeconds}s)
-          </button>`;
-        }).join('');
-
-        const stanceButtonsHtml = FLEET_STANCE_OPTIONS.map(
-          (opt) =>
-            `<button class="hud-btn ${currentStance === opt.id ? 'active' : ''}" data-select-stance="${opt.id}">${opt.label}</button>`,
-        ).join('');
-
-        const fleetChipsHtml =
-          assignedCombatShips.length > 0
-            ? assignedCombatShips
-                .map((ship, idx) => {
-                  const sCfg = SHIP_CLASSES[ship.shipClassId];
-                  const isSel = ship.id === selectedCombatShipId;
-                  return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-combat-ship="${ship.id}" title="Click to follow ${sCfg.displayName}">
-                    ${sCfg.displayName} #${idx + 1}
-                    <span class="hud-badge">${ship.state.replace(/_/g, ' ').toUpperCase()}</span>
-                  </button>`;
-                })
-                .join('')
-            : '<span class="econ-label" style="opacity: 0.7;">No ships launched yet</span>';
-
+        const fleetBuildEnabled = selectedStruct.fleetProductionEnabled !== false;
         dockyardControlsHtml = `
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">SHIP PRODUCTION:</span>
-            <button class="hud-btn ${autoRepeatDockyardOrders ? 'active' : ''}" data-action="toggle-autorepeat">
-              Auto-Repeat: ${autoRepeatDockyardOrders ? 'ON ↻' : 'OFF'}
-            </button>
-            ${shipButtonsHtml}
+          <div style="margin-top: 6px; font-size: 12px; opacity: 0.85;">
+            Dual-bay orbital dry-dock (2 parallel slipways). Automatically constructs and resupplies ships for active Fleet templates.
           </div>
           <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">FLEET ORDERS (${orderSummary}):</span>
-            <button class="hud-btn ${isRallyPending ? 'active' : ''}" data-action="set-rally" data-dockyard-id="${selectedStruct.id}">
-              ${isRallyPending ? 'Click 3D Space for Rally Point...' : 'Set Rally Point (Click 3D)'}
+            <span class="econ-label" style="margin-right: 4px;">FLEET BUILDING:</span>
+            <button class="hud-btn ${fleetBuildEnabled ? 'active' : ''}" data-toggle-dockyard-fleet-building="${selectedStruct.id}">
+              ${fleetBuildEnabled ? 'Enabled (Supplying Fleets)' : 'Disabled (Paused)'}
             </button>
-            <button class="hud-btn ${isPatrolPending ? 'active' : ''}" data-action="set-patrol" data-dockyard-id="${selectedStruct.id}">
-              ${isPatrolPending ? `Click Waypoint #${(pendingOrder?.waypointCount ?? 0) + 1} of 2...` : 'Set Patrol Route (2 Clicks)'}
-            </button>
-            ${pendingOrder ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">FLEET STANCE:</span>
-            ${stanceButtonsHtml}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">DOCKYARD FLEET (${assignedCombatShips.length}):</span>
-            ${fleetChipsHtml}
           </div>
         `;
       }
@@ -1106,69 +1032,27 @@ export function mountSystemHud(
       });
 
     mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="toggle-autorepeat"]')
-      ?.addEventListener('click', () => {
-        autoRepeatDockyardOrders = !autoRepeatDockyardOrders;
-        renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-queue-combat]')
+      .querySelectorAll<HTMLButtonElement>('[data-toggle-dockyard-fleet-building]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const shipClassId = btn.dataset.queueCombat as CombatShipClassId | undefined;
-          const dockyardId = btn.dataset.dockyardId;
-          if (!shipClassId || !dockyardId) {
-            return;
-          }
+          const dockyardId = btn.dataset.toggleDockyardFleetBuilding;
+          if (!dockyardId) return;
+          const found = sim.getStructureById(dockyardId);
+          if (!found) return;
+          const nextEnabled = found.structure.fleetProductionEnabled === false;
           const res = simAdapter.submitPlayerCommand({
-            type: 'QUEUE_SHIP',
+            type: 'SET_DOCKYARD_FLEET_BUILDING',
             playerId,
-            dockyardOrRefineryId: dockyardId,
-            shipClassId,
-            autoRepeat: autoRepeatDockyardOrders,
+            dockyardId,
+            enabled: nextEnabled,
           });
           statusBannerMessage = res.ok
-            ? `Queued ${SHIP_CLASSES[shipClassId].displayName}${autoRepeatDockyardOrders ? ' (Auto-Repeat ↻)' : ''}`
-            : `Cannot queue ship: ${res.reason}`;
-          renderEconomyBar();
+            ? nextEnabled
+              ? 'Orbital Dockyard enabled for Fleet building.'
+              : 'Orbital Dockyard paused for Fleet building.'
+            : `Cannot update Dockyard: ${res.reason}`;
           renderMainPanel();
         });
-      });
-
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-select-stance]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const stance = btn.dataset.selectStance as FleetStance | undefined;
-          if (stance) {
-            selectedFleetStance = stance;
-            statusBannerMessage = `Fleet stance set to ${stance.replace(/_/g, ' ')}`;
-            renderMainPanel();
-          }
-        });
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="set-rally"]')
-      ?.addEventListener('click', (e) => {
-        const dockyardId = (e.currentTarget as HTMLButtonElement).dataset.dockyardId;
-        if (!dockyardId) return;
-        sceneManager.startRallyPointPlacement(dockyardId, selectedFleetStance);
-        statusBannerMessage =
-          'Click any point in 3D space (in this or another star system) to set the Dockyard Rally Point (Esc to cancel).';
-        renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="set-patrol"]')
-      ?.addEventListener('click', (e) => {
-        const dockyardId = (e.currentTarget as HTMLButtonElement).dataset.dockyardId;
-        if (!dockyardId) return;
-        sceneManager.startPatrolRoutePlacement(dockyardId, selectedFleetStance);
-        statusBannerMessage =
-          'Click 2 points in 3D space to create a Patrol Route loop (Esc to cancel).';
-        renderMainPanel();
       });
 
     mainBodyEl
@@ -1177,16 +1061,6 @@ export function mountSystemHud(
         sceneManager.cancelFleetOrderPlacement();
         statusBannerMessage = 'Cancelled fleet order placement.';
         renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-select-combat-ship]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const shipId = btn.dataset.selectCombatShip ?? null;
-          sceneManager.selectAndPinCombatShip(shipId);
-          renderMainPanel();
-        });
       });
 
     mainBodyEl

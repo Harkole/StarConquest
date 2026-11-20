@@ -1124,5 +1124,42 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     ).toBe(true);
     expect(sim.getFleetsForPlayer('player_1')).toHaveLength(1);
     expect(sim.getShipsInFleet(fleet.id)).toHaveLength(3);
+
+    // 7. Test Orbital Dockyard Fleet Building toggle (defaults to enabled; disabling pauses fleet queueing)
+    expect(dockyard.fleetProductionEnabled).toBe(true);
+    expect(
+      sim.submitCommand({
+        type: 'SET_DOCKYARD_FLEET_BUILDING',
+        playerId: 'player_1',
+        dockyardId: dockyard.id,
+        enabled: false,
+      }).ok,
+    ).toBe(true);
+    expect(dockyard.fleetProductionEnabled).toBe(false);
+
+    // Request an extra Destroyer -> disabled dockyard must NOT pick it up
+    expect(
+      sim.submitCommand({
+        type: 'UPDATE_FLEET_TEMPLATE',
+        playerId: 'player_1',
+        fleetId: fleet.id,
+        desiredCounts: { destroyer: 3 },
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(0.5);
+    expect(dockyard.productionQueue).toHaveLength(0);
+
+    // Re-enabling fleet building immediately resumes queueing
+    expect(
+      sim.submitCommand({
+        type: 'SET_DOCKYARD_FLEET_BUILDING',
+        playerId: 'player_1',
+        dockyardId: dockyard.id,
+        enabled: true,
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(0.5);
+    expect(dockyard.productionQueue).toHaveLength(1);
+    expect(dockyard.productionQueue[0]?.shipClassId).toBe('destroyer');
   });
 });
