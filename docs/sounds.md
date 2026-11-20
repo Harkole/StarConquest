@@ -11,7 +11,9 @@ This document is the canonical source of truth for all music tracks, dynamic aud
 * **HUD Mute / Unmute Behavior**:
   * A dedicated speaker icon toggle button sits in the top-right tactical HUD bar next to the simulation speed controls.
   * **Muted**: Immediately stops music playback (`pause()`) and resets the playhead to `0`.
-  * **Unmuted**: Restarts the active track cleanly from the beginning (`currentTime = 0`) and resumes looping playback.
+  * **Unmuted**: Restarts cleanly from the beginning (`currentTime = 0`) of the track that was playing when muted — unless the music category changed (e.g. entered `combat` state while muted), in which case it starts playing the active category's playlist.
+* **Playlist Shuffling & Looping**:
+  * On load, `AmbientMusicPlayer` shuffles all tracks in the active category (`ambient`) via Fisher-Yates and advances through the shuffled list via the `ended` event, looping back to track 1 once every track has played once.
 * **No Simulation Coupling**: Audio players only observe client state snapshots and UI events; they never mutate authoritative game state.
 
 ---
@@ -22,10 +24,10 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 
 | Track ID | Title | File (`public/audio/`) | Category Flag | Default Volume | Behavior | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `ambient_view_from_perigee` | *The View from Perigee* | `The_View_from_Perigee.mp3` | `ambient` | `0.45` | Continuous loop during non-combat exploration, building, and macro planning | **Implemented** |
-| `ambient_weight_of_the_far_horizon` | *Weight of the Far Horizon* | `Weight_of_the_Far_Horizon.mp3` | `ambient` | `0.45` | Deep-space ambient playlist track for exploration and macro economy phases | **Asset Ready** |
-| `ambient_passing_the_last_horizon` | *Passing The Last Horizon* | `Passing_The_Last_Horizon.mp3` | `ambient` | `0.45` | Deep-space ambient playlist track for exploration and macro economy phases | **Asset Ready** |
-| `ambient_armada_at_the_edge` | *Armada at the Edge* | `Armada_at_the_Edge.mp3` | `ambient` | `0.45` | Deep-space ambient playlist track for exploration and fleet buildup phases | **Asset Ready** |
+| `ambient_view_from_perigee` | *The View from Perigee* | `The_View_from_Perigee.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration, building, and macro planning | **Implemented** |
+| `ambient_weight_of_the_far_horizon` | *Weight of the Far Horizon* | `Weight_of_the_Far_Horizon.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and macro economy phases | **Implemented** |
+| `ambient_passing_the_last_horizon` | *Passing The Last Horizon* | `Passing_The_Last_Horizon.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and macro economy phases | **Implemented** |
+| `ambient_armada_at_the_edge` | *Armada at the Edge* | `Armada_at_the_Edge.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and fleet buildup phases | **Implemented** |
 | `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Asset Ready** *(wire in Step 4)* |
 
 
