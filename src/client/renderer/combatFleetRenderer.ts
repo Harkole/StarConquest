@@ -10,7 +10,6 @@ interface CombatShipRenderEntry {
   readonly group: THREE.Group;
   readonly selectionRing: THREE.Mesh;
   readonly hitMesh: THREE.Mesh;
-  readonly hoverPhase: number;
 }
 
 const HIT_RADIUS_BY_CLASS: Readonly<Record<CombatShipClassId, number>> = {
@@ -79,7 +78,7 @@ export class CombatFleetRenderer {
     shipsInSystem: readonly CombatShipUnitState[],
     selectedShipId: string | null,
     selectedFleetId: string | null,
-    elapsedSeconds: number,
+    _elapsedSeconds = 0,
   ): void {
     const activeIds = new Set<string>();
 
@@ -92,8 +91,7 @@ export class CombatFleetRenderer {
         this.shipsGroup.add(entry.group);
       }
 
-      const hoverY = 1.6 + Math.sin(elapsedSeconds * 1.8 + entry.hoverPhase) * 0.25;
-      entry.group.position.set(ship.position.x, hoverY, ship.position.z);
+      entry.group.position.set(ship.position.x, 1.6, ship.position.z);
       entry.group.rotation.y = ship.headingRadians;
       entry.selectionRing.visible =
         ship.id === selectedShipId ||
@@ -226,7 +224,6 @@ export class CombatFleetRenderer {
     hitMesh.userData.combatShipId = ship.id;
     group.add(hitMesh);
 
-    const hoverPhase = (this.entries.size * 1.37) % (Math.PI * 2);
-    return { group, selectionRing, hitMesh, hoverPhase };
+    return { group, selectionRing, hitMesh };
   }
 }
