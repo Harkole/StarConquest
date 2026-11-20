@@ -18,6 +18,7 @@ import {
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
   SMALLEST_FIRST_FLEET_HULLS,
 } from '../../shared/sim/gameSimulation.ts';
+import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
 
@@ -159,10 +160,15 @@ function formatHarvesterState(
   }
 }
 
+const SPEAKER_UNMUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>`;
+
+const SPEAKER_MUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+
 export function mountSystemHud(
   container: HTMLElement,
   galaxy: GalaxyTopology,
   sceneManager: SystemSceneManager,
+  musicPlayer?: AmbientMusicPlayer,
 ): void {
   const simAdapter = sceneManager.simAdapter;
   const sim = simAdapter.simulation;
@@ -210,6 +216,9 @@ export function mountSystemHud(
       <button class="hud-btn" data-speed="1">1x</button>
       <button class="hud-btn" data-speed="2">2x</button>
       <button class="hud-btn" data-speed="4">4x</button>
+      <button class="hud-btn" data-action="toggle-music" aria-label="Mute ambient music" title="Mute ambient music" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px;">
+        ${SPEAKER_UNMUTED_SVG}
+      </button>
     </div>
   `;
 
@@ -219,6 +228,9 @@ export function mountSystemHud(
   const econHarvestersEl = topBarEl.querySelector<HTMLElement>('#econ-harvesters-val');
   const hubMiningBtnEl = topBarEl.querySelector<HTMLButtonElement>(
     '[data-action="toggle-hub-mining"]',
+  );
+  const musicToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
+    '[data-action="toggle-music"]',
   );
   const speedBtnEls = Array.from(
     topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
@@ -230,6 +242,11 @@ export function mountSystemHud(
     renderEconomyBar();
   });
 
+  musicToggleBtnEl?.addEventListener('click', () => {
+    musicPlayer?.toggleMute();
+    renderEconomyBar();
+  });
+
   for (const btn of speedBtnEls) {
     btn.addEventListener('click', () => {
       const spd = Number(btn.dataset.speed ?? '1');
@@ -237,6 +254,8 @@ export function mountSystemHud(
       renderEconomyBar();
     });
   }
+
+  let lastRenderedMusicMuted: boolean | null = null;
 
   function renderEconomyBar(): void {
     const pState = sim.getPlayerState(playerId);
@@ -253,6 +272,19 @@ export function mountSystemHud(
       hubMiningBtnEl.textContent = crossSystemMiningEnabled
         ? 'Mining: Central Hub'
         : 'Mining: Local System';
+    }
+    if (musicToggleBtnEl) {
+      const isMuted = musicPlayer ? musicPlayer.isMuted() : true;
+      if (isMuted !== lastRenderedMusicMuted) {
+        lastRenderedMusicMuted = isMuted;
+        musicToggleBtnEl.classList.toggle('active', !isMuted);
+        musicToggleBtnEl.innerHTML = isMuted ? SPEAKER_MUTED_SVG : SPEAKER_UNMUTED_SVG;
+        const label = isMuted
+          ? 'Unmute ambient music (restarts from beginning)'
+          : 'Mute ambient music';
+        musicToggleBtnEl.setAttribute('aria-label', label);
+        musicToggleBtnEl.title = label;
+      }
     }
     for (const btn of speedBtnEls) {
       const spd = Number(btn.dataset.speed ?? '1');
