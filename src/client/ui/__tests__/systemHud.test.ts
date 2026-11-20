@@ -181,7 +181,7 @@ describe('systemHud — computeMainPanelSignature', () => {
         dockyardId: dockyard.id,
         targetSystemId: 'system_central_hub',
         targetPosition: { x: 200, z: 120 },
-        stance: 'aggressive_push',
+        stance: 'aggressive',
       }).ok,
     ).toBe(true);
     const sigAfterRally = computeMainPanelSignature(sim, dockParams);

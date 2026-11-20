@@ -13,7 +13,10 @@ import {
   TERRAN_SURFACE_FRAGMENT_SHADER,
   VOLCANIC_ROCK_SURFACE_FRAGMENT_SHADER,
 } from '../shaders/planetShaders.ts';
-import { StationModelLibrary } from './stationModels.ts';
+import {
+  StationModelLibrary,
+  type DockyardBayOrderInfo,
+} from './stationModels.ts';
 
 export interface OrbitalSlotPoint {
   readonly slotIndex: number;
@@ -374,10 +377,25 @@ export function createLivingPlanetGroup(
             const progressRatio = activeOrder
               ? activeOrder.progressSeconds / Math.max(0.1, activeOrder.buildTimeSeconds)
               : null;
+            const dockyardBayOrders: (DockyardBayOrderInfo | null)[] =
+              struct.structureId === 'orbital_dockyard'
+                ? [0, 1].map((bayIdx) => {
+                    const order = struct.productionQueue[bayIdx];
+                    if (!order || order.shipClassId === 'harvester') {
+                      return null;
+                    }
+                    return {
+                      shipClassId: order.shipClassId,
+                      progressRatio:
+                        order.progressSeconds / Math.max(0.1, order.buildTimeSeconds),
+                    };
+                  })
+                : [];
             stationModels.updateStationAnimation(
               stationGroup,
               elapsedSeconds,
               progressRatio,
+              dockyardBayOrders,
             );
           }
         }

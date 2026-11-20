@@ -6,7 +6,10 @@ import type {
 
 export type PlayerSlotId = 'player_1' | 'player_2' | 'player_3' | 'player_4';
 
-export type FleetStance = 'aggressive_push' | 'hold_choke_point' | 'hunt_backline';
+export type FleetStance = 'aggressive' | 'hold_the_line' | 'passive';
+
+/** Shipyard-built combat hulls configurable in Fleet Composition Templates (Fighters auto-launch from Carriers & Logistics Hubs). */
+export type FleetHullClassId = 'destroyer' | 'cruiser' | 'carrier' | 'dreadnought';
 
 export type ResourceTargetFocus = 'auto' | 'ore' | 'crystal';
 
@@ -73,6 +76,91 @@ export interface CancelQueuedShipCommand {
   readonly queueItemId: string;
 }
 
+export interface CreateFleetCommand {
+  readonly type: 'CREATE_FLEET';
+  readonly playerId: PlayerSlotId;
+  readonly name?: string;
+  readonly rallySystemId: string;
+  readonly rallyPosition: Vector2D;
+  readonly stance?: FleetStance;
+  readonly autoResupply?: boolean;
+}
+
+export interface UpdateFleetTemplateCommand {
+  readonly type: 'UPDATE_FLEET_TEMPLATE';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+  readonly desiredCounts: Partial<Record<FleetHullClassId, number>>;
+}
+
+export interface SetFleetStanceCommand {
+  readonly type: 'SET_FLEET_STANCE';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+  readonly stance: FleetStance;
+}
+
+export interface SetFleetResupplyCommand {
+  readonly type: 'SET_FLEET_RESUPPLY';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+  readonly autoResupply: boolean;
+}
+
+export interface OrderFleetMoveCommand {
+  readonly type: 'ORDER_FLEET_MOVE';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+  readonly targetSystemId: string;
+  readonly targetPosition: Vector2D;
+}
+
+export interface OrderFleetAttackCommand {
+  readonly type: 'ORDER_FLEET_ATTACK';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+  readonly targetSystemId: string;
+  readonly targetPosition: Vector2D;
+  readonly targetEntityId?: string;
+}
+
+export interface OrderFleetPatrolCommand {
+  readonly type: 'ORDER_FLEET_PATROL';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+  readonly waypoints: readonly {
+    readonly systemId: string;
+    readonly position: Vector2D;
+  }[];
+}
+
+export interface SplitFleetCommand {
+  readonly type: 'SPLIT_FLEET';
+  readonly playerId: PlayerSlotId;
+  readonly sourceFleetId: string;
+  readonly newFleetName?: string;
+}
+
+export interface MergeFleetsCommand {
+  readonly type: 'MERGE_FLEETS';
+  readonly playerId: PlayerSlotId;
+  readonly sourceFleetId: string;
+  readonly targetFleetId: string;
+}
+
+export interface DisbandFleetCommand {
+  readonly type: 'DISBAND_FLEET';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+}
+
+export interface SetDockyardFleetBuildingCommand {
+  readonly type: 'SET_DOCKYARD_FLEET_BUILDING';
+  readonly playerId: PlayerSlotId;
+  readonly dockyardId: string;
+  readonly enabled: boolean;
+}
+
 export type GameCommand =
   | BuildOrbitalStructureCommand
   | BuildDeepSpaceStructureCommand
@@ -80,4 +168,15 @@ export type GameCommand =
   | SetRallyPointCommand
   | SetPatrolRouteCommand
   | SetRefineryTargetCommand
-  | CancelQueuedShipCommand;
+  | CancelQueuedShipCommand
+  | CreateFleetCommand
+  | UpdateFleetTemplateCommand
+  | SetFleetStanceCommand
+  | SetFleetResupplyCommand
+  | OrderFleetMoveCommand
+  | OrderFleetAttackCommand
+  | OrderFleetPatrolCommand
+  | SplitFleetCommand
+  | MergeFleetsCommand
+  | DisbandFleetCommand
+  | SetDockyardFleetBuildingCommand;

@@ -3,11 +3,11 @@ import {
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
-  type CombatShipClassId,
   type DeepSpaceStructureId,
   type OrbitalStructureId,
 } from '../../shared/config/index.ts';
 import type {
+  FleetHullClassId,
   FleetStance,
   ResourceTargetFocus,
 } from '../../shared/protocol/commands.ts';
@@ -16,6 +16,7 @@ import {
   type GameSimulation,
   type HarvesterActivityState,
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
+  SMALLEST_FIRST_FLEET_HULLS,
 } from '../../shared/sim/gameSimulation.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
@@ -34,18 +35,10 @@ const BUILDABLE_DEEP_SPACE_IDS: readonly DeepSpaceStructureId[] = [
   'hull_breaker_tower',
 ];
 
-const BUILDABLE_COMBAT_SHIP_IDS: readonly CombatShipClassId[] = [
-  'fighter',
-  'destroyer',
-  'cruiser',
-  'carrier',
-  'dreadnought',
-];
-
 const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label: string }[] = [
-  { id: 'aggressive_push', label: 'Aggressive Push' },
-  { id: 'hold_choke_point', label: 'Hold Choke Point' },
-  { id: 'hunt_backline', label: 'Hunt Backline' },
+  { id: 'aggressive', label: 'Aggressive' },
+  { id: 'hold_the_line', label: 'Hold the Line' },
+  { id: 'passive', label: 'Passive' },
 ];
 
 export interface MainPanelSignatureParams {
@@ -85,7 +78,8 @@ export function computeMainPanelSignature(
         ? `${s.rallyPoint.systemId}:${Math.round(s.rallyPoint.position.x)},${Math.round(s.rallyPoint.position.z)}`
         : 'none';
       const patrolSig = `${s.patrolWaypoints?.length ?? 0}`;
-      return `${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${s.fleetStance ?? 'default'}:${rallySig}:${patrolSig}:${queueIds}`;
+      const fleetBuildSig = s.fleetProductionEnabled === false ? 0 : 1;
+      return `${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${s.fleetStance ?? 'default'}:${rallySig}:${patrolSig}:${fleetBuildSig}:${queueIds}`;
     })
     .join(';');
 
@@ -116,6 +110,15 @@ export function computeMainPanelSignature(
     .map((wh) => `${wh.id}:${wh.isOpen ? 1 : 0}`)
     .join(',');
 
+  const fleetSig = sim
+    .getAllFleets()
+    .map((f) => {
+      const counts = SMALLEST_FIRST_FLEET_HULLS.map((h) => f.desiredCounts[h]).join('/');
+      const live = sim.getShipsInFleet(f.id).length;
+      return `${f.id}:${f.stance}:${f.autoResupply ? 1 : 0}:${f.orderType}:${f.orderSystemId}:${Math.round(f.orderPosition.x)},${Math.round(f.orderPosition.z)}:${live}:${counts}`;
+    })
+    .join(';');
+
   return [
     params.activeSystemId,
     params.selectedPlanetId,
@@ -129,6 +132,7 @@ export function computeMainPanelSignature(
     assignedCombatShipSig,
     deepSpaceSig,
     wormholeSig,
+    fleetSig,
   ].join('|');
 }
 
@@ -167,8 +171,8 @@ export function mountSystemHud(
   let selectedSlotIndex = 2;
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
-  let autoRepeatDockyardOrders = false;
-  let selectedFleetStance: FleetStance = 'aggressive_push';
+  let selectedFleetStance: FleetStance = 'aggressive';
+  let isFleetPanelCollapsed = false;
 
   const topBarEl = document.createElement('div');
   topBarEl.className = 'hud-econ-bar';
@@ -614,81 +618,16 @@ export function mountSystemHud(
 
       let dockyardControlsHtml = '';
       if (isOperationalDockyard) {
-        const pendingOrder = sceneManager.getPendingFleetOrder();
-        const isRallyPending =
-          pendingOrder?.mode === 'rally' &&
-          pendingOrder.dockyardId === selectedStruct.id;
-        const isPatrolPending =
-          pendingOrder?.mode === 'patrol' &&
-          pendingOrder.dockyardId === selectedStruct.id;
-        const currentStance = selectedStruct.fleetStance ?? selectedFleetStance;
-        const assignedCombatShips = sim
-          .getAllCombatShips()
-          .filter(
-            (s) => s.ownerId === playerId && s.homeDockyardId === selectedStruct.id,
-          );
-        const selectedCombatShipId = sceneManager.getSelectedCombatShipId();
-
-        const orderSummary =
-          selectedStruct.patrolWaypoints && selectedStruct.patrolWaypoints.length >= 2
-            ? `Patrol Route (${selectedStruct.patrolWaypoints.length} waypoints)`
-            : selectedStruct.rallyPoint
-              ? `Rally: ${galaxy.systems.find((sys) => sys.id === selectedStruct.rallyPoint?.systemId)?.name ?? selectedStruct.rallyPoint.systemId} (${Math.round(selectedStruct.rallyPoint.position.x)}, ${Math.round(selectedStruct.rallyPoint.position.z)})`
-              : 'Default Slipway Rally';
-
-        const shipButtonsHtml = BUILDABLE_COMBAT_SHIP_IDS.map((shipId) => {
-          const sCfg = SHIP_CLASSES[shipId];
-          const check = sim.validateCombatShipOrder(playerId, selectedStruct.id, shipId);
-          const lockTag = !check.ok && check.reason ? ` • ${check.reason}` : '';
-          return `<button class="hud-btn" data-queue-combat="${shipId}" data-dockyard-id="${selectedStruct.id}" title="${sCfg.displayName}: ${sCfg.cost.ore} Ore / ${sCfg.cost.crystal} Crystal / ${sCfg.supplyCost} Supply / ${sCfg.buildTimeSeconds}s${lockTag}">
-            + ${sCfg.displayName} (${sCfg.cost.ore}O/${sCfg.cost.crystal}C • ${sCfg.supplyCost}S • ${sCfg.buildTimeSeconds}s)
-          </button>`;
-        }).join('');
-
-        const stanceButtonsHtml = FLEET_STANCE_OPTIONS.map(
-          (opt) =>
-            `<button class="hud-btn ${currentStance === opt.id ? 'active' : ''}" data-select-stance="${opt.id}">${opt.label}</button>`,
-        ).join('');
-
-        const fleetChipsHtml =
-          assignedCombatShips.length > 0
-            ? assignedCombatShips
-                .map((ship, idx) => {
-                  const sCfg = SHIP_CLASSES[ship.shipClassId];
-                  const isSel = ship.id === selectedCombatShipId;
-                  return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-combat-ship="${ship.id}" title="Click to follow ${sCfg.displayName}">
-                    ${sCfg.displayName} #${idx + 1}
-                    <span class="hud-badge">${ship.state.replace(/_/g, ' ').toUpperCase()}</span>
-                  </button>`;
-                })
-                .join('')
-            : '<span class="econ-label" style="opacity: 0.7;">No ships launched yet</span>';
-
+        const fleetBuildEnabled = selectedStruct.fleetProductionEnabled !== false;
         dockyardControlsHtml = `
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">SHIP PRODUCTION:</span>
-            <button class="hud-btn ${autoRepeatDockyardOrders ? 'active' : ''}" data-action="toggle-autorepeat">
-              Auto-Repeat: ${autoRepeatDockyardOrders ? 'ON ↻' : 'OFF'}
-            </button>
-            ${shipButtonsHtml}
+          <div style="margin-top: 6px; font-size: 12px; opacity: 0.85;">
+            Dual-bay orbital dry-dock (2 parallel slipways). Automatically constructs and resupplies ships for active Fleet templates.
           </div>
           <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">FLEET ORDERS (${orderSummary}):</span>
-            <button class="hud-btn ${isRallyPending ? 'active' : ''}" data-action="set-rally" data-dockyard-id="${selectedStruct.id}">
-              ${isRallyPending ? 'Click 3D Space for Rally Point...' : 'Set Rally Point (Click 3D)'}
+            <span class="econ-label" style="margin-right: 4px;">FLEET BUILDING:</span>
+            <button class="hud-btn ${fleetBuildEnabled ? 'active' : ''}" data-toggle-dockyard-fleet-building="${selectedStruct.id}">
+              ${fleetBuildEnabled ? 'Enabled (Supplying Fleets)' : 'Disabled (Paused)'}
             </button>
-            <button class="hud-btn ${isPatrolPending ? 'active' : ''}" data-action="set-patrol" data-dockyard-id="${selectedStruct.id}">
-              ${isPatrolPending ? `Click Waypoint #${(pendingOrder?.waypointCount ?? 0) + 1} of 2...` : 'Set Patrol Route (2 Clicks)'}
-            </button>
-            ${pendingOrder ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">FLEET STANCE:</span>
-            ${stanceButtonsHtml}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">DOCKYARD FLEET (${assignedCombatShips.length}):</span>
-            ${fleetChipsHtml}
           </div>
         `;
       }
@@ -793,6 +732,98 @@ export function mountSystemHud(
           </div>`
         : '';
 
+    const playerFleets = sim.getFleetsForPlayer(playerId);
+    const selectedFleetId = sceneManager.getSelectedFleetId();
+    const pendingOrderGlobal = sceneManager.getPendingFleetOrder();
+    const isCreateFleetPending = pendingOrderGlobal?.mode === 'create_fleet';
+
+    const fleetTabsHtml = playerFleets
+      .map((f) => {
+        const liveCount = sim.getShipsInFleet(f.id).length;
+        const targetCount = SMALLEST_FIRST_FLEET_HULLS.reduce(
+          (acc, h) => acc + f.desiredCounts[h],
+          0,
+        );
+        const isSel = f.id === selectedFleetId;
+        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-fleet="${f.id}" title="Click to select and focus camera on ${f.name}">
+          ${f.name}
+          <span class="hud-badge">${liveCount}/${targetCount}${f.autoResupply ? ' ↻' : ''}</span>
+        </button>`;
+      })
+      .join('');
+
+    const selectedFleet = selectedFleetId
+      ? playerFleets.find((f) => f.id === selectedFleetId)
+      : undefined;
+    let selectedFleetDetailHtml = '';
+    if (selectedFleet) {
+      const fleetShips = sim.getShipsInFleet(selectedFleet.id);
+      const isFleetPatrolPending =
+        pendingOrderGlobal?.mode === 'fleet_patrol' &&
+        pendingOrderGlobal.fleetId === selectedFleet.id;
+      const otherFleets = playerFleets.filter((f) => f.id !== selectedFleet.id);
+      const techCount = sim.getPlayerTechModuleCount(playerId);
+
+      const templateRowsHtml = SMALLEST_FIRST_FLEET_HULLS.map((hull) => {
+        const sCfg = SHIP_CLASSES[hull];
+        const live = fleetShips.filter((s) => s.shipClassId === hull).length;
+        const desired = selectedFleet.desiredCounts[hull];
+        const techLock =
+          techCount < sCfg.requiredTechModuleCount
+            ? ` (Req ${sCfg.requiredTechModuleCount} Tech)`
+            : '';
+        return `<div style="display: inline-flex; align-items: center; gap: 4px; margin-right: 10px;">
+          <span class="econ-label">${sCfg.displayName}${techLock}: <strong>${live}/${desired}</strong></span>
+          <button class="hud-btn" data-fleet-dec="${hull}" data-fleet-id="${selectedFleet.id}" ${desired <= 0 ? 'disabled' : ''}>−</button>
+          <button class="hud-btn" data-fleet-inc="${hull}" data-fleet-id="${selectedFleet.id}">+</button>
+        </div>`;
+      }).join('');
+
+      const fleetStanceBtns = FLEET_STANCE_OPTIONS.map(
+        (opt) =>
+          `<button class="hud-btn ${selectedFleet.stance === opt.id ? 'active' : ''}" data-fleet-stance="${opt.id}" data-fleet-id="${selectedFleet.id}">${opt.label}</button>`,
+      ).join('');
+
+      const mergeBtns = otherFleets
+        .map(
+          (other) =>
+            `<button class="hud-btn" data-fleet-merge-src="${selectedFleet.id}" data-fleet-merge-dst="${other.id}">Merge → ${other.name}</button>`,
+        )
+        .join('');
+
+      selectedFleetDetailHtml = `
+        <div class="slot-detail-box" style="flex-direction: column; align-items: stretch; margin-top: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div>
+              <strong>${selectedFleet.name}</strong> — ${fleetShips.length} ships • Right-click 3D space to Move
+            </div>
+            <div class="hud-btn-row">
+              <button class="hud-btn" data-fleet-focus="${selectedFleet.id}" title="Jump camera to ${selectedFleet.name}">
+                Focus
+              </button>
+              <button class="hud-btn ${selectedFleet.autoResupply ? 'active' : ''}" data-fleet-resupply="${selectedFleet.id}">
+                Resupply: ${selectedFleet.autoResupply ? 'ON ↻' : 'OFF'}
+              </button>
+              <button class="hud-btn ${isFleetPatrolPending ? 'active' : ''}" data-fleet-patrol="${selectedFleet.id}">
+                ${isFleetPatrolPending ? `Patrol Wp #${(pendingOrderGlobal?.waypointCount ?? 0) + 1}/2...` : 'Patrol Route (2 Clicks)'}
+              </button>
+              <button class="hud-btn" data-fleet-split="${selectedFleet.id}" ${fleetShips.length < 2 ? 'disabled' : ''}>Split</button>
+              ${mergeBtns}
+              <button class="hud-btn" data-fleet-disband="${selectedFleet.id}">Disband</button>
+            </div>
+          </div>
+          <div class="hud-btn-row" style="margin-top: 6px;">
+            <span class="econ-label" style="margin-right: 4px;">TEMPLATE (SMALLEST FIRST):</span>
+            ${templateRowsHtml}
+          </div>
+          <div class="hud-btn-row" style="margin-top: 6px;">
+            <span class="econ-label" style="margin-right: 4px;">STANCE:</span>
+            ${fleetStanceBtns}
+          </div>
+        </div>
+      `;
+    }
+
     mainBodyEl.innerHTML = `
       <div class="hud-header">
         <div>
@@ -805,6 +836,29 @@ export function mountSystemHud(
       <div class="hud-section">
         <div class="hud-label">5-System Hub & Spoke Galaxy</div>
         <div class="hud-btn-row">${systemButtonsHtml}</div>
+      </div>
+
+      <div class="hud-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isFleetPanelCollapsed ? '0' : '6px'};">
+          <div class="hud-label" style="margin-bottom: 0;">
+            Fleet Command (${playerFleets.length}) — Click Any Ship or Tab to Focus Fleet
+          </div>
+          <button class="hud-btn" data-action="toggle-fleet-panel" title="${isFleetPanelCollapsed ? 'Expand Fleet Command panel' : 'Collapse Fleet Command panel'}">
+            ${isFleetPanelCollapsed ? 'Expand ▼' : 'Collapse ▲'}
+          </button>
+        </div>
+        ${
+          isFleetPanelCollapsed
+            ? ''
+            : `<div class="hud-btn-row">
+                <button class="hud-btn ${isCreateFleetPending ? 'active' : ''}" data-action="create-fleet">
+                  ${isCreateFleetPending ? 'Click 3D Space for Fleet Rally Point...' : '+ Create Fleet (Click 3D Rally)'}
+                </button>
+                ${fleetTabsHtml}
+                ${pendingOrderGlobal ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
+              </div>
+              ${selectedFleetDetailHtml}`
+        }
       </div>
 
       <div class="hud-section">
@@ -993,69 +1047,27 @@ export function mountSystemHud(
       });
 
     mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="toggle-autorepeat"]')
-      ?.addEventListener('click', () => {
-        autoRepeatDockyardOrders = !autoRepeatDockyardOrders;
-        renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-queue-combat]')
+      .querySelectorAll<HTMLButtonElement>('[data-toggle-dockyard-fleet-building]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const shipClassId = btn.dataset.queueCombat as CombatShipClassId | undefined;
-          const dockyardId = btn.dataset.dockyardId;
-          if (!shipClassId || !dockyardId) {
-            return;
-          }
+          const dockyardId = btn.dataset.toggleDockyardFleetBuilding;
+          if (!dockyardId) return;
+          const found = sim.getStructureById(dockyardId);
+          if (!found) return;
+          const nextEnabled = found.structure.fleetProductionEnabled === false;
           const res = simAdapter.submitPlayerCommand({
-            type: 'QUEUE_SHIP',
+            type: 'SET_DOCKYARD_FLEET_BUILDING',
             playerId,
-            dockyardOrRefineryId: dockyardId,
-            shipClassId,
-            autoRepeat: autoRepeatDockyardOrders,
+            dockyardId,
+            enabled: nextEnabled,
           });
           statusBannerMessage = res.ok
-            ? `Queued ${SHIP_CLASSES[shipClassId].displayName}${autoRepeatDockyardOrders ? ' (Auto-Repeat ↻)' : ''}`
-            : `Cannot queue ship: ${res.reason}`;
-          renderEconomyBar();
+            ? nextEnabled
+              ? 'Orbital Dockyard enabled for Fleet building.'
+              : 'Orbital Dockyard paused for Fleet building.'
+            : `Cannot update Dockyard: ${res.reason}`;
           renderMainPanel();
         });
-      });
-
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-select-stance]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const stance = btn.dataset.selectStance as FleetStance | undefined;
-          if (stance) {
-            selectedFleetStance = stance;
-            statusBannerMessage = `Fleet stance set to ${stance.replace(/_/g, ' ')}`;
-            renderMainPanel();
-          }
-        });
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="set-rally"]')
-      ?.addEventListener('click', (e) => {
-        const dockyardId = (e.currentTarget as HTMLButtonElement).dataset.dockyardId;
-        if (!dockyardId) return;
-        sceneManager.startRallyPointPlacement(dockyardId, selectedFleetStance);
-        statusBannerMessage =
-          'Click any point in 3D space (in this or another star system) to set the Dockyard Rally Point (Esc to cancel).';
-        renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="set-patrol"]')
-      ?.addEventListener('click', (e) => {
-        const dockyardId = (e.currentTarget as HTMLButtonElement).dataset.dockyardId;
-        if (!dockyardId) return;
-        sceneManager.startPatrolRoutePlacement(dockyardId, selectedFleetStance);
-        statusBannerMessage =
-          'Click 2 points in 3D space to create a Patrol Route loop (Esc to cancel).';
-        renderMainPanel();
       });
 
     mainBodyEl
@@ -1067,11 +1079,192 @@ export function mountSystemHud(
       });
 
     mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-select-combat-ship]')
+      .querySelector<HTMLButtonElement>('[data-action="toggle-fleet-panel"]')
+      ?.addEventListener('click', () => {
+        isFleetPanelCollapsed = !isFleetPanelCollapsed;
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="create-fleet"]')
+      ?.addEventListener('click', () => {
+        sceneManager.startCreateFleetPlacement(selectedFleetStance, true);
+        statusBannerMessage =
+          'Click any point in 3D space (in any star system) to place the new Fleet Rally Point (Esc to cancel).';
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-select-fleet]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const shipId = btn.dataset.selectCombatShip ?? null;
-          sceneManager.selectAndPinCombatShip(shipId);
+          const fId = btn.dataset.selectFleet ?? null;
+          if (fId) {
+            sceneManager.focusFleet(fId);
+          } else {
+            sceneManager.selectFleet(null);
+          }
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-focus]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetFocus;
+          if (fId) {
+            sceneManager.focusFleet(fId);
+            renderMainPanel();
+          }
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-inc]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const hull = btn.dataset.fleetInc as FleetHullClassId | undefined;
+          const fId = btn.dataset.fleetId;
+          if (!hull || !fId) return;
+          const fleet = sim.getFleetById(fId);
+          if (!fleet) return;
+          simAdapter.submitPlayerCommand({
+            type: 'UPDATE_FLEET_TEMPLATE',
+            playerId,
+            fleetId: fId,
+            desiredCounts: { [hull]: fleet.desiredCounts[hull] + 1 },
+          });
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-dec]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const hull = btn.dataset.fleetDec as FleetHullClassId | undefined;
+          const fId = btn.dataset.fleetId;
+          if (!hull || !fId) return;
+          const fleet = sim.getFleetById(fId);
+          if (!fleet) return;
+          simAdapter.submitPlayerCommand({
+            type: 'UPDATE_FLEET_TEMPLATE',
+            playerId,
+            fleetId: fId,
+            desiredCounts: { [hull]: Math.max(0, fleet.desiredCounts[hull] - 1) },
+          });
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-resupply]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetResupply;
+          if (!fId) return;
+          const fleet = sim.getFleetById(fId);
+          if (!fleet) return;
+          simAdapter.submitPlayerCommand({
+            type: 'SET_FLEET_RESUPPLY',
+            playerId,
+            fleetId: fId,
+            autoResupply: !fleet.autoResupply,
+          });
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-stance]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const stance = btn.dataset.fleetStance as FleetStance | undefined;
+          const fId = btn.dataset.fleetId;
+          if (!stance || !fId) return;
+          simAdapter.submitPlayerCommand({
+            type: 'SET_FLEET_STANCE',
+            playerId,
+            fleetId: fId,
+            stance,
+          });
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-patrol]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetPatrol;
+          if (!fId) return;
+          sceneManager.startFleetPatrolPlacement(fId);
+          statusBannerMessage =
+            'Click 2 points in 3D space to set the Fleet Patrol Route (Esc to cancel).';
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-split]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetSplit;
+          if (!fId) return;
+          const res = simAdapter.submitPlayerCommand({
+            type: 'SPLIT_FLEET',
+            playerId,
+            sourceFleetId: fId,
+          });
+          statusBannerMessage = res.ok
+            ? 'Split ships into a new Fleet.'
+            : `Cannot split fleet: ${res.reason}`;
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-merge-src]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const src = btn.dataset.fleetMergeSrc;
+          const dst = btn.dataset.fleetMergeDst;
+          if (!src || !dst) return;
+          const res = simAdapter.submitPlayerCommand({
+            type: 'MERGE_FLEETS',
+            playerId,
+            sourceFleetId: src,
+            targetFleetId: dst,
+          });
+          if (res.ok) {
+            sceneManager.selectFleet(dst);
+          }
+          statusBannerMessage = res.ok
+            ? 'Merged fleets.'
+            : `Cannot merge fleets: ${res.reason}`;
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-disband]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetDisband;
+          if (!fId) return;
+          const res = simAdapter.submitPlayerCommand({
+            type: 'DISBAND_FLEET',
+            playerId,
+            fleetId: fId,
+          });
+          if (res.ok) {
+            sceneManager.selectFleet(null);
+          }
+          statusBannerMessage = res.ok
+            ? 'Disbanded fleet and refunded queued replacements.'
+            : `Cannot disband fleet: ${res.reason}`;
+          renderEconomyBar();
           renderMainPanel();
         });
       });
