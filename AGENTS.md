@@ -132,3 +132,7 @@ Every agent must strictly follow this source-control workflow when making code c
 4. **Autonomous `git` & `npm` Execution**:
    * Do not ask the user for chat confirmation before running routine `git` actions (branch creation, status, diff, staging, committing on the working branch) or `npm` actions (`npm install`, `npm run build`, `npm test`, `npm run dev`).
    * Always invoke `git` and `npm` as single, direct, prefix-matchable commands (avoiding `&&`, `;`, or subshells) so that Antigravity's **Always Allow** prefix approval applies automatically without re-prompting.
+5. **Semantic Versioning (`package.json`)**:
+   * Once the user agrees a branch is complete (prior to final push/PR), bump `"version"` in `package.json`:
+     * **Feature branches (`feature/*`)**: Increment the **minor** version upon agreeing no further work will be completed in the branch. This minor version is always incremented by 1 from it's current value, (`0.(X+1).0`) with no cap or reset. Each **minor** version change always resets the **patch** value to `0`
+     * **Bug fixes & chores (`fix/*`, `task/*`)**: Increment the **patch** version (`0.X.Y` → `0.X.(Y+1)`), which resets to `0` on the next major feature branch.
