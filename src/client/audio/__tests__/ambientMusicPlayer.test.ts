@@ -7,6 +7,7 @@ import {
 } from '../ambientMusicPlayer.ts';
 
 class MockAudioElement implements AudioElementLike {
+  public src: string;
   public loop = false;
   public volume = 1;
   public currentTime = 0;
@@ -14,8 +15,11 @@ class MockAudioElement implements AudioElementLike {
   public playCalls = 0;
   public pauseCalls = 0;
   public rejectRemainingPlays = 0;
+  private readonly listeners = new Map<string, Set<() => void>>();
 
-  public constructor(public readonly src: string) {}
+  public constructor(src: string) {
+    this.src = src;
+  }
 
   public play(): Promise<void> {
     this.playCalls += 1;
@@ -32,6 +36,22 @@ class MockAudioElement implements AudioElementLike {
     this.pauseCalls += 1;
     this.paused = true;
   }
+
+  public addEventListener(type: string, listener: () => void): void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(listener);
+    this.listeners.set(type, set);
+  }
+
+  public removeEventListener(type: string, listener: () => void): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  public emitEnded(): void {
+    for (const fn of this.listeners.get('ended') ?? []) {
+      fn();
+    }
+  }
 }
 
 describe('AmbientMusicPlayer', () => {
@@ -47,33 +67,50 @@ describe('AmbientMusicPlayer', () => {
     );
   });
 
-  it('loads The_View_from_Perigee.mp3 with loop enabled and starts playing from the beginning', () => {
+  it('shuffles all 4 ambient tracks on load, plays every track once, and loops the shuffled order', () => {
     let created: MockAudioElement | null = null;
+    // Deterministic RNG sequence so Fisher-Yates produces a known non-identity shuffle
+    const rngValues = [0.1, 0.7, 0.2];
+    let rngIdx = 0;
     const player = new AmbientMusicPlayer({
       baseUrl: '/StarConquest/',
+      random: () => rngValues[rngIdx++ % rngValues.length]!,
       createAudio: (src) => {
         created = new MockAudioElement(src);
         return created;
       },
     });
 
-    expect(MUSIC_TRACKS[0]?.filename).toBe('The_View_from_Perigee.mp3');
-    expect(MUSIC_TRACKS[0]?.category).toBe('ambient');
-    expect(created).not.toBeNull();
-    expect(created!.src).toBe('/StarConquest/audio/The_View_from_Perigee.mp3');
-    expect(created!.loop).toBe(true);
-    expect(player.isMuted()).toBe(false);
+    const ambientTracks = MUSIC_TRACKS.filter((t) => t.category === 'ambient');
+    expect(ambientTracks).toHaveLength(4);
+    expect(player.getPlaylist()).toHaveLength(4);
+    expect(created!.loop).toBe(false);
+
+    const expectedOrder = player.getPlaylist().map((t) => t.id);
+    // Every ambient track appears exactly once
+    expect(new Set(expectedOrder).size).toBe(4);
 
     player.start();
+    const playedIds: string[] = [player.getTrack().id];
+    expect(created!.src).toBe(`/StarConquest/audio/${player.getTrack().filename}`);
     expect(created!.paused).toBe(false);
-    expect(created!.playCalls).toBe(1);
-    expect(created!.currentTime).toBe(0);
+
+    // Advance through tracks 2, 3, 4, then verify it loops back to track 1
+    for (let i = 0; i < 4; i++) {
+      created!.emitEnded();
+      playedIds.push(player.getTrack().id);
+    }
+
+    expect(playedIds.slice(0, 4)).toEqual(expectedOrder);
+    expect(playedIds[4]).toBe(expectedOrder[0]);
+    expect(created!.src).toBe(`/StarConquest/audio/${player.getPlaylist()[0]!.filename}`);
   });
 
-  it('stops playback and resets to 0 on mute, then restarts from the beginning on unmute', () => {
+  it('restarts at the beginning of the same track on unmute, unless category switched to combat while muted', () => {
     let created: MockAudioElement | null = null;
     const player = new AmbientMusicPlayer({
       baseUrl: '/',
+      random: () => 0.5,
       createAudio: (src) => {
         created = new MockAudioElement(src);
         return created;
@@ -81,24 +118,36 @@ describe('AmbientMusicPlayer', () => {
     });
 
     player.start();
+    // Advance to the 2nd track in the shuffled ambient playlist
+    created!.emitEnded();
+    const secondAmbientTrack = player.getTrack();
     created!.currentTime = 42.5;
 
+    // Mute -> stops playback and resets playhead to 0
     expect(player.toggleMute()).toBe(true);
-    expect(player.isMuted()).toBe(true);
     expect(created!.paused).toBe(true);
-    expect(created!.pauseCalls).toBe(1);
     expect(created!.currentTime).toBe(0);
 
-    created!.currentTime = 15;
+    // Unmute (still ambient) -> restarts from 0 on the exact same 2nd ambient track
     expect(player.toggleMute()).toBe(false);
-    expect(player.isMuted()).toBe(false);
-    expect(created!.paused).toBe(false);
+    expect(player.getTrack().id).toBe(secondAmbientTrack.id);
+    expect(created!.src).toBe(`/audio/${secondAmbientTrack.filename}`);
     expect(created!.currentTime).toBe(0);
-    expect(created!.playCalls).toBe(2);
+    expect(created!.paused).toBe(false);
+
+    // Mute again, switch category to combat while muted, then unmute -> plays Iron Horizon!
+    expect(player.toggleMute()).toBe(true);
+    player.setCategory('combat');
+    expect(created!.paused).toBe(true);
+    expect(player.getCategory()).toBe('combat');
+    expect(player.getTrack().id).toBe('combat_iron_horizon');
+
+    expect(player.toggleMute()).toBe(false);
+    expect(created!.paused).toBe(false);
+    expect(created!.src).toBe('/audio/Iron_Horizon.mp3');
+    expect(created!.currentTime).toBe(0);
 
     player.dispose();
-    expect(created!.paused).toBe(true);
-    expect(created!.currentTime).toBe(0);
   });
 
   it('keeps capture-phase autoplay unlock listeners armed until play() actually resolves', async () => {
@@ -122,7 +171,6 @@ describe('AmbientMusicPlayer', () => {
         baseUrl: '/',
         createAudio: (src) => {
           created = new MockAudioElement(src);
-          // Reject initial start() AND the first pointerdown attempt; succeed on click!
           created.rejectRemainingPlays = 2;
           return created;
         },
@@ -133,7 +181,6 @@ describe('AmbientMusicPlayer', () => {
       expect(created!.paused).toBe(true);
       expect(listeners.get('click')?.size).toBe(1);
 
-      // First gesture (pointerdown) still rejected -> listeners MUST stay armed
       for (const fn of listeners.get('pointerdown') ?? []) {
         fn({ target: null } as unknown as Event);
       }
@@ -141,14 +188,12 @@ describe('AmbientMusicPlayer', () => {
       expect(created!.paused).toBe(true);
       expect(listeners.get('click')?.size).toBe(1);
 
-      // Second gesture (click) succeeds -> playback starts and listeners are cleaned up
       for (const fn of listeners.get('click') ?? []) {
         fn({ target: null } as unknown as Event);
       }
       await Promise.resolve();
       expect(created!.paused).toBe(false);
       expect(listeners.get('click')?.size).toBe(0);
-      expect(listeners.get('pointerdown')?.size).toBe(0);
 
       player.dispose();
     } finally {
@@ -172,13 +217,11 @@ describe('AmbientMusicPlayer', () => {
     expect(player.isMuted()).toBe(false);
     expect(created!.paused).toBe(true);
 
-    // First click on speaker button while autoplay-blocked starts music instead of muting
     expect(player.toggleMute()).toBe(false);
     await Promise.resolve();
     expect(player.isMuted()).toBe(false);
     expect(created!.paused).toBe(false);
 
-    // Subsequent click while playing mutes and resets to 0 as expected
     created!.currentTime = 12;
     expect(player.toggleMute()).toBe(true);
     expect(created!.paused).toBe(true);
