@@ -324,3 +324,8 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
   * **Live Data-Driven Unit & Structure Reference**: Automatically pulls costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/` so stats never drift out of sync with balance changes.
   * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
+
+### Wormhole Interaction & Collapsible HUD Sections
+* **Double-Click Wormhole Camera Transit**: Double-clicking a wormhole in 3D space (or in the HUD) should switch the camera to the connected star system and focus directly on the wormhole's exit point.
+* **Right-Click Wormhole Fleet Transit**: Right-clicking a wormhole while a fleet is selected should order the fleet to transit through that wormhole and hold position at the exit point in the connected star system.
+* **Collapsible HUD Sections**: Add a collapse/expand toggle button (`Collapse ▲` / `Expand ▼`) to every tactical HUD section (matching the Fleet Command panel) so players can minimize sections they are not actively using.
