@@ -1045,7 +1045,13 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
 
     // 3. Advance 12s -> BOTH Destroyers finish in parallel (dual-bay construction!), and Cruiser starts immediately!
     sim.stepTick(12.0);
-    expect(sim.getShipsInFleet(fleet.id)).toHaveLength(2);
+    const firstBatch = sim.getShipsInFleet(fleet.id);
+    expect(firstBatch).toHaveLength(2);
+    // Regression check: BOTH parallel-spawned ships must target the fleet's green rally point (not a mid-transit sibling)
+    for (const s of firstBatch) {
+      expect(s.targetSystemId).toBe('system_starter_1');
+      expect(s.targetPosition).toEqual({ x: 220, z: 120 });
+    }
     expect(dockyard.productionQueue).toHaveLength(1);
     expect(dockyard.productionQueue[0]?.shipClassId).toBe('cruiser');
 
@@ -1053,6 +1059,18 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     sim.stepTick(20.5);
     const fleetShips = sim.getShipsInFleet(fleet.id);
     expect(fleetShips).toHaveLength(3);
+    for (const s of fleetShips) {
+      expect(s.targetPosition).toEqual({ x: 220, z: 120 });
+    }
+
+    // Advance until all 3 ships reach the rally point formation
+    for (let i = 0; i < 40; i++) {
+      sim.stepTick(0.5);
+    }
+    for (const s of fleetShips) {
+      expect(s.state).toBe('holding_position');
+      expect(Math.hypot(s.position.x - 220, s.position.z - 120)).toBeLessThan(35);
+    }
 
     // Formation cruise speed equals the slowest ship (Cruiser = 44 u/s, not Destroyer = 68 u/s)
     expect(sim.getFleetCruiseSpeed(fleet.id)).toBe(44);

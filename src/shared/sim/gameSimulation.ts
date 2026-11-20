@@ -2030,8 +2030,6 @@ export class GameSimulation {
     let initialState: CombatShipActivityState = 'moving_to_rally';
 
     if (fleet) {
-      // Replacements fly straight to the fleet's live current position (or its Rally Point if empty)
-      const liveAnchor = this.getFleetLiveAnchor(fleet.id);
       if (patrolWaypoints.length >= 2) {
         const wp = patrolWaypoints[fleet.patrolIndex % patrolWaypoints.length]!;
         targetSystemId = wp.systemId;
@@ -2040,11 +2038,13 @@ export class GameSimulation {
           planetState.planet.systemId === wp.systemId
             ? 'patrolling'
             : 'transiting_wormhole';
-      } else if (liveAnchor) {
-        targetSystemId = liveAnchor.systemId;
-        targetPosition = { x: liveAnchor.position.x, z: liveAnchor.position.z };
+      } else {
+        // Every ship built for a fleet flies directly to the fleet's active rally/order destination
+        // rather than a mid-transit sibling's live centroid near the dockyard/asteroid belt.
+        targetSystemId = fleet.orderSystemId;
+        targetPosition = { x: fleet.orderPosition.x, z: fleet.orderPosition.z };
         initialState =
-          planetState.planet.systemId === liveAnchor.systemId
+          planetState.planet.systemId === fleet.orderSystemId
             ? 'moving_to_rally'
             : 'transiting_wormhole';
       }
