@@ -23,6 +23,9 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 | Track ID | Title | File (`public/audio/`) | Category Flag | Default Volume | Behavior | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `ambient_view_from_perigee` | *The View from Perigee* | `The_View_from_Perigee.mp3` | `ambient` | `0.45` | Continuous loop during non-combat exploration, building, and macro planning | **Implemented** |
+| `ambient_weight_of_the_far_horizon` | *Weight of the Far Horizon* | `Weight_of_the_Far_Horizon.mp3` | `ambient` | `0.45` | Deep-space ambient playlist track for exploration and macro economy phases | **Asset Ready** |
+| `ambient_passing_the_last_horizon` | *Passing The Last Horizon* | `Passing_The_Last_Horizon.mp3` | `ambient` | `0.45` | Deep-space ambient playlist track for exploration and macro economy phases | **Asset Ready** |
+| `ambient_armada_at_the_edge` | *Armada at the Edge* | `Armada_at_the_Edge.mp3` | `ambient` | `0.45` | Deep-space ambient playlist track for exploration and fleet buildup phases | **Asset Ready** |
 | `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Asset Ready** *(wire in Step 4)* |
 | *(Planned)* `ambient_*` | Additional Deep-Space Ambient Tracks | `public/audio/*.mp3` | `ambient` | `0.45` | Shuffled/rotating ambient playlist for variety across long matches | Planned |
 | *(Planned)* `combat_*` | Additional Combat Tracks | `public/audio/*.mp3` | `combat` | `0.55` | Additional high-intensity tracks for combat playlist rotation | Planned |
