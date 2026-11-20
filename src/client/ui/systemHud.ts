@@ -172,6 +172,7 @@ export function mountSystemHud(
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
   let selectedFleetStance: FleetStance = 'aggressive';
+  let isFleetPanelCollapsed = false;
 
   const topBarEl = document.createElement('div');
   topBarEl.className = 'hud-econ-bar';
@@ -838,15 +839,26 @@ export function mountSystemHud(
       </div>
 
       <div class="hud-section">
-        <div class="hud-label">Fleet Command & Distributed Production (Click Any Ship or Tab to Select Whole Fleet)</div>
-        <div class="hud-btn-row">
-          <button class="hud-btn ${isCreateFleetPending ? 'active' : ''}" data-action="create-fleet">
-            ${isCreateFleetPending ? 'Click 3D Space for Fleet Rally Point...' : '+ Create Fleet (Click 3D Rally)'}
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isFleetPanelCollapsed ? '0' : '6px'};">
+          <div class="hud-label" style="margin-bottom: 0;">
+            Fleet Command (${playerFleets.length}) — Click Any Ship or Tab to Focus Fleet
+          </div>
+          <button class="hud-btn" data-action="toggle-fleet-panel" title="${isFleetPanelCollapsed ? 'Expand Fleet Command panel' : 'Collapse Fleet Command panel'}">
+            ${isFleetPanelCollapsed ? 'Expand ▼' : 'Collapse ▲'}
           </button>
-          ${fleetTabsHtml}
-          ${pendingOrderGlobal ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
         </div>
-        ${selectedFleetDetailHtml}
+        ${
+          isFleetPanelCollapsed
+            ? ''
+            : `<div class="hud-btn-row">
+                <button class="hud-btn ${isCreateFleetPending ? 'active' : ''}" data-action="create-fleet">
+                  ${isCreateFleetPending ? 'Click 3D Space for Fleet Rally Point...' : '+ Create Fleet (Click 3D Rally)'}
+                </button>
+                ${fleetTabsHtml}
+                ${pendingOrderGlobal ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
+              </div>
+              ${selectedFleetDetailHtml}`
+        }
       </div>
 
       <div class="hud-section">
@@ -1063,6 +1075,13 @@ export function mountSystemHud(
       ?.addEventListener('click', () => {
         sceneManager.cancelFleetOrderPlacement();
         statusBannerMessage = 'Cancelled fleet order placement.';
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="toggle-fleet-panel"]')
+      ?.addEventListener('click', () => {
+        isFleetPanelCollapsed = !isFleetPanelCollapsed;
         renderMainPanel();
       });
 

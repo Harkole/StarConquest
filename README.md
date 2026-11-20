@@ -324,6 +324,3 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
   * **Live Data-Driven Unit & Structure Reference**: Automatically pulls costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/` so stats never drift out of sync with balance changes.
   * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
-
-### Fleet & Shipyard HUD Polish
-* **Collapsible Fleet Manager Panel**: Add a collapse/expand toggle to the Fleet Command window so having many active fleets does not consume excessive screen space.
