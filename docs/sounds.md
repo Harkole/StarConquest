@@ -23,8 +23,9 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 | Track ID | Title | File (`public/audio/`) | Category Flag | Default Volume | Behavior | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `ambient_view_from_perigee` | *The View from Perigee* | `The_View_from_Perigee.mp3` | `ambient` | `0.45` | Continuous loop during non-combat exploration, building, and macro planning | **Implemented** |
+| `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Asset Ready** *(wire in Step 4)* |
 | *(Planned)* `ambient_*` | Additional Deep-Space Ambient Tracks | `public/audio/*.mp3` | `ambient` | `0.45` | Shuffled/rotating ambient playlist for variety across long matches | Planned |
-| *(Planned)* `combat_*` | High-Intensity Combat Tracks | `public/audio/*.mp3` | `combat` | `0.55` | Intense rhythmic/percussive tracks that signal danger and urgency during fleet engagements | Planned |
+| *(Planned)* `combat_*` | Additional Combat Tracks | `public/audio/*.mp3` | `combat` | `0.55` | Additional high-intensity tracks for combat playlist rotation | Planned |
 
 ---
 
