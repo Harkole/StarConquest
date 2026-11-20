@@ -46,6 +46,20 @@ function defaultCreateAudio(src: string): AudioElementLike {
 }
 
 /**
+ * Resolves the public audio track URL using Vite's literal `import.meta.env.BASE_URL`
+ * replacement so production builds on subpaths (e.g. `/StarConquest/`) always load
+ * `/StarConquest/audio/<filename>` rather than root `/audio/<filename>`.
+ */
+export function resolveAudioTrackUrl(filename: string, baseUrlOverride?: string): string {
+  // Keep `import.meta.env.BASE_URL` as a literal expression so Vite statically inlines it at build time
+  const rawBase = baseUrlOverride ?? import.meta.env.BASE_URL ?? '/';
+  const normalizedBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+  return `${normalizedBase}audio/${filename}`;
+}
+
+const AUTOPLAY_UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'click', 'keydown'] as const;
+
+/**
  * Client-only ambient music controller for StarConquest (`docs/sounds.md`).
  * Loops the active ambient track continuously while unmuted.
  * Muting stops playback and resets to 0; unmuting restarts cleanly from the beginning.
@@ -55,16 +69,11 @@ export class AmbientMusicPlayer {
   private readonly audio: AudioElementLike;
   private muted = false;
   private waitingForUserGesture = false;
-  private unlockHandler: (() => void) | null = null;
+  private unlockHandler: ((event: Event) => void) | null = null;
 
   constructor(options: AmbientMusicPlayerOptions = {}) {
     this.track = options.track ?? MUSIC_TRACKS[0]!;
-    const viteMeta = import.meta as ImportMeta & {
-      readonly env?: { readonly BASE_URL?: string };
-    };
-    const rawBase = options.baseUrl ?? viteMeta.env?.BASE_URL ?? '/';
-    const normalizedBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
-    const src = `${normalizedBase}audio/${this.track.filename}`;
+    const src = resolveAudioTrackUrl(this.track.filename, options.baseUrl);
 
     const factory = options.createAudio ?? defaultCreateAudio;
     this.audio = factory(src);
@@ -82,7 +91,8 @@ export class AmbientMusicPlayer {
 
   /**
    * Begins looping playback if not muted. If the browser's autoplay policy blocks
-   * immediate playback, arms a one-shot pointer/keyboard unlock listener.
+   * immediate playback, arms capture-phase user-gesture listeners that keep trying
+   * until playback actually succeeds.
    */
   public start(): void {
     if (this.muted) {
@@ -109,8 +119,18 @@ export class AmbientMusicPlayer {
     this.attemptPlay();
   }
 
-  /** Toggles mute state and returns the new `isMuted()` value. */
+  /**
+   * Toggles mute state and returns the new `isMuted()` value.
+   * If unmuted playback was blocked by the browser's autoplay policy (still paused),
+   * clicking the speaker button starts playback immediately on the first click instead
+   * of requiring a mute -> unmute double toggle.
+   */
   public toggleMute(): boolean {
+    if (!this.muted && this.audio.paused) {
+      this.audio.currentTime = 0;
+      this.attemptPlay();
+      return false;
+    }
     this.setMuted(!this.muted);
     return this.muted;
   }
@@ -127,7 +147,9 @@ export class AmbientMusicPlayer {
       if (result && typeof result.then === 'function') {
         void result.then(
           () => {
-            this.clearAutoplayUnlockListener();
+            if (!this.muted) {
+              this.clearAutoplayUnlockListener();
+            }
           },
           () => {
             if (!this.muted) {
@@ -135,6 +157,8 @@ export class AmbientMusicPlayer {
             }
           },
         );
+      } else {
+        this.clearAutoplayUnlockListener();
       }
     } catch {
       if (!this.muted) {
@@ -148,23 +172,30 @@ export class AmbientMusicPlayer {
       return;
     }
     this.waitingForUserGesture = true;
-    this.unlockHandler = () => {
-      this.clearAutoplayUnlockListener();
-      if (!this.muted) {
-        this.audio.currentTime = 0;
-        this.attemptPlay();
+    this.unlockHandler = (event: Event) => {
+      if (this.muted) {
+        this.clearAutoplayUnlockListener();
+        return;
       }
+      // Do not race with the user clicking the mute button as their very first gesture
+      const target = event.target as { closest?: (sel: string) => unknown } | null;
+      if (target && typeof target.closest === 'function' && target.closest('[data-action="toggle-music"]')) {
+        return;
+      }
+      this.attemptPlay();
     };
-    window.addEventListener('pointerdown', this.unlockHandler, { once: true });
-    window.addEventListener('keydown', this.unlockHandler, { once: true });
+    for (const evt of AUTOPLAY_UNLOCK_EVENTS) {
+      window.addEventListener(evt, this.unlockHandler, { capture: true });
+    }
   }
 
   private clearAutoplayUnlockListener(): void {
     if (!this.waitingForUserGesture || !this.unlockHandler || typeof window === 'undefined') {
       return;
     }
-    window.removeEventListener('pointerdown', this.unlockHandler);
-    window.removeEventListener('keydown', this.unlockHandler);
+    for (const evt of AUTOPLAY_UNLOCK_EVENTS) {
+      window.removeEventListener(evt, this.unlockHandler, { capture: true });
+    }
     this.unlockHandler = null;
     this.waitingForUserGesture = false;
   }
