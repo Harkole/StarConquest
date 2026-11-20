@@ -326,5 +326,4 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
 
 ### Fleet & Shipyard HUD Polish
-* **Click-to-Focus on Fleets**: Clicking a fleet in the Fleet Command HUD should jump/focus the camera directly to that fleet's current location (switching systems if needed).
 * **Collapsible Fleet Manager Panel**: Add a collapse/expand toggle to the Fleet Command window so having many active fleets does not consume excessive screen space.

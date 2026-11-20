@@ -138,26 +138,46 @@ export class SystemSceneManager {
   }
 
   public selectFleet(fleetId: string | null): void {
-    this.selectedFleetId = fleetId;
     if (!fleetId) {
+      this.selectedFleetId = null;
       this.selectedCombatShipId = null;
+      this.cameraController.clearPin();
       this.notifySelectionChanged();
       return;
     }
+    this.focusFleet(fleetId);
+  }
+
+  /**
+   * Selects a fleet and immediately jumps/pins the camera to its live location
+   * (or its Rally Point if no ships have launched yet), switching star systems if needed.
+   */
+  public focusFleet(fleetId: string): void {
     const anchor = this.simAdapter.simulation.getFleetLiveAnchor(fleetId);
-    if (anchor) {
-      if (anchor.systemId !== this.activeSystem.id) {
-        this.loadSystem(anchor.systemId);
-      }
-      this.selectedHarvesterId = null;
-      this.cameraController.pinToTarget(
-        () => {
-          const live = this.simAdapter.simulation.getFleetLiveAnchor(fleetId);
-          return live ? { x: live.position.x, y: 1.6, z: live.position.z } : null;
-        },
-        110,
-      );
+    if (!anchor) {
+      return;
     }
+    if (anchor.systemId !== this.activeSystem.id) {
+      this.loadSystem(anchor.systemId);
+    }
+    this.selectedHarvesterId = null;
+    this.selectedCombatShipId = null;
+    this.selectedFleetId = fleetId;
+    this.cameraController.pinToTarget(
+      () => {
+        const live = this.simAdapter.simulation.getFleetLiveAnchor(fleetId);
+        if (!live) {
+          return null;
+        }
+        if (live.systemId !== this.activeSystem.id) {
+          this.loadSystem(live.systemId);
+          this.selectedFleetId = fleetId;
+          this.notifySelectionChanged();
+        }
+        return { x: live.position.x, y: 1.6, z: live.position.z };
+      },
+      110,
+    );
     this.notifySelectionChanged();
   }
 

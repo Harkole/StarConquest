@@ -744,7 +744,7 @@ export function mountSystemHud(
           0,
         );
         const isSel = f.id === selectedFleetId;
-        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-fleet="${f.id}">
+        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-fleet="${f.id}" title="Click to select and focus camera on ${f.name}">
           ${f.name}
           <span class="hud-badge">${liveCount}/${targetCount}${f.autoResupply ? ' ↻' : ''}</span>
         </button>`;
@@ -797,6 +797,9 @@ export function mountSystemHud(
               <strong>${selectedFleet.name}</strong> — ${fleetShips.length} ships • Right-click 3D space to Move
             </div>
             <div class="hud-btn-row">
+              <button class="hud-btn" data-fleet-focus="${selectedFleet.id}" title="Jump camera to ${selectedFleet.name}">
+                Focus
+              </button>
               <button class="hud-btn ${selectedFleet.autoResupply ? 'active' : ''}" data-fleet-resupply="${selectedFleet.id}">
                 Resupply: ${selectedFleet.autoResupply ? 'ON ↻' : 'OFF'}
               </button>
@@ -1077,8 +1080,24 @@ export function mountSystemHud(
       .forEach((btn) => {
         btn.addEventListener('click', () => {
           const fId = btn.dataset.selectFleet ?? null;
-          sceneManager.selectFleet(fId);
+          if (fId) {
+            sceneManager.focusFleet(fId);
+          } else {
+            sceneManager.selectFleet(null);
+          }
           renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-focus]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetFocus;
+          if (fId) {
+            sceneManager.focusFleet(fId);
+            renderMainPanel();
+          }
         });
       });
 
