@@ -119,8 +119,18 @@ export class AmbientMusicPlayer {
     this.attemptPlay();
   }
 
-  /** Toggles mute state and returns the new `isMuted()` value. */
+  /**
+   * Toggles mute state and returns the new `isMuted()` value.
+   * If unmuted playback was blocked by the browser's autoplay policy (still paused),
+   * clicking the speaker button starts playback immediately on the first click instead
+   * of requiring a mute -> unmute double toggle.
+   */
   public toggleMute(): boolean {
+    if (!this.muted && this.audio.paused) {
+      this.audio.currentTime = 0;
+      this.attemptPlay();
+      return false;
+    }
     this.setMuted(!this.muted);
     return this.muted;
   }

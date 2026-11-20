@@ -155,4 +155,33 @@ describe('AmbientMusicPlayer', () => {
       (globalThis as { window?: unknown }).window = prevWindow;
     }
   });
+
+  it('starts playback on the first speaker button click when initial autoplay was blocked', async () => {
+    let created: MockAudioElement | null = null;
+    const player = new AmbientMusicPlayer({
+      baseUrl: '/',
+      createAudio: (src) => {
+        created = new MockAudioElement(src);
+        created.rejectRemainingPlays = 1;
+        return created;
+      },
+    });
+
+    player.start();
+    await Promise.resolve();
+    expect(player.isMuted()).toBe(false);
+    expect(created!.paused).toBe(true);
+
+    // First click on speaker button while autoplay-blocked starts music instead of muting
+    expect(player.toggleMute()).toBe(false);
+    await Promise.resolve();
+    expect(player.isMuted()).toBe(false);
+    expect(created!.paused).toBe(false);
+
+    // Subsequent click while playing mutes and resets to 0 as expected
+    created!.currentTime = 12;
+    expect(player.toggleMute()).toBe(true);
+    expect(created!.paused).toBe(true);
+    expect(created!.currentTime).toBe(0);
+  });
 });
