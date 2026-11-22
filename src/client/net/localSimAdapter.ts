@@ -1,29 +1,61 @@
-import { StandardAIBot, type AIBotController } from '../../shared/ai/aiController.ts';
-import type { MatchPresetId } from '../../shared/config/index.ts';
-import type { GameCommand, PlayerSlotId } from '../../shared/protocol/commands.ts';
+import {
+  StandardAIBot,
+  type AIBotController,
+} from '../../shared/ai/aiController.ts';
+import {
+  PLAYER_SLOT_IDS,
+  type MatchPresetId,
+  type MatchSetupConfig,
+  type MatchSetupInput,
+} from '../../shared/config/index.ts';
+import type {
+  GameCommand,
+  PlayerSlotId,
+} from '../../shared/protocol/commands.ts';
 import {
   type CommandResult,
   GameSimulation,
 } from '../../shared/sim/gameSimulation.ts';
 
-/**
- * Purely local in-browser simulation adapter for Singleplayer vs. AI matches.
- * Zero network or external server dependencies.
- */
+function buildAIBotsForSetup(setup: MatchSetupConfig): readonly AIBotController[] {
+  const bots: AIBotController[] = [];
+  for (const slotId of PLAYER_SLOT_IDS) {
+    const slotCfg = setup.slots[slotId];
+    if (slotCfg.kind === 'ai') {
+      bots.push(new StandardAIBot(slotId, slotCfg.difficulty));
+    }
+  }
+  return bots;
+}
+
 export class LocalSimAdapter {
-  public readonly localPlayerId: PlayerSlotId = 'player_1';
-  public readonly simulation: GameSimulation;
+  public localPlayerId: PlayerSlotId = 'player_1';
+  public simulation: GameSimulation;
   public simSpeedMultiplier = 1;
 
-  private readonly aiBots: readonly AIBotController[];
+  private aiBots: readonly AIBotController[];
 
-  constructor(presetId: MatchPresetId = 'standard_tactical') {
-    this.simulation = new GameSimulation(presetId);
-    this.aiBots = [
-      new StandardAIBot('player_2'),
-      new StandardAIBot('player_3'),
-      new StandardAIBot('player_4'),
-    ];
+  constructor(
+    presetOrSetup: MatchPresetId | MatchSetupInput = 'standard_tactical',
+  ) {
+    this.simulation = new GameSimulation(presetOrSetup);
+    const setup = this.simulation.getMatchSetup();
+    this.localPlayerId = setup.localPlayerId;
+    this.aiBots = buildAIBotsForSetup(setup);
+  }
+
+  public getAIBots(): readonly AIBotController[] {
+    return this.aiBots;
+  }
+
+  public resetMatch(
+    presetOrSetup: MatchPresetId | MatchSetupInput,
+  ): MatchSetupConfig {
+    this.simulation = new GameSimulation(presetOrSetup);
+    const setup = this.simulation.getMatchSetup();
+    this.localPlayerId = setup.localPlayerId;
+    this.aiBots = buildAIBotsForSetup(setup);
+    return setup;
   }
 
   public submitPlayerCommand(command: GameCommand): CommandResult {
@@ -46,3 +78,4 @@ export class LocalSimAdapter {
     }
   }
 }
+

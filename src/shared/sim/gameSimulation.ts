@@ -3,11 +3,16 @@ import {
   MATCH_PRESETS,
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
+  PLAYER_SLOT_IDS,
   SHIP_CLASSES,
+  normalizeMatchSetupConfig,
   type CombatShipClassId,
   type DeepSpaceStructureId,
   type MatchPresetId,
+  type MatchSetupConfig,
+  type MatchSetupInput,
   type OrbitalStructureId,
+  type PlayerSlotConfig,
   type ShipClassId,
 } from '../config/index.ts';
 import type {
@@ -361,7 +366,196 @@ export interface CommandResult {
   readonly reason?: string;
 }
 
+export const CENTRAL_SUPER_EARTH_PLANET_ID = 'system_central_hub_super_earth';
+export const SUPER_EARTH_CONTEST_RADIUS = 320;
+
+export type VictoryConditionId = 'last_cnc_standing' | 'king_of_the_hill';
+
+export type MatchLifecycleStatus = 'in_progress' | 'victory' | 'defeat' | 'draw';
+
+export interface KingOfTheHillState {
+  readonly enabled: boolean;
+  readonly targetPlanetId: string;
+  readonly requiredSeconds: number | null;
+  readonly controllerId: PlayerSlotId | null;
+  readonly isContested: boolean;
+  readonly heldSeconds: number;
+  readonly remainingSeconds: number | null;
+}
+
+export interface PlayerStandingSummary {
+  readonly playerId: PlayerSlotId;
+  readonly slotConfig: PlayerSlotConfig;
+  readonly isActiveContender: boolean;
+  readonly hasCommandAndControl: boolean;
+  readonly isDefeated: boolean;
+  readonly ownedPlanetCount: number;
+  readonly activeFleetShipCount: number;
+}
+
+export interface MatchOutcomeState {
+  readonly status: MatchLifecycleStatus;
+  readonly winnerId: PlayerSlotId | null;
+  readonly victoryCondition: VictoryConditionId | null;
+  readonly finishedAtSeconds: number | null;
+  readonly activeContenderIds: readonly PlayerSlotId[];
+  readonly defeatedPlayerIds: readonly PlayerSlotId[];
+  readonly kingOfTheHill: KingOfTheHillState;
+  readonly standings: readonly PlayerStandingSummary[];
+}
+
+export interface MatchOutcomeTickInput {
+  readonly setup: MatchSetupConfig;
+  readonly superEarthOwnerId: PlayerSlotId | null;
+  readonly superEarthHasCompletedStructure: boolean;
+  readonly superEarthContestedByHostile?: boolean;
+  readonly defeatedPlayers: ReadonlySet<PlayerSlotId>;
+  readonly standings?: readonly PlayerStandingSummary[];
+  readonly elapsedSeconds: number;
+  readonly deltaSeconds: number;
+}
+
+export function reduceMatchOutcomeTick(
+  prev: MatchOutcomeState,
+  input: MatchOutcomeTickInput,
+): MatchOutcomeState {
+  const activeContenderIds = PLAYER_SLOT_IDS.filter(
+    (id) => input.setup.slots[id].kind !== 'empty',
+  );
+  const defeatedPlayerIds = activeContenderIds.filter((id) =>
+    input.defeatedPlayers.has(id),
+  );
+  const survivingIds = activeContenderIds.filter(
+    (id) => !input.defeatedPlayers.has(id),
+  );
+  const standings = input.standings ?? prev.standings;
+
+  if (prev.status !== 'in_progress') {
+    return {
+      ...prev,
+      activeContenderIds,
+      defeatedPlayerIds,
+      standings,
+    };
+  }
+
+  const preset = MATCH_PRESETS[input.setup.presetId];
+  const requiredSeconds = preset.centralSuperEarthKingOfTheHillSeconds;
+  const kothEnabled = requiredSeconds !== null && requiredSeconds > 0;
+  const validControllerId =
+    kothEnabled &&
+    input.superEarthOwnerId !== null &&
+    input.superEarthHasCompletedStructure &&
+    !input.defeatedPlayers.has(input.superEarthOwnerId) &&
+    input.setup.slots[input.superEarthOwnerId].kind !== 'empty'
+      ? input.superEarthOwnerId
+      : null;
+
+  const isContested =
+    validControllerId !== null && Boolean(input.superEarthContestedByHostile);
+
+  let heldSeconds = 0;
+  if (validControllerId !== null && requiredSeconds !== null) {
+    const baseHeld =
+      validControllerId === prev.kingOfTheHill.controllerId
+        ? prev.kingOfTheHill.heldSeconds
+        : 0;
+    heldSeconds = isContested
+      ? baseHeld
+      : Math.min(requiredSeconds, baseHeld + Math.max(0, input.deltaSeconds));
+  }
+
+  const remainingSeconds =
+    requiredSeconds !== null ? Math.max(0, requiredSeconds - heldSeconds) : null;
+
+  const kingOfTheHill: KingOfTheHillState = {
+    enabled: kothEnabled,
+    targetPlanetId: CENTRAL_SUPER_EARTH_PLANET_ID,
+    requiredSeconds,
+    controllerId: validControllerId,
+    isContested,
+    heldSeconds,
+    remainingSeconds,
+  };
+
+  if (
+    kothEnabled &&
+    requiredSeconds !== null &&
+    validControllerId !== null &&
+    heldSeconds >= requiredSeconds - 1e-6
+  ) {
+    return {
+      status:
+        validControllerId === input.setup.localPlayerId ? 'victory' : 'defeat',
+      winnerId: validControllerId,
+      victoryCondition: 'king_of_the_hill',
+      finishedAtSeconds: input.elapsedSeconds,
+      activeContenderIds,
+      defeatedPlayerIds,
+      kingOfTheHill,
+      standings,
+    };
+  }
+
+  if (preset.lastCommandAndControlStandingWins) {
+    if (activeContenderIds.length >= 2) {
+      if (survivingIds.length === 1) {
+        const winnerId = survivingIds[0]!;
+        return {
+          status: winnerId === input.setup.localPlayerId ? 'victory' : 'defeat',
+          winnerId,
+          victoryCondition: 'last_cnc_standing',
+          finishedAtSeconds: input.elapsedSeconds,
+          activeContenderIds,
+          defeatedPlayerIds,
+          kingOfTheHill,
+          standings,
+        };
+      }
+      if (survivingIds.length === 0) {
+        return {
+          status: 'draw',
+          winnerId: null,
+          victoryCondition: 'last_cnc_standing',
+          finishedAtSeconds: input.elapsedSeconds,
+          activeContenderIds,
+          defeatedPlayerIds,
+          kingOfTheHill,
+          standings,
+        };
+      }
+    } else if (
+      activeContenderIds.length === 1 &&
+      (survivingIds.length === 0 ||
+        input.defeatedPlayers.has(input.setup.localPlayerId))
+    ) {
+      return {
+        status: 'defeat',
+        winnerId: null,
+        victoryCondition: 'last_cnc_standing',
+        finishedAtSeconds: input.elapsedSeconds,
+        activeContenderIds,
+        defeatedPlayerIds,
+        kingOfTheHill,
+        standings,
+      };
+    }
+  }
+
+  return {
+    status: 'in_progress',
+    winnerId: null,
+    victoryCondition: null,
+    finishedAtSeconds: null,
+    activeContenderIds,
+    defeatedPlayerIds,
+    kingOfTheHill,
+    standings,
+  };
+}
+
 export class GameSimulation {
+  public readonly matchSetup: MatchSetupConfig;
   public readonly presetId: MatchPresetId;
   public readonly galaxy: GalaxyTopology;
   public currentTick = 0;
@@ -378,14 +572,34 @@ export class GameSimulation {
   private readonly lastCombatActivityByPlayer = new Map<PlayerSlotId, number>();
   private readonly defeatedPlayers = new Set<PlayerSlotId>();
   private battleSimulatorStats: BattleSimulatorStats | null = null;
+  private matchOutcome!: MatchOutcomeState;
   private readonly combatRng = { seed: 0x57a2c01d };
   private nextCombatEventId = 1;
   private nextEntityCounter = 1;
 
-  constructor(presetId: MatchPresetId = 'standard_tactical') {
-    this.presetId = presetId;
+  constructor(
+    presetOrSetup: MatchPresetId | MatchSetupInput = 'standard_tactical',
+  ) {
+    this.matchSetup = normalizeMatchSetupConfig(presetOrSetup);
+    this.presetId = this.matchSetup.presetId;
     this.galaxy = createFiveSystemGalaxy();
     this.initializeSimulationState();
+  }
+
+  public getMatchSetup(): MatchSetupConfig {
+    return this.matchSetup;
+  }
+
+  public getSlotConfig(slotId: PlayerSlotId): PlayerSlotConfig {
+    return this.matchSetup.slots[slotId];
+  }
+
+  public isPlayerSlotActive(slotId: PlayerSlotId): boolean {
+    return this.matchSetup.slots[slotId].kind !== 'empty';
+  }
+
+  public getMatchOutcome(): MatchOutcomeState {
+    return this.matchOutcome;
   }
 
   public getPlayerState(playerId: PlayerSlotId): PlayerEconomyState {
@@ -785,14 +999,16 @@ export class GameSimulation {
         }
       }
 
-      if (
-        planetState.structures.length === 0 &&
-        planetState.planet.planetClass !== 'large'
-      ) {
+      if (removed.structureId === 'command_and_control') {
+        this.defeatedPlayers.add(removed.ownerId);
+      }
+
+      if (planetState.structures.length === 0) {
         planetState.ownerId = null;
       }
 
-      // Reassign any Harvesters whose home platform was destroyed to the closest friendly dropoff
+      this.refreshMatchOutcome(0);
+
       for (const h of this.harvesters) {
         if (h.homeStructureId === structureId) {
           this.reassignHarvesterToClosestHome(h);
@@ -1172,6 +1388,25 @@ export class GameSimulation {
     this.currentTick += 1;
     this.elapsedSeconds += deltaSeconds;
 
+    const superEarthBefore = this.planets.get(CENTRAL_SUPER_EARTH_PLANET_ID);
+    let superEarthBuildSecondsConsumed = 0;
+    if (
+      superEarthBefore &&
+      !superEarthBefore.structures.some((s) => s.isComplete && s.hull > 0)
+    ) {
+      const pending = superEarthBefore.structures.filter(
+        (s) => !s.isComplete && s.hull > 0,
+      );
+      if (pending.length > 0) {
+        const minRemaining = Math.min(
+          ...pending.map((s) =>
+            Math.max(0, s.totalBuildTimeSeconds - s.buildProgressSeconds),
+          ),
+        );
+        superEarthBuildSecondsConsumed = Math.min(deltaSeconds, minRemaining);
+      }
+    }
+
     // 1. Update rotating world positions of targetable asteroid/crystal rocks
     for (const beltNode of this.miningBelts) {
       const worldPos = getAsteroidWorldPosition(beltNode.rock, this.elapsedSeconds);
@@ -1276,24 +1511,22 @@ export class GameSimulation {
       this.updateCombatShip(ship, deltaSeconds);
     }
 
-    // 7. Enforce physical hull clearance between neighboring combat ships (prevent flight & formation overlap)
     this.resolveCombatShipSeparation(deltaSeconds);
+
+    this.refreshMatchOutcome(
+      Math.max(0, deltaSeconds - superEarthBuildSecondsConsumed),
+    );
   }
 
   private initializeSimulationState(): void {
     const preset = MATCH_PRESETS[this.presetId];
-    const slots: readonly PlayerSlotId[] = [
-      'player_1',
-      'player_2',
-      'player_3',
-      'player_4',
-    ];
 
-    for (const slotId of slots) {
+    for (const slotId of PLAYER_SLOT_IDS) {
+      const active = this.isPlayerSlotActive(slotId);
       this.players.set(slotId, {
         playerId: slotId,
-        ore: preset.startingOre,
-        crystal: preset.startingCrystal,
+        ore: active ? preset.startingOre : 0,
+        crystal: active ? preset.startingCrystal : 0,
         supplyUsed: 0,
         supplyCap: 0,
         techModulesCompleted: 0,
@@ -1339,19 +1572,23 @@ export class GameSimulation {
       }
 
       for (const planet of system.planets) {
+        const initialOwnerId =
+          planet.ownerId !== null && this.isPlayerSlotActive(planet.ownerId)
+            ? planet.ownerId
+            : null;
         const runtimePlanet: PlanetRuntimeState = {
           planet,
-          ownerId: planet.ownerId,
+          ownerId: initialOwnerId,
           structures: [],
         };
         this.planets.set(planet.id, runtimePlanet);
 
-        if (planet.ownerId !== null && planet.planetClass === 'large') {
+        if (initialOwnerId !== null && planet.planetClass === 'large') {
           const cncConfig = ORBITAL_STRUCTURES.command_and_control;
           const cncInstance: OrbitalStructureInstance = {
             id: `struct_${this.nextEntityCounter++}`,
             structureId: 'command_and_control',
-            ownerId: planet.ownerId,
+            ownerId: initialOwnerId,
             planetId: planet.id,
             primarySlotIndex: 0,
             occupiedSlots: [0, 1],
@@ -1370,6 +1607,104 @@ export class GameSimulation {
         }
       }
     }
+
+    const requiredSeconds = preset.centralSuperEarthKingOfTheHillSeconds;
+    const kothEnabled = requiredSeconds !== null && requiredSeconds > 0;
+    const activeContenderIds = PLAYER_SLOT_IDS.filter((id) =>
+      this.isPlayerSlotActive(id),
+    );
+    this.matchOutcome = {
+      status: 'in_progress',
+      winnerId: null,
+      victoryCondition: null,
+      finishedAtSeconds: null,
+      activeContenderIds,
+      defeatedPlayerIds: [],
+      kingOfTheHill: {
+        enabled: kothEnabled,
+        targetPlanetId: CENTRAL_SUPER_EARTH_PLANET_ID,
+        requiredSeconds,
+        controllerId: null,
+        isContested: false,
+        heldSeconds: 0,
+        remainingSeconds: requiredSeconds,
+      },
+      standings: this.buildPlayerStandings(),
+    };
+  }
+
+  private buildPlayerStandings(): readonly PlayerStandingSummary[] {
+    return PLAYER_SLOT_IDS.map((playerId) => {
+      const slotConfig = this.matchSetup.slots[playerId];
+      const isActiveContender = slotConfig.kind !== 'empty';
+      let hasCommandAndControl = false;
+      let ownedPlanetCount = 0;
+
+      for (const planetState of this.planets.values()) {
+        if (planetState.ownerId === playerId) {
+          ownedPlanetCount += 1;
+        }
+        for (const s of planetState.structures) {
+          if (
+            s.ownerId === playerId &&
+            s.structureId === 'command_and_control' &&
+            s.isComplete &&
+            s.hull > 0
+          ) {
+            hasCommandAndControl = true;
+          }
+        }
+      }
+
+      const activeFleetShipCount = this.combatShips.filter(
+        (s) =>
+          s.ownerId === playerId &&
+          s.hull > 0 &&
+          s.currentSystemId !== BATTLE_SIMULATOR_SYSTEM_ID,
+      ).length;
+
+      return {
+        playerId,
+        slotConfig,
+        isActiveContender,
+        hasCommandAndControl,
+        isDefeated: this.defeatedPlayers.has(playerId),
+        ownedPlanetCount,
+        activeFleetShipCount,
+      };
+    });
+  }
+
+  private refreshMatchOutcome(deltaSeconds: number): void {
+    const superEarth = this.planets.get(CENTRAL_SUPER_EARTH_PLANET_ID);
+    const superEarthOwnerId = superEarth?.ownerId ?? null;
+    const superEarthHasCompletedStructure = superEarth
+      ? superEarth.structures.some((s) => s.isComplete && s.hull > 0)
+      : false;
+    const superEarthPos = superEarth?.planet.position ?? { x: 0, z: 0 };
+    const superEarthContestedByHostile =
+      superEarthOwnerId !== null &&
+      this.combatShips.some(
+        (s) =>
+          s.currentSystemId === 'system_central_hub' &&
+          s.ownerId !== superEarthOwnerId &&
+          s.hull > 0 &&
+          Math.hypot(
+            s.position.x - superEarthPos.x,
+            s.position.z - superEarthPos.z,
+          ) <= SUPER_EARTH_CONTEST_RADIUS,
+      );
+
+    this.matchOutcome = reduceMatchOutcomeTick(this.matchOutcome, {
+      setup: this.matchSetup,
+      superEarthOwnerId,
+      superEarthHasCompletedStructure,
+      superEarthContestedByHostile,
+      defeatedPlayers: this.defeatedPlayers,
+      standings: this.buildPlayerStandings(),
+      elapsedSeconds: this.elapsedSeconds,
+      deltaSeconds,
+    });
   }
 
   private handleBuildOrbitalStructure(
@@ -3255,8 +3590,12 @@ export class GameSimulation {
         belt.position.z - harvester.position.z,
       );
 
+      const harvestMultiplier = MATCH_PRESETS[this.presetId].harvestRateMultiplier;
       const extractAmount =
-        HARVESTER_MINING_RATE_PER_SECOND * belt.extractionMultiplier * deltaSeconds;
+        HARVESTER_MINING_RATE_PER_SECOND *
+        belt.extractionMultiplier *
+        harvestMultiplier *
+        deltaSeconds;
       harvester.cargoAmount = Math.min(
         harvester.cargoCapacity,
         harvester.cargoAmount + extractAmount,

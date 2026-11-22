@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import {
   DEEP_SPACE_STRUCTURES,
+  PLAYER_SLOT_IDS,
   type DeepSpaceStructureId,
+  type MatchPresetId,
+  type MatchSetupConfig,
+  type MatchSetupInput,
 } from '../../shared/config/index.ts';
 import type { FleetStance } from '../../shared/protocol/commands.ts';
 import type {
@@ -132,6 +136,24 @@ export class SystemSceneManager {
     if (canvasElement) {
       this.bindCanvasPicking(canvasElement);
     }
+  }
+
+  public resetMatch(
+    presetOrSetup: MatchPresetId | MatchSetupInput,
+  ): MatchSetupConfig {
+    const setup = this.simAdapter.resetMatch(presetOrSetup);
+    this.startDeepSpacePlacement(null);
+    this.pendingFleetOrder = null;
+    this.selectedHarvesterId = null;
+    this.selectedCombatShipId = null;
+    this.selectedFleetId = null;
+    this.cameraController.clearPin();
+
+    const slotIndex = Math.max(0, PLAYER_SLOT_IDS.indexOf(setup.localPlayerId));
+    const starterSystemId = `system_starter_${slotIndex + 1}`;
+    this.loadSystem(starterSystemId);
+    this.notifySelectionChanged();
+    return setup;
   }
 
   public onSelectionChange(listener: () => void): void {

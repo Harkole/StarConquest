@@ -176,12 +176,12 @@ flowchart LR
 
 ---
 
-## 7. Match Modes & Lobby Presets
+## 7. Match Modes, Pre-Match Lobby & AI Opponents
 
-Before starting a game, players will select from three match presets defined in `src/shared/config/presets.ts` *(currently `LocalSimAdapter` defaults to `standard_tactical` until the Pre-Match Lobby, Fog of War, and King of the Hill timer logic are wired)*:
+Through the in-game **Match Lobby** drawer (`src/client/ui/lobbyController.ts`, opened via `[data-action="toggle-lobby"]` in the top HUD bar), players can configure and launch a match across three presets defined in `src/shared/config/presets.ts`, assign any of the 4 player slots to **Human**, **AI Bot** (`Cadet`, `Standard`, or `Admiral` profiles in `src/shared/config/aiProfiles.ts`), or **Empty Sector** (whose starter system and wormhole remain open with an unclaimed 10-slot Large Homeworld colonizable via a 1-slot `Planetary Outpost`), and track live victory telemetry:
 
 1. **Blitz Skirmish (15–30 Minutes)**
-   * **Economy**: Higher starting resources (`800` Ore / `400` Crystal), `1.6x` accelerated harvesting rate, and expanded concurrent Harvester docking (`2` C&C / `4` Refinery).
+   * **Economy**: Higher starting resources (`800` Ore / `400` Crystal), `1.6x` accelerated harvesting and platform unload rate, and expanded concurrent Harvester docking (`2` C&C / `4` Refinery).
    * **Visibility**: Open System Visibility *(planned — full vision in systems where you own a unit or structure; only unvisited systems are hidden)*.
    * **Victory Condition**: **Last Command & Control Standing**.
 2. **Standard Tactical (20–40 Minutes)**
@@ -193,7 +193,7 @@ Before starting a game, players will select from three match presets defined in 
    * **Visibility**: **Sensor-Range Fog of War** *(planned)*.
    * **Victory Conditions**:
      * **Last Command & Control Standing**, OR
-     * **King of the Hill** *(planned — `centralSuperEarthKingOfTheHillSeconds: 600` configured in `presets.ts`; simulation timer not yet wired)*: Capture the Central Neutral System's **Super-Earth** and defend it continuously for 10 minutes.
+     * **King of the Hill** (`centralSuperEarthKingOfTheHillSeconds: 600` in `presets.ts` and `reduceMatchOutcomeTick` in `gameSimulation.ts`): Capture the Central Neutral System's **Super-Earth** with a completed orbital structure and hold it uncontested (`> 320u` from hostile combat ships) for 10 minutes (`600s`; timer pauses while contested and resets if all structures on Super-Earth are destroyed).
 
 ---
 
@@ -256,7 +256,7 @@ flowchart TD
 
 1. **Local vs. AI Matches (100% Local in Browser — Implemented)**:
    * Runs **purely locally** inside the user's browser main thread via `LocalSimAdapter` (`src/client/net/localSimAdapter.ts`; Web Worker offloading optional in future).
-   * Requires **zero servers and zero network traffic**—ideal for instant play, offline play, and rapid AI/balance tuning. *(Note: `StandardAIBot` in `src/shared/ai/aiController.ts` is currently a minimal stub pending Roadmap #5 `feature/lobby-and-ai`.)*
+   * Requires **zero servers and zero network traffic**—ideal for instant play, offline play, and rapid AI/balance tuning against table-driven `StandardAIBot` controllers (`Cadet`, `Standard`, and `Admiral` profiles in `src/shared/ai/aiController.ts`).
 2. **Online Multiplayer (Player-Hosted P2P via WebRTC — Planned)**:
    * One player creates a match and acts as the **Authoritative Listen-Server Host** directly in their browser (`WebRTCPeerAdapter`, not yet implemented).
    * Up to 3 other human players join peer-to-peer using a short **Room Code** over **WebRTC DataChannels** (with any remaining slots filled by AI bots running on the host).
@@ -319,7 +319,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 2. ~~**5 Combat Ship 3D Models Art Pass (`feature/combat-ship-models`)**~~ *(Completed)*: Built all 5 combat ship models (**Stinger Light Fighter**, **Havoc Destroyer**, **Cruiser**, **Vanguard Fleet Carrier**, and **Imperator Dreadnought**) in `src/client/renderer/shipModels.ts` and `docs/artstyle.md`, and replaced every placeholder proxy hull in the Atlas Logistics Hub bays, Titan Orbital Dockyard slipways/alcoves, and Minerva Tech Module holo-tables.
 3. ~~**Combat Fleet Production, Navigation & Planetary Obstacle Avoidance (`feature/fleet-navigation`)**~~ *(Completed)*: Implemented the shared 2D planetary obstacle-avoidance steering and wormhole routing solver (`src/shared/sim/navigation.ts`) for both Harvesters and combat ships, Orbital Dockyard combat ship production queues with `autoRepeat`, tech/hub/supply gating, cross-system Rally Points, multi-waypoint Patrol Routes, 3D `CombatFleetRenderer` with Rally/Patrol overlays, and Orbital Dockyard HUD fleet controls.
 4. ~~**Combat RPS Simulation, Turret Tracking & Shield VFX (`feature/combat-and-vfx`, v0.6.0)**~~ *(Completed)*: Implemented pure 5-class Shield vs. Hull RPS math (`src/shared/sim/combat.ts`), Fleet Stances (`Aggressive`, `Hold the Line`, `Passive`), Fleet `Flee` retreat command, Fighter close-orbit swarming, weapon LOS checks & capital broadsiding, Dreadnought forward-only Spinal Siege vs. 360-degree Heavy Turrets, Carrier standoff (`280u`) & sequential 1-at-a-time Fighter rebuild progress bar, pairwise ship-to-ship separation, majority-cluster Fleet focus anchor, Defence Tower & Orbital Structure weapons, out-of-combat shield regen & hub hull repair, C&C defeat detection, 3D overhead blue Shield & green Hull health bars, active `turretPivots` target tracking, `CombatVfxRenderer` (HDR weapon tracers/salvos, localized solid-fill Shield impact patches, hull explosions), per-player faction colors across all ships, Harvesters, and stations (`src/client/renderer/factionColors.ts`), Starter System 1 purple vs. System 4 emerald nebula contrast, smooth ambient ↔ `"combat"` music crossfading (`1.8s` fade-in, `14s` cooldown, `3.0s` fade-out), and the isolated **Void Fleet Battle Simulator** with post-battle statistics.
-5. **Pre-Match Lobby & AI Opponents (`feature/lobby-and-ai`)**: Build the pre-match mode selector (Blitz Skirmish, Standard Tactical, Grand Conquest) with configurable Human/AI slots and `GameCommand`-driven AI bots for full 4-player local matches.
+5. ~~**Pre-Match Lobby & AI Opponents (`feature/lobby-and-ai`, v0.8.0)**~~ *(Completed)*: Built the Pre-Match Lobby drawer (`src/client/ui/lobbyController.ts`) supporting all three match presets (`blitz_skirmish`, `standard_tactical`, `grand_conquest`), 4-slot configuration across `Human`, `AI Bot` (`cadet`, `standard`, `admiral`), and colonizable `Empty` starter homeworlds, authoritative Last C&C Standing and Grand Conquest 600s Central Super-Earth King of the Hill victory tracking (`reduceMatchOutcomeTick`), and the table-driven multi-domain macro AI controller (`src/shared/config/aiProfiles.ts` & `src/shared/ai/aiController.ts`).
 6. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**: Add an in-game encyclopaedia documenting every ship, orbital platform, deep-space installation, how-to-play mechanics, and victory goals, complete with an interactive 3D preview viewport (orbit, zoom, and pan) rendering live models from `ShipModelLibrary` and `StationModelLibrary` alongside live data-driven stats from `src/shared/config/`.
 
 ### Sensor-Range Fog of War & Last-Known-Intel Snapshots
