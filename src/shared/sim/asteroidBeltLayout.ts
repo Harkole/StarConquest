@@ -75,6 +75,18 @@ export function getSystemAsteroidLayout(system: StarSystemNode): SystemAsteroidL
     return cached;
   }
 
+  // Empty void systems (e.g. Battle Simulator Void) contain zero asteroid belts
+  if (system.planets.length === 0) {
+    const empty: SystemAsteroidLayout = {
+      systemId: system.id,
+      oreRocks: [],
+      crystalRocks: [],
+      miningCandidates: [],
+    };
+    layoutCache.set(system.id, empty);
+    return empty;
+  }
+
   const rng = createSeededRng(`belts_${system.id}`);
   const oreRatio =
     system.resourceSkew === 'ore_heavy'

@@ -28,23 +28,23 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 | `ambient_weight_of_the_far_horizon` | *Weight of the Far Horizon* | `Weight_of_the_Far_Horizon.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and macro economy phases | **Implemented** |
 | `ambient_passing_the_last_horizon` | *Passing The Last Horizon* | `Passing_The_Last_Horizon.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and macro economy phases | **Implemented** |
 | `ambient_armada_at_the_edge` | *Armada at the Edge* | `Armada_at_the_Edge.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and fleet buildup phases | **Implemented** |
-| `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Asset Ready** *(wire in Step 4)* |
+| `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Implemented** |
 
 
 ---
 
-## 3. Dynamic Ambient ↔ Combat Music Switching (Planned)
+## 3. Dynamic Ambient ↔ Combat Music Switching
 
-Once Step 4 (Combat RPS Simulation) is online, the music controller will dynamically transition between `ambient`-flagged and `combat`-flagged tracks:
+Dynamic switching between `ambient`-flagged and `combat`-flagged tracks is active (`AmbientMusicPlayer.setCategory` + `AmbientMusicPlayer.update(deltaSeconds)`):
 
 1. **Combat Entry Trigger**:
-   * Enter **Combat Music Mode** when any friendly ship or structure takes weapon fire or engages an enemy target within the player's active vision.
-   * Crossfade over `1.5s–2.0s` from the current `ambient` track into a randomly selected `combat`-flagged track (never repeating the same combat track twice in a row when multiple exist).
+   * Enter **Combat Music Mode** when any friendly ship or structure takes weapon fire or engages an enemy target.
+   * Crossfade smoothly over `1.8s` (fading out ambient while fading in *Iron Horizon*) so entering combat feels dramatic rather than jarring.
 2. **Combat Exit Hysteresis (Anti-Flicker Cooldown)**:
-   * Remain in **Combat Music Mode** until `12–15 seconds` have elapsed with zero active combat events involving the local player, preventing jarring rapid switches during skirmishes.
-   * Crossfade smoothly over `3.0s` back to the `ambient` rotation.
+   * Remain in **Combat Music Mode** until `14 seconds` have elapsed with zero active combat events involving the local player, preventing rapid switching during skirmishes.
+   * Fade out combat music smoothly over `3.0s` back into the `ambient` rotation so combat end is never abrupt.
 3. **Mute Override**:
-   * Muting always stops all active music immediately (both `ambient` and `combat`), resetting playhead to `0`; unmuting restarts whichever category matches the current tactical state from the beginning.
+   * Muting always stops all active and fading channels immediately (both `ambient` and `combat`), resetting playhead to `0`; unmuting restarts whichever category matches the current tactical state from the beginning.
 
 ---
 

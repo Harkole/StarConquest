@@ -49,7 +49,7 @@ const STARTER_SLOTS: readonly PlayerSlotId[] = [
 ];
 
 const STARTER_NEBULA_PALETTES = [
-  'cyan_magenta',
+  'violet_core',
   'golden_expanse',
   'crimson_rift',
   'emerald_veil',
@@ -136,7 +136,7 @@ export function createFiveSystemGalaxy(): GalaxyTopology {
     isCentralHub: true,
     starterOwnerSlot: null,
     resourceSkew: 'balanced_rich',
-    nebulaPalette: 'violet_core',
+    nebulaPalette: 'cyan_magenta',
     planets: [
       {
         id: 'system_central_hub_super_earth',

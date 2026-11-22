@@ -3,6 +3,8 @@ import type {
   DeepSpaceStructureId,
   OrbitalStructureId,
 } from '../../shared/config/index.ts';
+import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
+import { FACTION_PALETTES } from './factionColors.ts';
 import { createProceduralHullTextures } from './proceduralHullTextures.ts';
 import {
   ShipModelLibrary,
@@ -573,31 +575,75 @@ export class StationModelLibrary {
     new THREE.BoxGeometry(0.32, 0.24, 7.6),
   );
 
+  private readonly factionAccentMaterials = new Map<
+    PlayerSlotId,
+    THREE.MeshStandardMaterial
+  >();
+
+  private getFactionAccentMaterial(ownerId: PlayerSlotId): THREE.MeshStandardMaterial {
+    let mat = this.factionAccentMaterials.get(ownerId);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        name: `station_faction_accent_${ownerId}`,
+        color: FACTION_PALETTES[ownerId].accentHex,
+        map: this.hullTextures.weatheredOchre.map,
+        bumpMap: this.hullTextures.weatheredOchre.bumpMap,
+        bumpScale: 0.08,
+        roughnessMap: this.hullTextures.weatheredOchre.roughnessMap,
+        metalness: 0.55,
+        roughness: 0.64,
+      });
+      this.factionAccentMaterials.set(ownerId, mat);
+    }
+    return mat;
+  }
+
   public buildStationMesh(
     structureId: StationOrDeepSpaceStructureId,
     isComplete: boolean,
     orbitalRingRadius = 42.56,
+    ownerId?: PlayerSlotId,
   ): THREE.Group {
+    let root: THREE.Group;
     switch (structureId) {
       case 'command_and_control':
-        return this.buildPrometheusCommandAndControl(isComplete, orbitalRingRadius);
+        root = this.buildPrometheusCommandAndControl(isComplete, orbitalRingRadius);
+        break;
       case 'refinery':
-        return this.buildHephaesRefinery(isComplete, orbitalRingRadius);
+        root = this.buildHephaesRefinery(isComplete, orbitalRingRadius);
+        break;
       case 'planetary_outpost':
-        return this.buildVanguardPlanetaryOutpost(isComplete, orbitalRingRadius);
+        root = this.buildVanguardPlanetaryOutpost(isComplete, orbitalRingRadius);
+        break;
       case 'orbital_dockyard':
-        return this.buildTitanOrbitalDockyard(isComplete, orbitalRingRadius);
+        root = this.buildTitanOrbitalDockyard(isComplete, orbitalRingRadius);
+        break;
       case 'tech_module':
-        return this.buildMinervaTechModule(isComplete, orbitalRingRadius);
+        root = this.buildMinervaTechModule(isComplete, orbitalRingRadius);
+        break;
       case 'heavy_defense_platform':
-        return this.buildAegisHeavyDefensePlatform(isComplete, orbitalRingRadius);
+        root = this.buildAegisHeavyDefensePlatform(isComplete, orbitalRingRadius);
+        break;
       case 'logistics_hub':
-        return this.buildAtlasLogisticsHub(isComplete);
+        root = this.buildAtlasLogisticsHub(isComplete);
+        break;
       case 'point_defence_tower':
-        return this.buildDeepSpaceSentryTower('point_defence', isComplete);
+        root = this.buildDeepSpaceSentryTower('point_defence', isComplete);
+        break;
       case 'hull_breaker_tower':
-        return this.buildDeepSpaceSentryTower('hull_breaker', isComplete);
+        root = this.buildDeepSpaceSentryTower('hull_breaker', isComplete);
+        break;
     }
+
+    if (isComplete && ownerId) {
+      const factionAccent = this.getFactionAccentMaterial(ownerId);
+      root.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.material === this.accentOchreMat) {
+          obj.material = factionAccent;
+        }
+      });
+    }
+    return root;
   }
 
   public updateStationAnimation(
@@ -642,6 +688,10 @@ export class StationModelLibrary {
     this.techHoloSurfaceMat.dispose();
     this.techTranslucentDomeMat.dispose();
     this.buildingWireframeMat.dispose();
+    for (const mat of this.factionAccentMaterials.values()) {
+      mat.dispose();
+    }
+    this.factionAccentMaterials.clear();
     this.hullTextures.dispose();
     this.shipModels.dispose();
   }

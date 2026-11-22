@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
 import type { HarvesterUnitState } from '../../shared/sim/gameSimulation.ts';
+import { FACTION_PALETTES } from './factionColors.ts';
 import { createProceduralHullTextures } from './proceduralHullTextures.ts';
 
 interface HarvesterRenderInstance {
@@ -132,9 +134,18 @@ export class HarvesterFleetRenderer {
   private readonly impactCoreGeom = new THREE.SphereGeometry(0.85, 12, 12);
   private readonly impactRingGeom = new THREE.TorusGeometry(1.55, 0.16, 8, 24);
   private readonly selectionRingGeom = new THREE.TorusGeometry(5.6, 0.22, 8, 36);
+  private readonly factionRingGeom = new THREE.RingGeometry(4.2, 4.75, 24);
   private readonly targetRockRingGeom = new THREE.TorusGeometry(3.8, 0.18, 8, 28);
   private readonly hitSphereGeom = new THREE.SphereGeometry(6.2, 12, 12);
   private readonly sharedGeometries: THREE.BufferGeometry[] = [];
+  private readonly factionMaterials = new Map<
+    PlayerSlotId,
+    {
+      readonly accentMat: THREE.MeshStandardMaterial;
+      readonly engineMat: THREE.MeshBasicMaterial;
+      readonly ringMat: THREE.MeshBasicMaterial;
+    }
+  >();
 
   private readonly meshByHarvesterId = new Map<string, HarvesterRenderInstance>();
 
@@ -145,6 +156,7 @@ export class HarvesterFleetRenderer {
     this.outerBeamGeom.rotateX(Math.PI / 2);
     this.outerBeamGeom.translate(0, 0, 0.5);
     this.selectionRingGeom.rotateX(Math.PI / 2);
+    this.factionRingGeom.rotateX(-Math.PI / 2);
     this.targetRockRingGeom.rotateX(Math.PI / 2);
 
     this.sharedGeometries.push(
@@ -153,6 +165,7 @@ export class HarvesterFleetRenderer {
       this.impactCoreGeom,
       this.impactRingGeom,
       this.selectionRingGeom,
+      this.factionRingGeom,
       this.targetRockRingGeom,
       this.hitSphereGeom,
     );
@@ -168,7 +181,7 @@ export class HarvesterFleetRenderer {
       activeIds.add(h.id);
       let entry = this.meshByHarvesterId.get(h.id);
       if (!entry) {
-        entry = this.createProspectorMesh(h.id);
+        entry = this.createProspectorMesh(h.id, h.ownerId);
         this.meshByHarvesterId.set(h.id, entry);
         this.rootGroup.add(entry.group);
       }
@@ -293,7 +306,51 @@ export class HarvesterFleetRenderer {
     this.selectionRingMat.dispose();
     this.targetRockRingMat.dispose();
     this.hitSphereMat.dispose();
+    for (const bundle of this.factionMaterials.values()) {
+      bundle.accentMat.dispose();
+      bundle.engineMat.dispose();
+      bundle.ringMat.dispose();
+    }
+    this.factionMaterials.clear();
     this.hullTextures.dispose();
+  }
+
+  private getFactionMaterials(ownerId: PlayerSlotId): {
+    readonly accentMat: THREE.MeshStandardMaterial;
+    readonly engineMat: THREE.MeshBasicMaterial;
+    readonly ringMat: THREE.MeshBasicMaterial;
+  } {
+    let bundle = this.factionMaterials.get(ownerId);
+    if (!bundle) {
+      const palette = FACTION_PALETTES[ownerId];
+      bundle = {
+        accentMat: new THREE.MeshStandardMaterial({
+          name: `harvester_faction_accent_${ownerId}`,
+          color: palette.accentHex,
+          map: this.hullTextures.weatheredOchre.map,
+          bumpMap: this.hullTextures.weatheredOchre.bumpMap,
+          bumpScale: 0.08,
+          roughnessMap: this.hullTextures.weatheredOchre.roughnessMap,
+          metalness: 0.55,
+          roughness: 0.64,
+        }),
+        engineMat: new THREE.MeshBasicMaterial({
+          color: new THREE.Color(
+            palette.engineColor[0],
+            palette.engineColor[1],
+            palette.engineColor[2],
+          ),
+        }),
+        ringMat: new THREE.MeshBasicMaterial({
+          color: palette.tacticalHex,
+          transparent: true,
+          opacity: 0.42,
+          side: THREE.DoubleSide,
+        }),
+      };
+      this.factionMaterials.set(ownerId, bundle);
+    }
+    return bundle;
   }
 
   private registerGeom<T extends THREE.BufferGeometry>(geom: T): T {
@@ -301,7 +358,10 @@ export class HarvesterFleetRenderer {
     return geom;
   }
 
-  private createProspectorMesh(harvesterId: string): HarvesterRenderInstance {
+  private createProspectorMesh(
+    harvesterId: string,
+    ownerId: PlayerSlotId,
+  ): HarvesterRenderInstance {
     const group = new THREE.Group();
     const shipBody = new THREE.Group();
     group.add(shipBody);
@@ -543,6 +603,23 @@ export class HarvesterFleetRenderer {
     );
     selectionRing.visible = false;
     group.add(selectionRing);
+
+    // Apply per-faction hull accent, engine tint, and subtle ownership base ring
+    const factionMats = this.getFactionMaterials(ownerId);
+    shipBody.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) {
+        return;
+      }
+      if (obj.material === this.accentOchreMat) {
+        obj.material = factionMats.accentMat;
+      } else if (obj.material === this.engineCoreMat) {
+        obj.material = factionMats.engineMat;
+      }
+    });
+    const factionRing = new THREE.Mesh(this.factionRingGeom, factionMats.ringMat);
+    factionRing.name = 'harvester_faction_ring';
+    factionRing.position.set(0, -1.25, 0);
+    group.add(factionRing);
 
     const targetRockRing = new THREE.Mesh(
       this.targetRockRingGeom,

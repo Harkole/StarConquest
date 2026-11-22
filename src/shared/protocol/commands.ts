@@ -154,6 +154,12 @@ export interface DisbandFleetCommand {
   readonly fleetId: string;
 }
 
+export interface OrderFleetFleeCommand {
+  readonly type: 'ORDER_FLEET_FLEE';
+  readonly playerId: PlayerSlotId;
+  readonly fleetId: string;
+}
+
 export interface SetDockyardFleetBuildingCommand {
   readonly type: 'SET_DOCKYARD_FLEET_BUILDING';
   readonly playerId: PlayerSlotId;
@@ -176,6 +182,7 @@ export type GameCommand =
   | OrderFleetMoveCommand
   | OrderFleetAttackCommand
   | OrderFleetPatrolCommand
+  | OrderFleetFleeCommand
   | SplitFleetCommand
   | MergeFleetsCommand
   | DisbandFleetCommand

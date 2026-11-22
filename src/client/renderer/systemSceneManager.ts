@@ -9,9 +9,13 @@ import type {
   PlanetNode,
   StarSystemNode,
 } from '../../shared/sim/galaxy.ts';
-import type { DockyardWaypoint } from '../../shared/sim/gameSimulation.ts';
+import {
+  BATTLE_SIMULATOR_SYSTEM_ID,
+  type DockyardWaypoint,
+} from '../../shared/sim/gameSimulation.ts';
 import type { LocalSimAdapter } from '../net/localSimAdapter.ts';
 import { CombatFleetRenderer } from './combatFleetRenderer.ts';
+import { CombatVfxRenderer } from './combatVfxRenderer.ts';
 import { HarvesterFleetRenderer } from './harvesterFleetRenderer.ts';
 import type { OrbitalCameraController } from './orbitalCamera.ts';
 import {
@@ -25,6 +29,16 @@ import {
 } from './spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from './stationModels.ts';
 
+const BATTLE_VOID_SYSTEM: StarSystemNode = {
+  id: BATTLE_SIMULATOR_SYSTEM_ID,
+  name: 'Battle Simulator Void',
+  isCentralHub: false,
+  starterOwnerSlot: null,
+  resourceSkew: 'balanced_rich',
+  nebulaPalette: 'crimson_rift',
+  planets: [],
+};
+
 export class SystemSceneManager {
   private readonly scene: THREE.Scene;
   private readonly galaxy: GalaxyTopology;
@@ -32,6 +46,7 @@ export class SystemSceneManager {
   public readonly simAdapter: LocalSimAdapter;
 
   private activeSystem: StarSystemNode;
+  private lastMatchSystemId = 'system_starter_1';
   private selectedPlanetId: string;
   private selectedHarvesterId: string | null = null;
   private selectedCombatShipId: string | null = null;
@@ -40,6 +55,7 @@ export class SystemSceneManager {
   private planetHandles: AnimatedPlanetHandle[] = [];
   private readonly harvesterRenderer = new HarvesterFleetRenderer();
   private readonly combatFleetRenderer = new CombatFleetRenderer();
+  private readonly combatVfxRenderer = new CombatVfxRenderer();
   private readonly deepSpaceModels = new StationModelLibrary();
   private readonly deepSpaceRootGroup = new THREE.Group();
   private readonly deepSpaceGroupsById = new Map<string, THREE.Group>();
@@ -98,6 +114,7 @@ export class SystemSceneManager {
     this.simAdapter = simAdapter;
     this.scene.add(this.harvesterRenderer.rootGroup);
     this.scene.add(this.combatFleetRenderer.rootGroup);
+    this.scene.add(this.combatVfxRenderer.rootGroup);
     this.scene.add(this.deepSpaceRootGroup);
     this.placementPreviewGroup.visible = false;
     this.scene.add(this.placementPreviewGroup);
@@ -368,6 +385,14 @@ export class SystemSceneManager {
     return this.activeSystem;
   }
 
+  public getLastMatchSystemId(): string {
+    return this.lastMatchSystemId;
+  }
+
+  public isInBattleSimulatorVoid(): boolean {
+    return this.activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID;
+  }
+
   public getActivePlanets(): readonly PlanetNode[] {
     return this.activeSystem.planets;
   }
@@ -385,9 +410,15 @@ export class SystemSceneManager {
   }
 
   public loadSystem(systemId: string): StarSystemNode {
-    const targetSystem = this.galaxy.systems.find((s) => s.id === systemId);
+    const targetSystem =
+      systemId === BATTLE_SIMULATOR_SYSTEM_ID
+        ? BATTLE_VOID_SYSTEM
+        : this.galaxy.systems.find((s) => s.id === systemId);
     if (!targetSystem) {
       throw new Error(`Unknown star system id: ${systemId}`);
+    }
+    if (systemId !== BATTLE_SIMULATOR_SYSTEM_ID) {
+      this.lastMatchSystemId = systemId;
     }
 
     this.clearCurrentSystem();
@@ -520,6 +551,13 @@ export class SystemSceneManager {
     this.notifySelectionChanged();
   }
 
+  public focusWorldPoint(x: number, z: number, distance = 260): void {
+    this.selectedHarvesterId = null;
+    this.cameraController.clearPin();
+    this.cameraController.focusOn(x, z, distance);
+    this.notifySelectionChanged();
+  }
+
   public update(elapsedSeconds: number, deltaSeconds: number): void {
     this.simAdapter.update(deltaSeconds);
     const simElapsed = this.simAdapter.simulation.elapsedSeconds;
@@ -551,6 +589,7 @@ export class SystemSceneManager {
       this.selectedCombatShipId,
       this.selectedFleetId,
       elapsedSeconds,
+      this.cameraController.camera.quaternion,
     );
 
     // Render Rally / Move beacons & Patrol Route 3D markers for player Fleets & Dockyards
@@ -588,6 +627,10 @@ export class SystemSceneManager {
       patrolRoutes,
     );
 
+    const combatEvents = this.simAdapter.simulation.consumeCombatEvents();
+    this.combatVfxRenderer.ingestEvents(combatEvents, this.activeSystem.id);
+    this.combatVfxRenderer.update(deltaSeconds);
+
     const shipPositions = [
       ...harvestersInSystem.map((h) => h.position),
       ...combatShipsInSystem.map((s) => s.position),
@@ -608,7 +651,7 @@ export class SystemSceneManager {
       this.activeSystem.id,
     );
     const sig = deepSpaceStructs
-      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}`)
+      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}`)
       .join('|');
 
     if (sig !== this.lastDeepSpaceSignature) {
@@ -620,6 +663,8 @@ export class SystemSceneManager {
         const stationGroup = this.deepSpaceModels.buildStationMesh(
           ds.structureId,
           ds.isComplete,
+          undefined,
+          ds.ownerId,
         );
         stationGroup.position.set(ds.position.x, 0, ds.position.z);
 
@@ -642,6 +687,16 @@ export class SystemSceneManager {
       const group = this.deepSpaceGroupsById.get(ds.id);
       if (group) {
         this.deepSpaceModels.updateStationAnimation(group, elapsedSeconds, null);
+        // Active turret tracking rotation for PD Towers & Hull Breaker Towers when engaging targets
+        if (ds.currentTargetPos && Array.isArray(group.userData.turretPivots)) {
+          const bearing = Math.atan2(
+            ds.currentTargetPos.x - ds.position.x,
+            ds.currentTargetPos.z - ds.position.z,
+          );
+          for (const pivot of group.userData.turretPivots as THREE.Object3D[]) {
+            pivot.rotation.y = bearing;
+          }
+        }
       }
     }
   }
@@ -950,5 +1005,6 @@ export class SystemSceneManager {
     this.harvesterRenderer.syncHarvesters([]);
     this.combatFleetRenderer.syncShips([], null, null, 0);
     this.combatFleetRenderer.syncOrdersOverlay('', [], []);
+    this.combatVfxRenderer.clear();
   }
 }

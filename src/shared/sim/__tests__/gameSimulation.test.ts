@@ -1162,4 +1162,513 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(dockyard.productionQueue).toHaveLength(1);
     expect(dockyard.productionQueue[0]?.shipClassId).toBe('destroyer');
   });
+
+  it('resolves 5-class RPS combat, stances (Aggressive/Hold/Passive), Carrier fighter tethers, shield impact events, and C&C defeat', () => {
+    // 1. Stances: Passive never fires; Hold the Line holds position; Aggressive pursues in-system
+    const stanceSim = new GameSimulation('blitz_skirmish');
+    const passiveCruiser = stanceSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 200, z: 200 },
+      'cruiser',
+      'passive',
+    );
+    const enemyTarget = stanceSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 260, z: 200 },
+      'destroyer',
+      'passive',
+    );
+    stanceSim.stepTick(2.0);
+    expect(enemyTarget.hull).toBe(enemyTarget.maxHull);
+    expect(passiveCruiser.inCombat).toBe(false);
+
+    // Switch to hold_the_line -> fires immediately in range without moving
+    passiveCruiser.stance = 'hold_the_line';
+    const holdStartPos = { ...passiveCruiser.position };
+    stanceSim.stepTick(2.0);
+    expect(enemyTarget.hull).toBeLessThan(enemyTarget.maxHull);
+    expect(passiveCruiser.position.x).toBeCloseTo(holdStartPos.x, 3);
+    expect(stanceSim.isPlayerInActiveCombat('player_1')).toBe(true);
+
+    // Aggressive ship pursues a distant hostile in the same system
+    const aggressiveDestroyer = stanceSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 600, z: 200 },
+      'destroyer',
+      'aggressive',
+    );
+    const startDist = Math.hypot(
+      aggressiveDestroyer.position.x - enemyTarget.position.x,
+      aggressiveDestroyer.position.z - enemyTarget.position.z,
+    );
+    stanceSim.stepTick(2.0);
+    const afterDist = Math.hypot(
+      aggressiveDestroyer.position.x - enemyTarget.position.x,
+      aggressiveDestroyer.position.z - enemyTarget.position.z,
+    );
+    expect(afterDist).toBeLessThan(startDist - 50);
+
+    // 2. RPS: Fighter swarm strips shields & defeats a lone Dreadnought, emitting weapon_fire + shield_impact + hull_explosion
+    const fighterSim = new GameSimulation('blitz_skirmish');
+    for (let i = 0; i < 12; i++) {
+      fighterSim.spawnCombatShipDirect(
+        'player_1',
+        'system_central_hub',
+        { x: 300 + (i % 4) * 10, z: 300 + Math.floor(i / 4) * 10 },
+        'fighter',
+        'aggressive',
+      );
+    }
+    const loneDread = fighterSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 340, z: 310 },
+      'dreadnought',
+      'hold_the_line',
+    );
+
+    let sawWeaponFire = false;
+    let sawShieldImpact = false;
+    let sawExplosion = false;
+    for (let t = 0; t < 60; t++) {
+      fighterSim.stepTick(0.5);
+      for (const ev of fighterSim.consumeCombatEvents()) {
+        if (ev.type === 'weapon_fire') sawWeaponFire = true;
+        if (ev.type === 'shield_impact') sawShieldImpact = true;
+        if (ev.type === 'hull_explosion') sawExplosion = true;
+      }
+      if (!fighterSim.getCombatShipById(loneDread.id)) {
+        break;
+      }
+    }
+    expect(fighterSim.getCombatShipById(loneDread.id)).toBeUndefined();
+    expect(sawWeaponFire).toBe(true);
+    expect(sawShieldImpact).toBe(true);
+    expect(sawExplosion).toBe(true);
+
+    // 3. RPS: 2 Cruisers shred 6 Fighters with rapid Point Defence
+    const pdSim = new GameSimulation('blitz_skirmish');
+    pdSim.spawnCombatShipDirect('player_1', 'system_central_hub', { x: 200, z: 200 }, 'cruiser', 'hold_the_line');
+    pdSim.spawnCombatShipDirect('player_1', 'system_central_hub', { x: 215, z: 215 }, 'cruiser', 'hold_the_line');
+    for (let i = 0; i < 6; i++) {
+      pdSim.spawnCombatShipDirect(
+        'player_2',
+        'system_central_hub',
+        { x: 250 + i * 6, z: 200 },
+        'fighter',
+        'aggressive',
+      );
+    }
+    for (let t = 0; t < 40; t++) {
+      pdSim.stepTick(0.5);
+    }
+    const remainingP2Fighters = pdSim
+      .getAllCombatShips()
+      .filter((s) => s.ownerId === 'player_2');
+    const remainingP1Cruisers = pdSim
+      .getAllCombatShips()
+      .filter((s) => s.ownerId === 'player_1');
+    expect(remainingP2Fighters).toHaveLength(0);
+    expect(remainingP1Cruisers).toHaveLength(2);
+
+    // 4. Carrier holds standoff (>= 240u), keeps 4 ready Fighters docked when clear, scrambles rapidly on contact,
+    //    rebuilds destroyed squadrons 1-at-a-time (0 -> 7s resetting per missing wing), and destroying Carrier strands them
+    const carrierSim = new GameSimulation('blitz_skirmish');
+    const carrier = carrierSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 400, z: 400 },
+      'carrier',
+      'aggressive',
+    );
+    expect(carrier.readyFighterCount).toBe(4);
+    expect(carrier.fighterRebuildProgressSeconds).toBe(0);
+    // No enemies nearby -> Fighters stay docked in the Carrier hangar
+    carrierSim.stepTick(10.0);
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id),
+    ).toHaveLength(0);
+
+    // Hostile Dreadnought enters scramble range (passive so it stays alive while wings scramble)
+    const hostileTarget = carrierSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 700, z: 400 },
+      'dreadnought',
+      'passive',
+    );
+    hostileTarget.hull = 20000;
+    // Rapid hangar scramble launches all 4 ready squadrons within ~4s
+    for (let t = 0; t < 8; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    const launchedWings = carrierSim
+      .getAllCombatShips()
+      .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id);
+    expect(launchedWings).toHaveLength(4);
+    expect(carrier.readyFighterCount).toBe(0);
+    expect(carrier.fighterRebuildProgressSeconds).toBe(0);
+
+    // Aggressive Carrier holds standoff (~280u) instead of closing into PD range
+    for (let t = 0; t < 10; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    const carrierDist = Math.hypot(
+      carrier.position.x - hostileTarget.position.x,
+      carrier.position.z - hostileTarget.position.z,
+    );
+    expect(carrierDist).toBeGreaterThanOrEqual(240);
+
+    // Destroy 2 squadrons -> sequential 1-at-a-time rebuild (7s per squadron, resetting for the 2nd)
+    expect(carrierSim.destroyCombatShip(launchedWings[0]!.id)).toBe(true);
+    expect(carrierSim.destroyCombatShip(launchedWings[1]!.id)).toBe(true);
+    carrierSim.stepTick(3.5);
+    expect(carrier.fighterRebuildProgressSeconds).toBeCloseTo(3.5, 2);
+    // Finish 1st rebuild (7.0s total) -> 3rd wing returns, progress resets for 2nd missing wing
+    carrierSim.stepTick(3.6);
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id).length +
+        carrier.readyFighterCount,
+    ).toBe(3);
+    expect(carrier.fighterRebuildProgressSeconds).toBeLessThan(1.0);
+    // Finish 2nd rebuild -> all 4 squadrons restored, rebuild bar clears to 0
+    for (let t = 0; t < 16; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id).length +
+        carrier.readyFighterCount,
+    ).toBe(4);
+    expect(carrier.fighterRebuildProgressSeconds).toBe(0);
+
+    // Destroy the Carrier -> next tick cleans up stranded Fighters with no Hub/Carrier left
+    expect(carrierSim.destroyCombatShip(carrier.id)).toBe(true);
+    carrierSim.stepTick(0.5);
+    expect(
+      carrierSim.getAllCombatShips().filter((s) => s.shipClassId === 'fighter'),
+    ).toHaveLength(0);
+
+    // 5. Destroying a player's Homeworld C&C marks that player defeated
+    const defeatSim = new GameSimulation('blitz_skirmish');
+    const p2Home = defeatSim.getPlanetState('system_starter_2_homeworld');
+    const p2Cnc = p2Home.structures.find((s) => s.structureId === 'command_and_control')!;
+    const cncPos = defeatSim.getStructureWorldPosition(p2Home, p2Cnc);
+    p2Cnc.shields = 0;
+    p2Cnc.hull = 200;
+    defeatSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_2',
+      { x: cncPos.x + 80, z: cncPos.z },
+      'dreadnought',
+      'aggressive',
+    );
+    expect(defeatSim.isPlayerDefeated('player_2')).toBe(false);
+    for (let i = 0; i < 6; i++) {
+      defeatSim.stepTick(0.5);
+    }
+    expect(defeatSim.isPlayerDefeated('player_2')).toBe(true);
+
+    // 6. Fleet Battle Simulator runs in isolated void system (`system_battle_void`) and tracks damage & survival stats
+    const simArena = new GameSimulation('standard_tactical');
+    const launch = simArena.launchFleetBattleSimulator(
+      { cruiser: 2 },
+      { destroyer: 1 },
+    );
+    expect(launch.systemId).toBe('system_battle_void');
+    expect(launch.friendlySpawned).toBe(2);
+    expect(launch.hostileSpawned).toBe(1);
+    expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(0);
+    expect(simArena.getCombatShipsInSystem('system_battle_void')).toHaveLength(3);
+
+    for (let t = 0; t < 40; t++) {
+      simArena.stepTick(0.5);
+      if (simArena.getBattleSimulatorStats()?.status !== 'running') {
+        break;
+      }
+    }
+    const finalStats = simArena.getBattleSimulatorStats();
+    expect(finalStats?.status).toBe('friendly_victory');
+    expect(finalStats?.friendly.survivingShips).toBeGreaterThan(0);
+    expect(finalStats?.hostile.survivingShips).toBe(0);
+    expect(finalStats?.friendly.hullDamageDealt).toBeGreaterThan(0);
+    expect(finalStats?.friendly.shipsDestroyed).toBe(1);
+    expect(simArena.clearBattleSimulatorShips()).toBeGreaterThan(0);
+    expect(simArena.getCombatShipsInSystem('system_battle_void')).toHaveLength(0);
+
+    // 7. Combat movement & LOS: Dreadnoughts turn bow-on for Spinal Siege vs Capitals/Structures,
+    //    broadside for Heavy Turrets vs Cruisers/Destroyers, Fighters orbit closely, and LOS blocks friendly hulls
+    const tacticsSim = new GameSimulation('blitz_skirmish');
+    const dreadVsCruiser = tacticsSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 300, z: 300 },
+      'dreadnought',
+      'hold_the_line',
+    );
+    dreadVsCruiser.headingRadians = Math.PI / 2;
+    const enemyCruiser = tacticsSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 450, z: 300 },
+      'cruiser',
+      'passive',
+    );
+    enemyCruiser.hull = 5000;
+
+    for (let i = 0; i < 12; i++) {
+      tacticsSim.stepTick(0.2);
+    }
+    // Against a Cruiser, Dreadnought turns broadside to focus its dorsal & broadside heavy turrets
+    const bearingToCruiser = Math.atan2(
+      enemyCruiser.position.x - dreadVsCruiser.position.x,
+      enemyCruiser.position.z - dreadVsCruiser.position.z,
+    );
+    const broadsideAngle = Math.abs(
+      Math.atan2(
+        Math.sin(dreadVsCruiser.headingRadians - bearingToCruiser),
+        Math.cos(dreadVsCruiser.headingRadians - bearingToCruiser),
+      ),
+    );
+    expect(broadsideAngle).toBeGreaterThan(Math.PI / 2 - 0.15);
+
+    // Against an enemy Dreadnought, Dreadnought turns bow-on for its forward Spinal Siege Battery
+    const siegeSim = new GameSimulation('blitz_skirmish');
+    const siegeDread = siegeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 300, z: 300 },
+      'dreadnought',
+      'hold_the_line',
+    );
+    siegeDread.headingRadians = 0; // Starts side-on
+    const enemyDread = siegeSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 450, z: 300 },
+      'dreadnought',
+      'passive',
+    );
+    enemyDread.hull = 5000;
+    for (let i = 0; i < 12; i++) {
+      siegeSim.stepTick(0.2);
+    }
+    const bearingToEnemy = Math.atan2(
+      enemyDread.position.x - siegeDread.position.x,
+      enemyDread.position.z - siegeDread.position.z,
+    );
+    const bowOffAngle = Math.abs(
+      Math.atan2(
+        Math.sin(siegeDread.headingRadians - bearingToEnemy),
+        Math.cos(siegeDread.headingRadians - bearingToEnemy),
+      ),
+    );
+    expect(bowOffAngle).toBeLessThan(0.2);
+
+    // Fighter orbits around target continuously (never stationary) while facing the target
+    const fighter = siegeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 470, z: 300 },
+      'fighter',
+      'aggressive',
+    );
+    const posBefore = { ...fighter.position };
+    siegeSim.stepTick(0.2);
+    const moved = Math.hypot(
+      fighter.position.x - posBefore.x,
+      fighter.position.z - posBefore.z,
+    );
+    expect(moved).toBeGreaterThan(5);
+    const fighterBearing = Math.atan2(
+      enemyDread.position.x - fighter.position.x,
+      enemyDread.position.z - fighter.position.z,
+    );
+    expect(fighter.headingRadians).toBeCloseTo(fighterBearing, 2);
+
+    // Friendly hull directly between shooter and enemy blocks LOS (no friendly-fire shoot-through)
+    const losSim = new GameSimulation('blitz_skirmish');
+    const shooter = losSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 200, z: 200 },
+      'cruiser',
+      'hold_the_line',
+    );
+    losSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 250, z: 200 },
+      'dreadnought',
+      'passive',
+    );
+    const blockedEnemy = losSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 300, z: 200 },
+      'destroyer',
+      'passive',
+    );
+    expect(shooter).toBeDefined();
+    losSim.stepTick(2.0);
+    expect(blockedEnemy.hull).toBe(blockedEnemy.maxHull);
+
+    // 8. Fleet Flee command routes ships at full individual speed to nearest Logistics Hub / Outpost / C&C
+    const fleeSim = new GameSimulation('blitz_skirmish');
+    const p1Flee = fleeSim.getPlayerState('player_1');
+    p1Flee.ore = 2000;
+    p1Flee.crystal = 1000;
+    expect(
+      fleeSim.submitCommand({
+        type: 'BUILD_DEEP_SPACE_STRUCTURE',
+        playerId: 'player_1',
+        systemId: 'system_starter_1',
+        position: { x: 420, z: 200 },
+        structureId: 'logistics_hub',
+      }).ok,
+    ).toBe(true);
+    fleeSim.stepTick(21);
+
+    expect(
+      fleeSim.submitCommand({
+        type: 'CREATE_FLEET',
+        playerId: 'player_1',
+        rallySystemId: 'system_starter_1',
+        rallyPosition: { x: 520, z: 200 },
+      }).ok,
+    ).toBe(true);
+    const fleeingFleet = fleeSim.getFleetsForPlayer('player_1')[0]!;
+    const ddFlee = fleeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 520, z: 200 },
+      'destroyer',
+      'aggressive',
+      null,
+      fleeingFleet.id,
+    );
+    const dnFlee = fleeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 530, z: 210 },
+      'dreadnought',
+      'aggressive',
+      null,
+      fleeingFleet.id,
+    );
+
+    expect(
+      fleeSim.submitCommand({
+        type: 'ORDER_FLEET_FLEE',
+        playerId: 'player_1',
+        fleetId: fleeingFleet.id,
+      }).ok,
+    ).toBe(true);
+    expect(fleeingFleet.orderType).toBe('flee');
+    // Nearest sanctuary is the completed Logistics Hub at (420, 200), closer than Homeworld C&C at (0, 0)
+    expect(fleeingFleet.orderPosition).toEqual({ x: 420, z: 200 });
+    expect(ddFlee.isFleeing).toBe(true);
+    expect(dnFlee.isFleeing).toBe(true);
+
+    // Destroyer runs at full 68 u/s (faster than Dreadnought's 18 u/s) and clears isFleeing on arrival
+    const ddStartX = ddFlee.position.x;
+    const dnStartX = dnFlee.position.x;
+    fleeSim.stepTick(1.0);
+    expect(ddStartX - ddFlee.position.x).toBeGreaterThan(dnStartX - dnFlee.position.x + 30);
+    for (let i = 0; i < 15; i++) {
+      fleeSim.stepTick(0.5);
+    }
+    expect(ddFlee.isFleeing).toBe(false);
+
+    // 9. Inter-ship separation keeps neighboring combat hulls from overlapping/merging in flight & formation
+    const sepSim = new GameSimulation('blitz_skirmish');
+    const crA = sepSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 350, z: 350 },
+      'cruiser',
+      'hold_the_line',
+    );
+    const crB = sepSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 350, z: 350 },
+      'cruiser',
+      'hold_the_line',
+    );
+    for (let i = 0; i < 6; i++) {
+      sepSim.stepTick(0.25);
+    }
+    const sepDist = Math.hypot(
+      crA.position.x - crB.position.x,
+      crA.position.z - crB.position.z,
+    );
+    // Two Cruisers (10u clearance radius each -> 20u combined clearance) separate cleanly without clipping
+    expect(sepDist).toBeGreaterThanOrEqual(19.0);
+
+    // 10. Fleet Focus Anchor focuses on the single ship or majority spatial cluster (no drift from distant reinforcements)
+    const anchorSim = new GameSimulation('blitz_skirmish');
+    expect(
+      anchorSim.submitCommand({
+        type: 'CREATE_FLEET',
+        playerId: 'player_1',
+        rallySystemId: 'system_starter_1',
+        rallyPosition: { x: 500, z: 500 },
+      }).ok,
+    ).toBe(true);
+    const anchorFleet = anchorSim.getFleetsForPlayer('player_1')[0]!;
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 500, z: 500 },
+      'cruiser',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    // Single ship -> exact ship position
+    expect(anchorSim.getFleetLiveAnchor(anchorFleet.id)?.position).toEqual({ x: 500, z: 500 });
+
+    // Add 2 more ships to the main cluster + 1 distant reinforcement en route at (50, 50)
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 520, z: 500 },
+      'cruiser',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 510, z: 520 },
+      'destroyer',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 50, z: 50 },
+      'destroyer',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    const clusterAnchor = anchorSim.getFleetLiveAnchor(anchorFleet.id);
+    expect(clusterAnchor?.systemId).toBe('system_starter_1');
+    // Majority cluster average is (510, 506.67), NOT pulled into empty space at (395, 392.5)
+    expect(clusterAnchor!.position.x).toBeCloseTo(510, 1);
+    expect(clusterAnchor!.position.z).toBeCloseTo(506.67, 1);
+  });
 });

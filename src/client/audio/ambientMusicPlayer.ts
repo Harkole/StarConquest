@@ -110,11 +110,15 @@ export function shuffleTracks<T>(
 }
 
 const AUTOPLAY_UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'click', 'keydown'] as const;
+export const COMBAT_FADE_IN_SECONDS = 1.8;
+export const COMBAT_FADE_OUT_SECONDS = 3.0;
 
 /**
  * Client-only soundtrack playlist controller for StarConquest (`docs/sounds.md`).
  * - Shuffles the active category playlist (`ambient` or `combat`) on load, then loops
  *   through the shuffled order once every track has played once.
+ * - Crossfades smoothly between `ambient` and `combat` categories (`1.8s` fade-in into
+ *   combat, `3.0s` fade-out back to ambient) when driven via `update(deltaSeconds)`.
  * - Muting stops playback and resets `currentTime = 0`; unmuting restarts from the
  *   beginning of the track it was playing unless the music category changed (e.g. to `combat`).
  */
@@ -122,7 +126,9 @@ export class AmbientMusicPlayer {
   private readonly baseUrlOverride: string | undefined;
   private readonly allTracks: readonly MusicTrackDescriptor[];
   private readonly random: () => number;
-  private readonly audio: AudioElementLike;
+  private readonly createAudio: (src: string) => AudioElementLike;
+  private audio: AudioElementLike;
+  private fadingOutAudio: AudioElementLike | null = null;
   private readonly onEndedHandler: () => void;
 
   private category: MusicTrackCategory;
@@ -132,10 +138,16 @@ export class AmbientMusicPlayer {
   private waitingForUserGesture = false;
   private unlockHandler: ((event: Event) => void) | null = null;
 
+  private fadeDurationSeconds = 0;
+  private fadeElapsedSeconds = 0;
+  private fadeOutStartVolume = 0;
+  private fadeInTargetVolume = 0;
+
   constructor(options: AmbientMusicPlayerOptions = {}) {
     this.baseUrlOverride = options.baseUrl;
     this.allTracks = options.tracks ?? MUSIC_TRACKS;
     this.random = options.random ?? Math.random;
+    this.createAudio = options.createAudio ?? defaultCreateAudio;
     this.category = options.initialCategory ?? 'ambient';
 
     this.playlist = this.buildShuffledPlaylist(this.category);
@@ -143,8 +155,7 @@ export class AmbientMusicPlayer {
 
     const firstTrack = this.getTrack();
     const initialSrc = resolveAudioTrackUrl(firstTrack.filename, this.baseUrlOverride);
-    const factory = options.createAudio ?? defaultCreateAudio;
-    this.audio = factory(initialSrc);
+    this.audio = this.createAudio(initialSrc);
     this.applyTrackToAudio(firstTrack, false);
 
     this.onEndedHandler = () => {
@@ -176,8 +187,9 @@ export class AmbientMusicPlayer {
 
   /**
    * Switches between `'ambient'` and `'combat'` track playlists.
-   * If unmuted, immediately starts playing the new category's shuffled playlist;
-   * if muted, stays stopped and prepares the new category so unmuting plays it.
+   * If unmuted and currently playing, crossfades smoothly (`1.8s` fade-in into combat,
+   * `3.0s` fade-out back to ambient); if muted or paused, prepares the new category
+   * immediately without creating an overlapping channel.
    */
   public setCategory(nextCategory: MusicTrackCategory): void {
     if (nextCategory === this.category) {
@@ -191,11 +203,63 @@ export class AmbientMusicPlayer {
     this.playlist = nextPlaylist;
     this.currentIndex = 0;
 
+    const nextTrack = this.getTrack();
+    if (!this.muted && !this.audio.paused) {
+      this.stopFadingOutChannel();
+      this.audio.removeEventListener?.('ended', this.onEndedHandler);
+      this.fadingOutAudio = this.audio;
+      this.fadeOutStartVolume = this.audio.volume;
+
+      const nextSrc = resolveAudioTrackUrl(nextTrack.filename, this.baseUrlOverride);
+      this.audio = this.createAudio(nextSrc);
+      this.applyTrackToAudio(nextTrack, false);
+      this.audio.volume = 0;
+      this.audio.addEventListener?.('ended', this.onEndedHandler);
+
+      this.fadeDurationSeconds =
+        nextCategory === 'combat' ? COMBAT_FADE_IN_SECONDS : COMBAT_FADE_OUT_SECONDS;
+      this.fadeElapsedSeconds = 0;
+      this.fadeInTargetVolume = nextTrack.volume;
+      this.attemptPlay();
+      return;
+    }
+
+    this.stopFadingOutChannel();
+    this.fadeDurationSeconds = 0;
+    this.fadeElapsedSeconds = 0;
     this.audio.pause();
-    this.applyTrackToAudio(this.getTrack(), true);
+    this.applyTrackToAudio(nextTrack, true);
     if (!this.muted) {
       this.attemptPlay();
     }
+  }
+
+  /**
+   * Advances any active ambient <-> combat crossfade by `deltaSeconds`.
+   */
+  public update(deltaSeconds: number): void {
+    if (this.fadeDurationSeconds <= 0 || this.muted) {
+      return;
+    }
+    this.fadeElapsedSeconds = Math.min(
+      this.fadeDurationSeconds,
+      this.fadeElapsedSeconds + Math.max(0, deltaSeconds),
+    );
+    const t = Math.min(1, Math.max(0, this.fadeElapsedSeconds / this.fadeDurationSeconds));
+    this.audio.volume = this.fadeInTargetVolume * t;
+    if (this.fadingOutAudio) {
+      this.fadingOutAudio.volume = this.fadeOutStartVolume * (1 - t);
+    }
+    if (t >= 1) {
+      this.stopFadingOutChannel();
+      this.fadeDurationSeconds = 0;
+      this.fadeElapsedSeconds = 0;
+      this.audio.volume = this.fadeInTargetVolume;
+    }
+  }
+
+  public isCrossfading(): boolean {
+    return this.fadeDurationSeconds > 0;
   }
 
   /**
@@ -213,18 +277,22 @@ export class AmbientMusicPlayer {
 
   /**
    * Mutes or unmutes the soundtrack:
-   * - `muted = true`: stops playback and resets `currentTime = 0`.
+   * - `muted = true`: stops playback (including any fading channel) and resets `currentTime = 0`.
    * - `muted = false`: restarts from the beginning (`currentTime = 0`) of the current track
-   *   (or the new category's track if category switched while muted).
+   *   at full target volume (or the new category's track if category switched while muted).
    */
   public setMuted(muted: boolean): void {
     this.muted = muted;
     if (muted) {
       this.clearAutoplayUnlockListener();
+      this.stopFadingOutChannel();
+      this.fadeDurationSeconds = 0;
+      this.fadeElapsedSeconds = 0;
       this.audio.pause();
       this.audio.currentTime = 0;
       return;
     }
+    this.audio.volume = this.getTrack().volume;
     this.audio.currentTime = 0;
     this.attemptPlay();
   }
@@ -247,9 +315,22 @@ export class AmbientMusicPlayer {
 
   public dispose(): void {
     this.clearAutoplayUnlockListener();
+    this.stopFadingOutChannel();
+    this.fadeDurationSeconds = 0;
+    this.fadeElapsedSeconds = 0;
     this.audio.removeEventListener?.('ended', this.onEndedHandler);
     this.audio.pause();
     this.audio.currentTime = 0;
+  }
+
+  private stopFadingOutChannel(): void {
+    if (!this.fadingOutAudio) {
+      return;
+    }
+    this.fadingOutAudio.pause();
+    this.fadingOutAudio.currentTime = 0;
+    this.fadingOutAudio.volume = 0;
+    this.fadingOutAudio = null;
   }
 
   private buildShuffledPlaylist(category: MusicTrackCategory): MusicTrackDescriptor[] {

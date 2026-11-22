@@ -34,6 +34,17 @@ To ensure every ship and orbital platform shares a cohesive visual language acro
 | **Forge Heat-Sink Glow (Molten Copper-Orange)** | `#fb923c` | `0.25` | `0.25` | Emissive `#ea580c` (`0.95` intensity) between dark radiator fins on Refinery banks |
 | **Quantum R&D Prism Glow (Quantum Violet-Indigo)** | `#c084fc` | `0.25` | `0.20` | Emissive `#7e22ce` (`0.95` intensity) for R&D multi-prism sensor nodes & quantum data cores |
 
+### Per-Player Faction Color Palette (`src/client/renderer/factionColors.ts`)
+
+Owned combat ships (`ShipModelLibrary`), Harvesters (`HarvesterFleetRenderer`), orbital platforms (`StationModelLibrary` + `planetFactory.ts`), and deep-space structures replace their default Weathered Ochre accent trim and engine core glow with the owning player's faction palette, accompanied by matching orbital ring tracks and subtle base ownership rings/pips:
+
+| Player Slot | Faction Theme | Hull / Station Accent | Tactical Ring & Pip | Engine Exhaust RGB |
+| :--- | :--- | :---: | :---: | :---: |
+| **`player_1`** | **Royal Purple** | `#8b5cf6` | `#a855f7` | `[0.95, 0.45, 1.45]` |
+| **`player_2`** | **Crimson** | `#dc2626` | `#ef4444` | `[1.40, 0.35, 0.25]` |
+| **`player_3`** | **Emerald** | `#16a34a` | `#22c55e` | `[0.30, 1.35, 0.55]` |
+| **`player_4`** | **Solar Gold** | `#eab308` | `#f59e0b` | `[1.40, 1.05, 0.25]` |
+
 ---
 
 ## 3. Procedural 3D Model Construction Rules

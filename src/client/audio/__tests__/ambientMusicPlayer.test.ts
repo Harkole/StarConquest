@@ -227,4 +227,60 @@ describe('AmbientMusicPlayer', () => {
     expect(created!.paused).toBe(true);
     expect(created!.currentTime).toBe(0);
   });
+
+  it('crossfades smoothly into combat music (1.8s) and back out to ambient (3.0s), stopping both channels on mute', () => {
+    const channels: MockAudioElement[] = [];
+    const player = new AmbientMusicPlayer({
+      baseUrl: '/',
+      random: () => 0.5,
+      createAudio: (src) => {
+        const ch = new MockAudioElement(src);
+        channels.push(ch);
+        return ch;
+      },
+    });
+
+    player.start();
+    expect(channels).toHaveLength(1);
+    const ambientCh1 = channels[0]!;
+    expect(ambientCh1.volume).toBeCloseTo(0.45, 5);
+    expect(ambientCh1.paused).toBe(false);
+
+    // Enter combat -> creates combat channel at volume 0 and crossfades over 1.8s
+    player.setCategory('combat');
+    expect(channels).toHaveLength(2);
+    const combatCh = channels[1]!;
+    expect(combatCh.src).toBe('/audio/Iron_Horizon.mp3');
+    expect(combatCh.volume).toBe(0);
+    expect(ambientCh1.paused).toBe(false);
+    expect(player.isCrossfading()).toBe(true);
+
+    // Midpoint (0.9s of 1.8s): ambient at 50%, combat at 50%
+    player.update(0.9);
+    expect(ambientCh1.volume).toBeCloseTo(0.225, 3);
+    expect(combatCh.volume).toBeCloseTo(0.275, 3);
+
+    // Finish fade-in (1.8s total): outgoing ambient paused & zeroed, combat at full 0.55
+    player.update(0.9);
+    expect(player.isCrossfading()).toBe(false);
+    expect(ambientCh1.paused).toBe(true);
+    expect(ambientCh1.volume).toBe(0);
+    expect(combatCh.volume).toBeCloseTo(0.55, 5);
+
+    // Exit combat -> crossfades back to ambient over 3.0s
+    player.setCategory('ambient');
+    expect(channels).toHaveLength(3);
+    const ambientCh2 = channels[2]!;
+    expect(ambientCh2.volume).toBe(0);
+    player.update(1.5);
+    expect(combatCh.volume).toBeCloseTo(0.275, 3);
+    expect(ambientCh2.volume).toBeCloseTo(0.225, 3);
+
+    // Muting mid-crossfade immediately halts both channels
+    player.setMuted(true);
+    expect(player.isCrossfading()).toBe(false);
+    expect(combatCh.paused).toBe(true);
+    expect(ambientCh2.paused).toBe(true);
+    player.dispose();
+  });
 });
