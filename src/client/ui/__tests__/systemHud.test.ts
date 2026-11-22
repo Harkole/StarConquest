@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { GameSimulation } from '../../../shared/sim/gameSimulation.ts';
 import {
   computeMainPanelSignature,
+  createDefaultHudCollapsedState,
+  isHudSectionId,
+  toggleHudSection,
+  type HudSectionId,
   type MainPanelSignatureParams,
 } from '../systemHud.ts';
 
@@ -206,5 +210,52 @@ describe('systemHud — computeMainPanelSignature', () => {
     // Ship launch changes structural signature
     sim.stepTick(7.5);
     expect(computeMainPanelSignature(sim, dockParams)).not.toBe(sigQueued);
+  });
+});
+
+describe('systemHud — collapsible sections state', () => {
+  const allSections: readonly HudSectionId[] = [
+    'galaxy',
+    'fleet',
+    'battle_sim',
+    'planets_wormholes',
+    'deep_space',
+    'orbital_ring',
+  ];
+
+  it('defaults battle_sim to collapsed and all other 5 sections to expanded', () => {
+    const state = createDefaultHudCollapsedState();
+    expect(Object.keys(state).sort()).toEqual([...allSections].sort());
+    expect(state.battle_sim).toBe(true);
+    for (const id of allSections) {
+      if (id !== 'battle_sim') {
+        expect(state[id], `${id} should default expanded`).toBe(false);
+      }
+    }
+  });
+
+  it('toggles individual sections immutably without affecting sibling sections', () => {
+    const initial = createDefaultHudCollapsedState();
+    for (const id of allSections) {
+      const toggled = toggleHudSection(initial, id);
+      expect(toggled).not.toBe(initial);
+      expect(toggled[id]).toBe(!initial[id]);
+      for (const other of allSections) {
+        if (other !== id) {
+          expect(toggled[other]).toBe(initial[other]);
+        }
+      }
+      const restored = toggleHudSection(toggled, id);
+      expect(restored).toEqual(initial);
+    }
+  });
+
+  it('validates section ids via isHudSectionId', () => {
+    for (const id of allSections) {
+      expect(isHudSectionId(id)).toBe(true);
+    }
+    expect(isHudSectionId(undefined)).toBe(false);
+    expect(isHudSectionId('')).toBe(false);
+    expect(isHudSectionId('unknown_section')).toBe(false);
   });
 });
