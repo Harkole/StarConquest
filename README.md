@@ -342,4 +342,4 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Dynamic Soundtrack, Additional Tracks & Sound Design (`docs/sounds.md`)
 * **Canonical Audio Guide**: All music tracks, playback rules, and planned SFX are documented in [docs/sounds.md](./docs/sounds.md).
-* **Additional Tracks**: The 4 `ambient` tracks shuffle on load and loop once every track has played once, and dynamic ambient ↔ `"combat"` music switching (*Iron Horizon* with 14s anti-flicker cooldown) is live. Add more `"combat"` and `"ambient"` tracks for playlist variety and implement future SFX from `docs/sounds.md`.
+* **Additional Tracks & Smooth Crossfading**: The 4 `ambient` tracks shuffle on load and loop once every track has played once, and dynamic ambient ↔ `"combat"` music switching (*Iron Horizon* with 14s anti-flicker cooldown) is live. Next audio polish: add smooth **fade-in and fade-out crossfading** when entering and exiting combat music so transitions are never jarring, add more `"combat"` and `"ambient"` tracks for playlist variety, and implement future SFX from `docs/sounds.md`.

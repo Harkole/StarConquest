@@ -33,16 +33,16 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 
 ---
 
-## 3. Dynamic Ambient ↔ Combat Music Switching (Planned)
+## 3. Dynamic Ambient ↔ Combat Music Switching
 
-Once Step 4 (Combat RPS Simulation) is online, the music controller will dynamically transition between `ambient`-flagged and `combat`-flagged tracks:
+Dynamic switching between `ambient`-flagged and `combat`-flagged tracks is active (`AmbientMusicPlayer.setCategory`), with smooth crossfading tracked as the next audio polish item:
 
 1. **Combat Entry Trigger**:
-   * Enter **Combat Music Mode** when any friendly ship or structure takes weapon fire or engages an enemy target within the player's active vision.
-   * Crossfade over `1.5s–2.0s` from the current `ambient` track into a randomly selected `combat`-flagged track (never repeating the same combat track twice in a row when multiple exist).
+   * Enter **Combat Music Mode** when any friendly ship or structure takes weapon fire or engages an enemy target.
+   * **Planned Polish**: Crossfade smoothly over `1.5s–2.0s` (fade out ambient, fade in combat) instead of an instant cut so entering combat feels dramatic rather than jarring.
 2. **Combat Exit Hysteresis (Anti-Flicker Cooldown)**:
-   * Remain in **Combat Music Mode** until `12–15 seconds` have elapsed with zero active combat events involving the local player, preventing jarring rapid switches during skirmishes.
-   * Crossfade smoothly over `3.0s` back to the `ambient` rotation.
+   * Remain in **Combat Music Mode** until `14 seconds` have elapsed with zero active combat events involving the local player, preventing rapid switching during skirmishes.
+   * **Planned Polish**: Fade out combat music smoothly over `3.0s` back into the `ambient` rotation so combat end is never abrupt.
 3. **Mute Override**:
    * Muting always stops all active music immediately (both `ambient` and `combat`), resetting playhead to `0`; unmuting restarts whichever category matches the current tactical state from the beginning.
 
