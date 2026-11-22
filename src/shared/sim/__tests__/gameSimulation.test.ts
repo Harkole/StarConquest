@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { normalizeMatchSetupConfig } from '../../config/index.ts';
 import {
   CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER,
+  CENTRAL_SUPER_EARTH_PLANET_ID,
   CNC_UNLOAD_RATE_PER_SECOND,
   GameSimulation,
   HARVESTER_CARGO_CAPACITY,
@@ -1667,8 +1669,203 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     );
     const clusterAnchor = anchorSim.getFleetLiveAnchor(anchorFleet.id);
     expect(clusterAnchor?.systemId).toBe('system_starter_1');
-    // Majority cluster average is (510, 506.67), NOT pulled into empty space at (395, 392.5)
     expect(clusterAnchor!.position.x).toBeCloseTo(510, 1);
     expect(clusterAnchor!.position.z).toBeCloseTo(506.67, 1);
+  });
+
+  it('leaves empty player slot starter systems and wormholes intact with unclaimed colonizable Large homeworlds', () => {
+    const normalized = normalizeMatchSetupConfig({
+      presetId: 'standard_tactical',
+      slots: {
+        player_1: { kind: 'empty' },
+        player_2: { kind: 'empty' },
+        player_3: { kind: 'empty' },
+        player_4: { kind: 'empty' },
+      },
+    });
+    expect(normalized.slots.player_1.kind).toBe('human');
+
+    const sim = new GameSimulation({
+      presetId: 'blitz_skirmish',
+      slots: {
+        player_1: { kind: 'human' },
+        player_2: { kind: 'ai', difficulty: 'admiral' },
+        player_3: { kind: 'empty' },
+        player_4: { kind: 'empty' },
+      },
+    });
+
+    expect(sim.isPlayerSlotActive('player_1')).toBe(true);
+    expect(sim.isPlayerSlotActive('player_2')).toBe(true);
+    expect(sim.isPlayerSlotActive('player_3')).toBe(false);
+    expect(sim.isPlayerSlotActive('player_4')).toBe(false);
+    expect(sim.getMatchOutcome().activeContenderIds).toEqual([
+      'player_1',
+      'player_2',
+    ]);
+
+    expect(
+      sim.galaxy.wormholes.some((w) => w.fromSystemId === 'system_starter_4'),
+    ).toBe(true);
+    const emptyHomeworld = sim.getPlanetState('system_starter_4_homeworld');
+    expect(emptyHomeworld.ownerId).toBeNull();
+    expect(emptyHomeworld.structures).toHaveLength(0);
+    expect(
+      sim.getAllHarvesters().filter((h) => h.ownerId === 'player_4'),
+    ).toHaveLength(0);
+
+    const claimAttemptWithoutOutpost = sim.submitCommand({
+      type: 'BUILD_ORBITAL_STRUCTURE',
+      playerId: 'player_1',
+      planetId: 'system_starter_4_homeworld',
+      slotIndex: 0,
+      structureId: 'refinery',
+    });
+    expect(claimAttemptWithoutOutpost.ok).toBe(false);
+
+    const outpostClaim = sim.submitCommand({
+      type: 'BUILD_ORBITAL_STRUCTURE',
+      playerId: 'player_1',
+      planetId: 'system_starter_4_homeworld',
+      slotIndex: 0,
+      structureId: 'planetary_outpost',
+    });
+    expect(outpostClaim.ok).toBe(true);
+    expect(emptyHomeworld.ownerId).toBe('player_1');
+
+    const refineryOnEmptyHomeworld = sim.submitCommand({
+      type: 'BUILD_ORBITAL_STRUCTURE',
+      playerId: 'player_1',
+      planetId: 'system_starter_4_homeworld',
+      slotIndex: 1,
+      structureId: 'refinery',
+    });
+    expect(refineryOnEmptyHomeworld.ok).toBe(true);
+  });
+
+  it('tracks Last Command & Control Standing victory and defeat transitions across active contenders', () => {
+    const victorySim = new GameSimulation({
+      presetId: 'standard_tactical',
+      localPlayerId: 'player_1',
+      slots: {
+        player_1: { kind: 'human' },
+        player_2: { kind: 'ai', difficulty: 'standard' },
+        player_3: { kind: 'empty' },
+        player_4: { kind: 'empty' },
+      },
+    });
+    expect(victorySim.getMatchOutcome().status).toBe('in_progress');
+
+    const p2Home = victorySim.getPlanetState('system_starter_2_homeworld');
+    const p2Cnc = p2Home.structures.find(
+      (s) => s.structureId === 'command_and_control',
+    )!;
+    expect(victorySim.destroyOrbitalStructure(p2Cnc.id)).toBe(true);
+
+    const wonOutcome = victorySim.getMatchOutcome();
+    expect(wonOutcome.status).toBe('victory');
+    expect(wonOutcome.winnerId).toBe('player_1');
+    expect(wonOutcome.victoryCondition).toBe('last_cnc_standing');
+
+    const defeatSim = new GameSimulation({
+      presetId: 'standard_tactical',
+      localPlayerId: 'player_1',
+      slots: {
+        player_1: { kind: 'human' },
+        player_2: { kind: 'ai', difficulty: 'admiral' },
+        player_3: { kind: 'empty' },
+        player_4: { kind: 'empty' },
+      },
+    });
+    const p1Home = defeatSim.getPlanetState('system_starter_1_homeworld');
+    const p1Cnc = p1Home.structures.find(
+      (s) => s.structureId === 'command_and_control',
+    )!;
+    expect(defeatSim.destroyOrbitalStructure(p1Cnc.id)).toBe(true);
+
+    const lostOutcome = defeatSim.getMatchOutcome();
+    expect(lostOutcome.status).toBe('defeat');
+    expect(lostOutcome.winnerId).toBe('player_2');
+    expect(lostOutcome.victoryCondition).toBe('last_cnc_standing');
+  });
+
+  it('tracks Grand Conquest 600s Central Super-Earth King of the Hill timer, contest pause, structure loss reset, and victory', () => {
+    const sim = new GameSimulation({
+      presetId: 'grand_conquest',
+      localPlayerId: 'player_1',
+      slots: {
+        player_1: { kind: 'human' },
+        player_2: { kind: 'ai', difficulty: 'standard' },
+        player_3: { kind: 'empty' },
+        player_4: { kind: 'empty' },
+      },
+    });
+
+    const p1 = sim.getPlayerState('player_1');
+    p1.ore = 2000;
+    p1.crystal = 1000;
+
+    expect(sim.getMatchOutcome().kingOfTheHill.enabled).toBe(true);
+    expect(sim.getMatchOutcome().kingOfTheHill.requiredSeconds).toBe(600);
+
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: CENTRAL_SUPER_EARTH_PLANET_ID,
+        slotIndex: 0,
+        structureId: 'planetary_outpost',
+      }).ok,
+    ).toBe(true);
+
+    sim.stepTick(25);
+    expect(sim.getMatchOutcome().kingOfTheHill.controllerId).toBe('player_1');
+
+    sim.stepTick(250);
+    expect(sim.getMatchOutcome().kingOfTheHill.heldSeconds).toBeCloseTo(250, 2);
+    expect(sim.getMatchOutcome().kingOfTheHill.remainingSeconds).toBeCloseTo(
+      350,
+      2,
+    );
+
+    const intruder = sim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 260, z: 0 },
+      'destroyer',
+      'passive',
+    );
+    sim.stepTick(40);
+    expect(sim.getMatchOutcome().kingOfTheHill.isContested).toBe(true);
+    expect(sim.getMatchOutcome().kingOfTheHill.heldSeconds).toBeCloseTo(250, 2);
+
+    expect(sim.destroyCombatShip(intruder.id)).toBe(true);
+    sim.stepTick(50);
+    expect(sim.getMatchOutcome().kingOfTheHill.isContested).toBe(false);
+    expect(sim.getMatchOutcome().kingOfTheHill.heldSeconds).toBeCloseTo(300, 2);
+
+    const superEarth = sim.getPlanetState(CENTRAL_SUPER_EARTH_PLANET_ID);
+    const outpost = superEarth.structures[0]!;
+    expect(sim.destroyOrbitalStructure(outpost.id)).toBe(true);
+    expect(sim.getMatchOutcome().kingOfTheHill.controllerId).toBeNull();
+    expect(sim.getMatchOutcome().kingOfTheHill.heldSeconds).toBe(0);
+
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: CENTRAL_SUPER_EARTH_PLANET_ID,
+        slotIndex: 0,
+        structureId: 'planetary_outpost',
+      }).ok,
+    ).toBe(true);
+    sim.stepTick(25);
+    sim.stepTick(600);
+
+    const finalOutcome = sim.getMatchOutcome();
+    expect(finalOutcome.status).toBe('victory');
+    expect(finalOutcome.winnerId).toBe('player_1');
+    expect(finalOutcome.victoryCondition).toBe('king_of_the_hill');
+    expect(finalOutcome.kingOfTheHill.remainingSeconds).toBe(0);
   });
 });
