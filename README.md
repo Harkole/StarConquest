@@ -319,6 +319,12 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ### Faction & Player Ownership Visual Differentiation
 * **Planned Art & UI Feature**: Update orbital platforms, deep-space structures, and combat fleets so ownership is immediately obvious at a glance (currently all 4 players share identical gunmetal/ochre hull trims and blue selection cues). Introduce distinct per-player faction accent colors, emissive trims, and ownership indicators so friendly vs. hostile ships and bases are unmistakable in combat.
 
+### Sensor-Range Fog of War & Last-Known-Intel Snapshots
+* **Planned Feature**: Implement full sensor-range Fog of War (for Standard Tactical & Grand Conquest modes):
+  * Unexplored space only reveals base planet locations (no live hostile fleets, structures, or resource depletion state outside friendly sensor radii).
+  * When a friendly ship or sensor leaves an area, structures and orbital platforms remain visible under Fog of War as a **last-known snapshot** (ghosted/dimmed state of what was last observed there) rather than updating live.
+  * When a friendly unit next re-enters sensor range of that area, the snapshot refreshes immediately to reflect what is presently there (newly built or destroyed structures, updated ownership, and live hostile fleets).
+
 ### Known Fleet Bugs
 * **Fleet Focus Centroid Drift**: Clicking Fleet Focus (or a fleet tab) should focus on the single ship (when 1 ship) or the **majority cluster** of ships in the fleet rather than averaging into empty space between the main fleet and newly built reinforcements still en route from a distant dockyard.
 * **Ship-to-Ship Collision & Overlap During Flight**: Ships within a fleet currently merge and clip into each other during flight and formation holding. Add inter-ship separation/clearance steering in `src/shared/sim/gameSimulation.ts` so every hull class maintains physical clearance from neighboring ships.
