@@ -8,6 +8,7 @@ import {
 import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
 import { createProceduralHullTextures } from '../../renderer/proceduralHullTextures.ts';
 import { ShipModelLibrary } from '../../renderer/shipModels.ts';
+import { CombatFleetRenderer } from '../../renderer/combatFleetRenderer.ts';
 import { CombatVfxRenderer } from '../../renderer/combatVfxRenderer.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from '../../renderer/stationModels.ts';
@@ -955,5 +956,69 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(vfx.getActiveEffectCount()).toBe(0);
     expect(vfx.rootGroup.children).toHaveLength(0);
     vfx.dispose();
+  });
+
+  it('renders blue shield + green hull health bars on shielded ships and green hull-only bars on unshielded ships', () => {
+    const fleetRenderer = new CombatFleetRenderer();
+    const baseShip = {
+      ownerId: 'player_1' as const,
+      homeDockyardId: 'dock_1',
+      fleetId: 'fleet_1',
+      inCombat: true,
+      currentSystemId: 'system_starter_1',
+      position: { x: 100, z: 100 },
+      headingRadians: 0,
+      currentSpeed: 40,
+      stance: 'aggressive' as const,
+      state: 'holding_position' as const,
+      targetSystemId: 'system_starter_1',
+      targetPosition: { x: 100, z: 100 },
+      patrolWaypoints: [],
+      patrolIndex: 0,
+      formationOffset: { x: 0, z: 0 },
+      weaponCooldowns: [0],
+      lastDamageTakenAtSeconds: -999,
+      currentTargetId: null,
+      currentTargetPos: null,
+      tetherHostId: null,
+      fighterReplenishCooldownSeconds: 0,
+    };
+
+    fleetRenderer.syncShips(
+      [
+        {
+          ...baseShip,
+          id: 'ship_dd',
+          shipClassId: 'destroyer',
+          shields: 0,
+          maxShields: 0,
+          hull: 210,
+          maxHull: 420,
+        },
+        {
+          ...baseShip,
+          id: 'ship_cr',
+          shipClassId: 'cruiser',
+          shields: 225,
+          maxShields: 450,
+          hull: 750,
+          maxHull: 750,
+        },
+      ],
+      null,
+      null,
+      0,
+    );
+
+    let hullBarCount = 0;
+    let shieldBarCount = 0;
+    fleetRenderer.rootGroup.traverse((obj) => {
+      if (obj.name === 'hull_health_bar') hullBarCount += 1;
+      if (obj.name === 'shield_health_bar') shieldBarCount += 1;
+    });
+    // Both Destroyer and Cruiser have a green Hull bar; ONLY the shielded Cruiser has a blue Shield bar!
+    expect(hullBarCount).toBe(2);
+    expect(shieldBarCount).toBe(1);
+    fleetRenderer.dispose();
   });
 });

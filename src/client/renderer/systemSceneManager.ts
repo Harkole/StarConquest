@@ -589,6 +589,7 @@ export class SystemSceneManager {
       this.selectedCombatShipId,
       this.selectedFleetId,
       elapsedSeconds,
+      this.cameraController.camera.quaternion,
     );
 
     // Render Rally / Move beacons & Patrol Route 3D markers for player Fleets & Dockyards

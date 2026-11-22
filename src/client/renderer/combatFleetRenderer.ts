@@ -11,6 +11,10 @@ interface CombatShipRenderEntry {
   readonly selectionRing: THREE.Mesh;
   readonly hitMesh: THREE.Mesh;
   readonly turretPivots: readonly THREE.Object3D[];
+  readonly healthBarGroup: THREE.Group;
+  readonly hullFillMesh: THREE.Mesh;
+  readonly shieldFillMesh: THREE.Mesh | null;
+  readonly barWidth: number;
 }
 
 const HIT_RADIUS_BY_CLASS: Readonly<Record<CombatShipClassId, number>> = {
@@ -19,6 +23,16 @@ const HIT_RADIUS_BY_CLASS: Readonly<Record<CombatShipClassId, number>> = {
   cruiser: 5.5,
   carrier: 7.2,
   dreadnought: 9.2,
+};
+
+const HEALTH_BAR_LAYOUT_BY_CLASS: Readonly<
+  Record<CombatShipClassId, { readonly width: number; readonly offsetY: number }>
+> = {
+  fighter: { width: 2.4, offsetY: 1.5 },
+  destroyer: { width: 4.2, offsetY: 2.4 },
+  cruiser: { width: 5.8, offsetY: 3.4 },
+  carrier: { width: 7.4, offsetY: 4.6 },
+  dreadnought: { width: 9.6, offsetY: 6.2 },
 };
 
 /**
@@ -60,6 +74,25 @@ export class CombatFleetRenderer {
     transparent: true,
     opacity: 0.65,
   });
+  private readonly healthBarBgMat = new THREE.MeshBasicMaterial({
+    color: 0x0f172a,
+    transparent: true,
+    opacity: 0.78,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
+  private readonly hullBarMat = new THREE.MeshBasicMaterial({
+    color: 0x22c55e,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
+  private readonly shieldBarMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
+
+  private readonly unitBarPlaneGeom = new THREE.PlaneGeometry(1, 1);
 
   private readonly rallyRingGeom = new THREE.RingGeometry(4.5, 6.2, 32).rotateX(
     -Math.PI / 2,
@@ -80,6 +113,7 @@ export class CombatFleetRenderer {
     selectedShipId: string | null,
     selectedFleetId: string | null,
     _elapsedSeconds = 0,
+    cameraQuaternion?: THREE.Quaternion,
   ): void {
     const activeIds = new Set<string>();
 
@@ -94,9 +128,42 @@ export class CombatFleetRenderer {
 
       entry.group.position.set(ship.position.x, 1.6, ship.position.z);
       entry.group.rotation.y = ship.headingRadians;
-      entry.selectionRing.visible =
+      const isSelected =
         ship.id === selectedShipId ||
         (selectedFleetId !== null && ship.fleetId === selectedFleetId);
+      entry.selectionRing.visible = isSelected;
+
+      // Update 3D overhead Shield (blue, shielded ships only) & Hull (green) health bars
+      const hullRatio = Math.max(0, Math.min(1, ship.hull / Math.max(1, ship.maxHull)));
+      const shieldRatio =
+        ship.maxShields > 0
+          ? Math.max(0, Math.min(1, ship.shields / Math.max(1, ship.maxShields)))
+          : 0;
+      const showBars =
+        isSelected ||
+        ship.inCombat ||
+        hullRatio < 0.999 ||
+        (ship.maxShields > 0 && shieldRatio < 0.999);
+      entry.healthBarGroup.visible = showBars;
+      if (showBars) {
+        if (cameraQuaternion) {
+          // Counter-rotate ship yaw so the overhead bar always faces the camera cleanly
+          entry.healthBarGroup.quaternion
+            .setFromAxisAngle(new THREE.Vector3(0, 1, 0), -ship.headingRadians)
+            .multiply(cameraQuaternion);
+        }
+        const hullW = Math.max(0.001, entry.barWidth * hullRatio);
+        entry.hullFillMesh.scale.set(hullW, 0.42, 1);
+        entry.hullFillMesh.position.x = -entry.barWidth * 0.5 + hullW * 0.5;
+        entry.hullFillMesh.visible = hullRatio > 0;
+
+        if (entry.shieldFillMesh) {
+          const shieldW = Math.max(0.001, entry.barWidth * shieldRatio);
+          entry.shieldFillMesh.scale.set(shieldW, 0.36, 1);
+          entry.shieldFillMesh.position.x = -entry.barWidth * 0.5 + shieldW * 0.5;
+          entry.shieldFillMesh.visible = shieldRatio > 0;
+        }
+      }
 
       // Active turret target-tracking rotation toward live combat target
       if (ship.currentTargetPos && entry.turretPivots.length > 0) {
@@ -198,11 +265,15 @@ export class CombatFleetRenderer {
     }
     this.rallyRingGeom.dispose();
     this.patrolRingGeom.dispose();
+    this.unitBarPlaneGeom.dispose();
     this.selectionRingMat.dispose();
     this.hitSphereMat.dispose();
     this.rallyBeaconMat.dispose();
     this.patrolBeaconMat.dispose();
     this.patrolLineMat.dispose();
+    this.healthBarBgMat.dispose();
+    this.hullBarMat.dispose();
+    this.shieldBarMat.dispose();
     this.shipModels.dispose();
   }
 
@@ -237,9 +308,52 @@ export class CombatFleetRenderer {
     hitMesh.userData.combatShipId = ship.id;
     group.add(hitMesh);
 
+    // Overhead Health Bars: green Hull bar for all ships, plus blue Shield bar ONLY for shielded ships (maxShields > 0)
+    const barLayout = HEALTH_BAR_LAYOUT_BY_CLASS[ship.shipClassId];
+    const hasShieldBar = ship.maxShields > 0;
+    const healthBarGroup = new THREE.Group();
+    healthBarGroup.name = 'ship_health_bars';
+    healthBarGroup.position.set(0, barLayout.offsetY, 0);
+    healthBarGroup.visible = false;
+
+    const bgHeight = hasShieldBar ? 1.05 : 0.62;
+    const bgMesh = new THREE.Mesh(this.unitBarPlaneGeom, this.healthBarBgMat);
+    bgMesh.scale.set(barLayout.width + 0.3, bgHeight, 1);
+    bgMesh.position.set(0, hasShieldBar ? 0.22 : 0, -0.02);
+    bgMesh.renderOrder = 20;
+    healthBarGroup.add(bgMesh);
+
+    const hullFillMesh = new THREE.Mesh(this.unitBarPlaneGeom, this.hullBarMat);
+    hullFillMesh.name = 'hull_health_bar';
+    hullFillMesh.scale.set(barLayout.width, 0.42, 1);
+    hullFillMesh.position.set(0, 0, 0);
+    hullFillMesh.renderOrder = 21;
+    healthBarGroup.add(hullFillMesh);
+
+    let shieldFillMesh: THREE.Mesh | null = null;
+    if (hasShieldBar) {
+      shieldFillMesh = new THREE.Mesh(this.unitBarPlaneGeom, this.shieldBarMat);
+      shieldFillMesh.name = 'shield_health_bar';
+      shieldFillMesh.scale.set(barLayout.width, 0.36, 1);
+      shieldFillMesh.position.set(0, 0.48, 0);
+      shieldFillMesh.renderOrder = 21;
+      healthBarGroup.add(shieldFillMesh);
+    }
+
+    group.add(healthBarGroup);
+
     const turretPivots = Array.isArray(model.userData.turretPivots)
       ? (model.userData.turretPivots as THREE.Object3D[])
       : [];
-    return { group, selectionRing, hitMesh, turretPivots };
+    return {
+      group,
+      selectionRing,
+      hitMesh,
+      turretPivots,
+      healthBarGroup,
+      hullFillMesh,
+      shieldFillMesh,
+      barWidth: barLayout.width,
+    };
   }
 }
