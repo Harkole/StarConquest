@@ -981,7 +981,9 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       currentTargetId: null,
       currentTargetPos: null,
       tetherHostId: null,
-      fighterReplenishCooldownSeconds: 0,
+      readyFighterCount: 0,
+      fighterLaunchCooldownSeconds: 0,
+      fighterRebuildProgressSeconds: 0,
     };
 
     fleetRenderer.syncShips(
@@ -1004,6 +1006,16 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
           hull: 750,
           maxHull: 750,
         },
+        {
+          ...baseShip,
+          id: 'ship_cv',
+          shipClassId: 'carrier',
+          shields: 400,
+          maxShields: 400,
+          hull: 900,
+          maxHull: 900,
+          fighterRebuildProgressSeconds: 3.5,
+        },
       ],
       null,
       null,
@@ -1012,13 +1024,40 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
 
     let hullBarCount = 0;
     let shieldBarCount = 0;
+    let visibleRebuildBars = 0;
     fleetRenderer.rootGroup.traverse((obj) => {
       if (obj.name === 'hull_health_bar') hullBarCount += 1;
       if (obj.name === 'shield_health_bar') shieldBarCount += 1;
+      if (obj.name === 'fighter_rebuild_bar' && obj.visible) visibleRebuildBars += 1;
     });
-    // Both Destroyer and Cruiser have a green Hull bar; ONLY the shielded Cruiser has a blue Shield bar!
-    expect(hullBarCount).toBe(2);
-    expect(shieldBarCount).toBe(1);
+    // All 3 ships have a green Hull bar; shielded Cruiser & Carrier have a blue Shield bar; Carrier shows amber rebuild bar
+    expect(hullBarCount).toBe(3);
+    expect(shieldBarCount).toBe(2);
+    expect(visibleRebuildBars).toBe(1);
+
+    // Once rebuild completes (progress === 0), the Carrier rebuild bar hides automatically
+    fleetRenderer.syncShips(
+      [
+        {
+          ...baseShip,
+          id: 'ship_cv',
+          shipClassId: 'carrier',
+          shields: 400,
+          maxShields: 400,
+          hull: 900,
+          maxHull: 900,
+          fighterRebuildProgressSeconds: 0,
+        },
+      ],
+      null,
+      null,
+      0,
+    );
+    visibleRebuildBars = 0;
+    fleetRenderer.rootGroup.traverse((obj) => {
+      if (obj.name === 'fighter_rebuild_bar' && obj.visible) visibleRebuildBars += 1;
+    });
+    expect(visibleRebuildBars).toBe(0);
     fleetRenderer.dispose();
   });
 });

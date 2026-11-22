@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import type { CombatShipClassId } from '../../shared/config/index.ts';
+import {
+  SHIP_CLASSES,
+  type CombatShipClassId,
+} from '../../shared/config/index.ts';
 import type {
   CombatShipUnitState,
   DockyardWaypoint,
@@ -14,6 +17,7 @@ interface CombatShipRenderEntry {
   readonly healthBarGroup: THREE.Group;
   readonly hullFillMesh: THREE.Mesh;
   readonly shieldFillMesh: THREE.Mesh | null;
+  readonly rebuildFillMesh: THREE.Mesh | null;
   readonly barWidth: number;
 }
 
@@ -91,6 +95,11 @@ export class CombatFleetRenderer {
     side: THREE.DoubleSide,
     depthTest: false,
   });
+  private readonly rebuildBarMat = new THREE.MeshBasicMaterial({
+    color: 0xf59e0b,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
 
   private readonly unitBarPlaneGeom = new THREE.PlaneGeometry(1, 1);
 
@@ -139,11 +148,23 @@ export class CombatFleetRenderer {
         ship.maxShields > 0
           ? Math.max(0, Math.min(1, ship.shields / Math.max(1, ship.maxShields)))
           : 0;
+      const rebuildRatio =
+        ship.shipClassId === 'carrier' && ship.fighterRebuildProgressSeconds > 0
+          ? Math.max(
+              0,
+              Math.min(
+                1,
+                ship.fighterRebuildProgressSeconds /
+                  Math.max(0.1, SHIP_CLASSES.fighter.buildTimeSeconds),
+              ),
+            )
+          : 0;
       const showBars =
         isSelected ||
         ship.inCombat ||
         hullRatio < 0.999 ||
-        (ship.maxShields > 0 && shieldRatio < 0.999);
+        (ship.maxShields > 0 && shieldRatio < 0.999) ||
+        rebuildRatio > 0;
       entry.healthBarGroup.visible = showBars;
       if (showBars) {
         if (cameraQuaternion) {
@@ -162,6 +183,13 @@ export class CombatFleetRenderer {
           entry.shieldFillMesh.scale.set(shieldW, 0.36, 1);
           entry.shieldFillMesh.position.x = -entry.barWidth * 0.5 + shieldW * 0.5;
           entry.shieldFillMesh.visible = shieldRatio > 0;
+        }
+
+        if (entry.rebuildFillMesh) {
+          const rebuildW = Math.max(0.001, entry.barWidth * rebuildRatio);
+          entry.rebuildFillMesh.scale.set(rebuildW, 0.3, 1);
+          entry.rebuildFillMesh.position.x = -entry.barWidth * 0.5 + rebuildW * 0.5;
+          entry.rebuildFillMesh.visible = rebuildRatio > 0;
         }
       }
 
@@ -274,6 +302,7 @@ export class CombatFleetRenderer {
     this.healthBarBgMat.dispose();
     this.hullBarMat.dispose();
     this.shieldBarMat.dispose();
+    this.rebuildBarMat.dispose();
     this.shipModels.dispose();
   }
 
@@ -340,6 +369,17 @@ export class CombatFleetRenderer {
       healthBarGroup.add(shieldFillMesh);
     }
 
+    let rebuildFillMesh: THREE.Mesh | null = null;
+    if (ship.shipClassId === 'carrier') {
+      rebuildFillMesh = new THREE.Mesh(this.unitBarPlaneGeom, this.rebuildBarMat);
+      rebuildFillMesh.name = 'fighter_rebuild_bar';
+      rebuildFillMesh.scale.set(barLayout.width, 0.3, 1);
+      rebuildFillMesh.position.set(0, -0.44, 0);
+      rebuildFillMesh.visible = false;
+      rebuildFillMesh.renderOrder = 21;
+      healthBarGroup.add(rebuildFillMesh);
+    }
+
     group.add(healthBarGroup);
 
     const turretPivots = Array.isArray(model.userData.turretPivots)
@@ -353,6 +393,7 @@ export class CombatFleetRenderer {
       healthBarGroup,
       hullFillMesh,
       shieldFillMesh,
+      rebuildFillMesh,
       barWidth: barLayout.width,
     };
   }

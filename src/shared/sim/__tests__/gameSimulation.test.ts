@@ -1274,16 +1274,18 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(remainingP2Fighters).toHaveLength(0);
     expect(remainingP1Cruisers).toHaveLength(2);
 
-    // 4. Carrier keeps Fighters docked when clear (no transit jitter), scrambles up to 4 on enemy contact,
-    //    and destroying the Carrier strands & removes them
+    // 4. Carrier holds standoff (>= 240u), keeps 4 ready Fighters docked when clear, scrambles rapidly on contact,
+    //    rebuilds destroyed squadrons 1-at-a-time (0 -> 7s resetting per missing wing), and destroying Carrier strands them
     const carrierSim = new GameSimulation('blitz_skirmish');
     const carrier = carrierSim.spawnCombatShipDirect(
       'player_1',
       'system_central_hub',
       { x: 400, z: 400 },
       'carrier',
-      'hold_the_line',
+      'aggressive',
     );
+    expect(carrier.readyFighterCount).toBe(4);
+    expect(carrier.fighterRebuildProgressSeconds).toBe(0);
     // No enemies nearby -> Fighters stay docked in the Carrier hangar
     carrierSim.stepTick(10.0);
     expect(
@@ -1296,18 +1298,57 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     const hostileTarget = carrierSim.spawnCombatShipDirect(
       'player_2',
       'system_central_hub',
-      { x: 620, z: 400 },
+      { x: 700, z: 400 },
       'dreadnought',
       'passive',
     );
-    hostileTarget.hull = 10000;
-    for (let t = 0; t < 30; t++) {
-      carrierSim.stepTick(1.0);
+    hostileTarget.hull = 20000;
+    // Rapid hangar scramble launches all 4 ready squadrons within ~4s
+    for (let t = 0; t < 8; t++) {
+      carrierSim.stepTick(0.5);
     }
     const launchedWings = carrierSim
       .getAllCombatShips()
       .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id);
     expect(launchedWings).toHaveLength(4);
+    expect(carrier.readyFighterCount).toBe(0);
+    expect(carrier.fighterRebuildProgressSeconds).toBe(0);
+
+    // Aggressive Carrier holds standoff (~280u) instead of closing into PD range
+    for (let t = 0; t < 10; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    const carrierDist = Math.hypot(
+      carrier.position.x - hostileTarget.position.x,
+      carrier.position.z - hostileTarget.position.z,
+    );
+    expect(carrierDist).toBeGreaterThanOrEqual(240);
+
+    // Destroy 2 squadrons -> sequential 1-at-a-time rebuild (7s per squadron, resetting for the 2nd)
+    expect(carrierSim.destroyCombatShip(launchedWings[0]!.id)).toBe(true);
+    expect(carrierSim.destroyCombatShip(launchedWings[1]!.id)).toBe(true);
+    carrierSim.stepTick(3.5);
+    expect(carrier.fighterRebuildProgressSeconds).toBeCloseTo(3.5, 2);
+    // Finish 1st rebuild (7.0s total) -> 3rd wing returns, progress resets for 2nd missing wing
+    carrierSim.stepTick(3.6);
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id).length +
+        carrier.readyFighterCount,
+    ).toBe(3);
+    expect(carrier.fighterRebuildProgressSeconds).toBeLessThan(1.0);
+    // Finish 2nd rebuild -> all 4 squadrons restored, rebuild bar clears to 0
+    for (let t = 0; t < 16; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id).length +
+        carrier.readyFighterCount,
+    ).toBe(4);
+    expect(carrier.fighterRebuildProgressSeconds).toBe(0);
 
     // Destroy the Carrier -> next tick cleans up stranded Fighters with no Hub/Carrier left
     expect(carrierSim.destroyCombatShip(carrier.id)).toBe(true);
