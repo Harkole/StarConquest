@@ -182,6 +182,8 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
           depositAccumulator: 0,
           cargoCapacity: 40,
           mineCrossSystemHub: false,
+          hull: 300,
+          maxHull: 300,
         },
       ],
       'harvester_1',

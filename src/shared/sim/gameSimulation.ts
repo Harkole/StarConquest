@@ -34,6 +34,14 @@ import {
   computeObstacleAwareStep,
   findWormholeHop,
 } from './navigation.ts';
+import {
+  type WeaponVisualKind,
+  applyWeaponDamage,
+  classifyWeaponVisualKind,
+  computeHitProbability,
+  nextCombatRandom,
+  scoreCombatTargetPriority,
+} from './combat.ts';
 
 export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
 
@@ -102,6 +110,22 @@ export function getMinDeepSpaceStructureSpacing(
   return MIN_TOWER_TO_TOWER_SPACING;
 }
 
+export const SHIELD_REGEN_OUT_OF_COMBAT_DELAY_SECONDS = 6.0;
+export const LOGISTICS_HUB_REPAIR_PER_SECOND = 8.0;
+export const LOGISTICS_HUB_FIGHTER_CAPACITY = 4;
+
+export interface CombatVisualEvent {
+  readonly id: number;
+  readonly type: 'weapon_fire' | 'shield_impact' | 'hull_explosion';
+  readonly systemId: string;
+  readonly fromPos: Vector2D;
+  readonly toPos: Vector2D;
+  readonly weaponKind?: WeaponVisualKind;
+  readonly targetRadius?: number;
+  readonly ownerId: PlayerSlotId;
+  readonly timestampSeconds: number;
+}
+
 export interface DeepSpaceStructureInstance {
   readonly id: string;
   readonly structureId: DeepSpaceStructureId;
@@ -113,6 +137,11 @@ export interface DeepSpaceStructureInstance {
   isComplete: boolean;
   shields: number;
   hull: number;
+  weaponCooldownSeconds?: number;
+  lastDamageTakenAtSeconds?: number;
+  currentTargetId?: string | null;
+  currentTargetPos?: Vector2D | null;
+  fighterReplenishCooldownSeconds?: number;
 }
 
 export interface SystemResourceSummary {
@@ -167,6 +196,11 @@ export interface OrbitalStructureInstance {
   fleetStance?: FleetStance;
   /** When true (default for Orbital Dockyards), automatically builds ships for active Fleet templates. */
   fleetProductionEnabled?: boolean;
+  pdCooldownSeconds?: number;
+  heavyCooldownSeconds?: number;
+  lastDamageTakenAtSeconds?: number;
+  currentTargetId?: string | null;
+  currentTargetPos?: Vector2D | null;
 }
 
 export type CombatShipActivityState =
@@ -218,6 +252,12 @@ export interface CombatShipUnitState {
   patrolWaypoints: readonly DockyardWaypoint[];
   patrolIndex: number;
   readonly formationOffset: Vector2D;
+  weaponCooldowns: number[];
+  lastDamageTakenAtSeconds: number;
+  currentTargetId: string | null;
+  currentTargetPos: Vector2D | null;
+  tetherHostId: string | null;
+  fighterReplenishCooldownSeconds: number;
 }
 
 export interface PlanetRuntimeState {
@@ -267,6 +307,8 @@ export interface HarvesterUnitState {
   depositAccumulator: number;
   readonly cargoCapacity: number;
   mineCrossSystemHub: boolean;
+  hull: number;
+  readonly maxHull: number;
 }
 
 export interface PlayerEconomyState {
@@ -296,6 +338,11 @@ export class GameSimulation {
   private readonly harvesters: HarvesterUnitState[] = [];
   private readonly combatShips: CombatShipUnitState[] = [];
   private readonly fleets: FleetInstance[] = [];
+  private readonly pendingCombatEvents: CombatVisualEvent[] = [];
+  private readonly lastCombatActivityByPlayer = new Map<PlayerSlotId, number>();
+  private readonly defeatedPlayers = new Set<PlayerSlotId>();
+  private readonly combatRng = { seed: 0x57a2c01d };
+  private nextCombatEventId = 1;
   private nextEntityCounter = 1;
 
   constructor(presetId: MatchPresetId = 'standard_tactical') {
@@ -310,6 +357,86 @@ export class GameSimulation {
       throw new Error(`Unknown player slot: ${playerId}`);
     }
     return p;
+  }
+
+  public isPlayerDefeated(playerId: PlayerSlotId): boolean {
+    return this.defeatedPlayers.has(playerId);
+  }
+
+  /**
+   * Returns true if `playerId` fired or took hostile weapon fire within the last `windowSeconds`.
+   * Used by the client music controller to dynamically switch between ambient and combat tracks.
+   */
+  public isPlayerInActiveCombat(playerId: PlayerSlotId, windowSeconds = 2.0): boolean {
+    const lastAt = this.lastCombatActivityByPlayer.get(playerId);
+    return lastAt !== undefined && this.elapsedSeconds - lastAt <= windowSeconds;
+  }
+
+  /**
+   * Drains and returns all pending combat visual events (weapon tracers, shield impact ripples,
+   * and hull explosions) for the 3D VFX renderer to consume once per frame.
+   */
+  public consumeCombatEvents(): CombatVisualEvent[] {
+    if (this.pendingCombatEvents.length === 0) {
+      return [];
+    }
+    return this.pendingCombatEvents.splice(0, this.pendingCombatEvents.length);
+  }
+
+  public peekCombatEvents(): readonly CombatVisualEvent[] {
+    return this.pendingCombatEvents;
+  }
+
+  /**
+   * Directly spawns a combat ship at a coordinate (used by Carrier/Hub fighter wings & headless RPS tests).
+   */
+  public spawnCombatShipDirect(
+    ownerId: PlayerSlotId,
+    systemId: string,
+    position: Vector2D,
+    shipClassId: CombatShipClassId,
+    stance: FleetStance = 'aggressive',
+    tetherHostId: string | null = null,
+    fleetId: string | null = null,
+  ): CombatShipUnitState {
+    const shipCfg = SHIP_CLASSES[shipClassId];
+    const shipIndex = this.combatShips.length;
+    const formAngle = (shipIndex * 2.39996) % (Math.PI * 2);
+    const formRadius = shipClassId === 'fighter' ? 14 + (shipIndex % 4) * 5 : 10 + (shipIndex % 4) * 6;
+    const ship: CombatShipUnitState = {
+      id: `ship_${this.nextEntityCounter++}`,
+      shipClassId,
+      ownerId,
+      homeDockyardId: tetherHostId ?? 'direct_spawn',
+      fleetId,
+      inCombat: false,
+      currentSystemId: systemId,
+      position: { x: position.x, z: position.z },
+      headingRadians: formAngle,
+      currentSpeed: shipCfg.speed,
+      shields: shipCfg.maxShields,
+      maxShields: shipCfg.maxShields,
+      hull: shipCfg.maxHull,
+      maxHull: shipCfg.maxHull,
+      stance,
+      state: 'holding_position',
+      targetSystemId: systemId,
+      targetPosition: { x: position.x, z: position.z },
+      patrolWaypoints: [],
+      patrolIndex: 0,
+      formationOffset: {
+        x: Math.cos(formAngle) * formRadius,
+        z: Math.sin(formAngle) * formRadius,
+      },
+      weaponCooldowns: shipCfg.weapons.map(() => 0),
+      lastDamageTakenAtSeconds: -999,
+      currentTargetId: null,
+      currentTargetPos: null,
+      tetherHostId,
+      fighterReplenishCooldownSeconds: 0,
+    };
+    this.combatShips.push(ship);
+    return ship;
   }
 
   public getPlanetState(planetId: string): PlanetRuntimeState {
@@ -866,7 +993,13 @@ export class GameSimulation {
       this.updateHarvester(harvester, deltaSeconds);
     }
 
-    // 4. Update combat fleet navigation (Rally Points, Patrol Routes & Cross-System Wormholes)
+    // 4. Auto-launch & tether Carrier / Logistics Hub Fighter wings
+    this.updateCarrierAndHubFighters(deltaSeconds);
+
+    // 5. Resolve 5-class RPS combat, stances, Defence Towers, orbital weapons, shield regen & hub repair
+    this.updateCombatAndDefences(deltaSeconds);
+
+    // 6. Update combat fleet navigation & aggressive pursuit (Rally Points, Patrol Routes & Cross-System Wormholes)
     for (const ship of this.combatShips) {
       this.updateCombatShip(ship, deltaSeconds);
     }
@@ -2117,6 +2250,12 @@ export class GameSimulation {
       patrolWaypoints,
       patrolIndex: fleet ? fleet.patrolIndex : 0,
       formationOffset,
+      weaponCooldowns: shipCfg.weapons.map(() => 0),
+      lastDamageTakenAtSeconds: -999,
+      currentTargetId: null,
+      currentTargetPos: null,
+      tetherHostId: null,
+      fighterReplenishCooldownSeconds: 0,
     });
   }
 
@@ -2166,7 +2305,36 @@ export class GameSimulation {
       return;
     }
 
-    // 2. Same-system navigation (Patrol Route loop or Rally Point formation)
+    // 2. Aggressive combat pursuit (breaks formation to individual hull speed; never chases across wormholes)
+    if (ship.inCombat && ship.stance === 'aggressive' && ship.currentTargetPos) {
+      const maxWeaponRange = shipCfg.weapons.reduce(
+        (acc, w) => Math.max(acc, w.range),
+        80,
+      );
+      const desiredStandoff =
+        ship.shipClassId === 'fighter' ? 28 : Math.max(40, maxWeaponRange * 0.72);
+      const step = computeObstacleAwareStep(
+        ship.position,
+        ship.currentTargetPos,
+        maxStep,
+        obstacles,
+        desiredStandoff,
+      );
+      ship.position = step.position;
+      if (step.movedDistance > 1e-5) {
+        ship.headingRadians = step.headingRadians;
+      } else {
+        // Face target while holding firing standoff
+        ship.headingRadians = Math.atan2(
+          ship.currentTargetPos.x - ship.position.x,
+          ship.currentTargetPos.z - ship.position.z,
+        );
+      }
+      ship.currentSpeed = step.arrived ? 0 : effectiveSpeed;
+      return;
+    }
+
+    // 3. Same-system navigation (Patrol Route loop or Rally Point formation)
     const goalPos: Vector2D =
       ship.patrolWaypoints.length >= 2
         ? {
@@ -2305,6 +2473,8 @@ export class GameSimulation {
       depositAccumulator: 0,
       cargoCapacity: HARVESTER_CARGO_CAPACITY,
       mineCrossSystemHub: false,
+      hull: SHIP_CLASSES.harvester.maxHull,
+      maxHull: SHIP_CLASSES.harvester.maxHull,
     };
 
     this.harvesters.push(harvester);
@@ -2834,5 +3004,745 @@ export class GameSimulation {
       harvester.headingRadians = step.headingRadians;
     }
     return step.arrived;
+  }
+
+  private emitCombatEvent(
+    event: Omit<CombatVisualEvent, 'id' | 'timestampSeconds'>,
+  ): void {
+    this.pendingCombatEvents.push({
+      ...event,
+      id: this.nextCombatEventId++,
+      timestampSeconds: this.elapsedSeconds,
+    });
+    if (this.pendingCombatEvents.length > 240) {
+      this.pendingCombatEvents.splice(0, this.pendingCombatEvents.length - 240);
+    }
+  }
+
+  private isTowerPoweredByFriendlyHub(tower: DeepSpaceStructureInstance): boolean {
+    const hubRadius = DEEP_SPACE_STRUCTURES.logistics_hub.buildRadiusProvided;
+    return this.deepSpaceStructures.some(
+      (ds) =>
+        ds.structureId === 'logistics_hub' &&
+        ds.ownerId === tower.ownerId &&
+        ds.systemId === tower.systemId &&
+        ds.isComplete &&
+        Math.hypot(ds.position.x - tower.position.x, ds.position.z - tower.position.z) <=
+          hubRadius,
+    );
+  }
+
+  private destroyOrbitalStructureInCombat(
+    planetState: PlanetRuntimeState,
+    structure: OrbitalStructureInstance,
+  ): void {
+    const idx = planetState.structures.indexOf(structure);
+    if (idx === -1) {
+      return;
+    }
+    const worldPos = this.getStructureWorldPosition(planetState, structure);
+    planetState.structures.splice(idx, 1);
+
+    if (structure.isComplete) {
+      const player = this.players.get(structure.ownerId);
+      const cfg = ORBITAL_STRUCTURES[structure.structureId];
+      if (player) {
+        player.supplyCap = Math.max(0, player.supplyCap - cfg.supplyProvided);
+        if (structure.structureId === 'tech_module') {
+          player.techModulesCompleted = Math.max(0, player.techModulesCompleted - 1);
+        }
+      }
+    }
+
+    if (structure.structureId === 'command_and_control') {
+      this.defeatedPlayers.add(structure.ownerId);
+    }
+
+    if (planetState.structures.length === 0) {
+      planetState.ownerId = null;
+    }
+
+    this.emitCombatEvent({
+      type: 'hull_explosion',
+      systemId: planetState.planet.systemId,
+      fromPos: worldPos,
+      toPos: worldPos,
+      targetRadius: 14,
+      ownerId: structure.ownerId,
+    });
+  }
+
+  private destroyHarvester(harvester: HarvesterUnitState): void {
+    const idx = this.harvesters.indexOf(harvester);
+    if (idx === -1) {
+      return;
+    }
+    const homeLookup = this.getStructureById(harvester.homeStructureId);
+    if (homeLookup) {
+      this.removeHarvesterFromDockingLists(harvester.id, homeLookup.structure);
+    }
+    this.harvesters.splice(idx, 1);
+    this.emitCombatEvent({
+      type: 'hull_explosion',
+      systemId: harvester.currentSystemId,
+      fromPos: harvester.position,
+      toPos: harvester.position,
+      targetRadius: 5,
+      ownerId: harvester.ownerId,
+    });
+  }
+
+  /**
+   * Auto-launches and replenishes organic Fighter Squadrons from completed Fleet Carriers
+   * (`fighterSquadronCapacity = 4`) and completed Atlas Logistics Hubs (`4` wings),
+   * and enforces the Carrier/Hub tether rule when a host is destroyed.
+   */
+  private updateCarrierAndHubFighters(deltaSeconds: number): void {
+    const replenishTime = SHIP_CLASSES.fighter.buildTimeSeconds;
+
+    // 1. Carrier organic Fighter wings
+    for (const ship of this.combatShips) {
+      if (ship.shipClassId !== 'carrier') {
+        continue;
+      }
+      const cap = SHIP_CLASSES.carrier.fighterSquadronCapacity;
+      const activeWings = this.combatShips.filter(
+        (f) => f.shipClassId === 'fighter' && f.tetherHostId === ship.id,
+      ).length;
+      if (activeWings < cap) {
+        ship.fighterReplenishCooldownSeconds -= deltaSeconds;
+        if (ship.fighterReplenishCooldownSeconds <= 0) {
+          ship.fighterReplenishCooldownSeconds = replenishTime;
+          this.spawnCombatShipDirect(
+            ship.ownerId,
+            ship.currentSystemId,
+            { x: ship.position.x + 8, z: ship.position.z + 8 },
+            'fighter',
+            ship.stance,
+            ship.id,
+            null,
+          );
+        }
+      }
+    }
+
+    // 2. Logistics Hub organic Fighter wings
+    for (const ds of this.deepSpaceStructures) {
+      if (ds.structureId !== 'logistics_hub' || !ds.isComplete) {
+        continue;
+      }
+      const activeWings = this.combatShips.filter(
+        (f) => f.shipClassId === 'fighter' && f.tetherHostId === ds.id,
+      ).length;
+      if (activeWings < LOGISTICS_HUB_FIGHTER_CAPACITY) {
+        ds.fighterReplenishCooldownSeconds =
+          (ds.fighterReplenishCooldownSeconds ?? 0) - deltaSeconds;
+        if (ds.fighterReplenishCooldownSeconds <= 0) {
+          ds.fighterReplenishCooldownSeconds = replenishTime;
+          this.spawnCombatShipDirect(
+            ds.ownerId,
+            ds.systemId,
+            { x: ds.position.x + 12, z: ds.position.z + 12 },
+            'fighter',
+            'aggressive',
+            ds.id,
+            null,
+          );
+        }
+      }
+    }
+
+    // 3. Tether escort & stranded Fighter cleanup
+    const strandedFighterIds: string[] = [];
+    for (const fighter of this.combatShips) {
+      if (fighter.shipClassId !== 'fighter' || !fighter.tetherHostId) {
+        continue;
+      }
+      const hostCarrier = this.combatShips.find(
+        (s) => s.id === fighter.tetherHostId && s.shipClassId === 'carrier',
+      );
+      if (hostCarrier) {
+        fighter.stance = hostCarrier.stance;
+        fighter.targetSystemId = hostCarrier.currentSystemId;
+        fighter.targetPosition = {
+          x: hostCarrier.position.x,
+          z: hostCarrier.position.z,
+        };
+        continue;
+      }
+      const hostHub = this.deepSpaceStructures.find(
+        (ds) =>
+          ds.id === fighter.tetherHostId &&
+          ds.structureId === 'logistics_hub' &&
+          ds.isComplete,
+      );
+      if (hostHub) {
+        fighter.targetSystemId = hostHub.systemId;
+        fighter.targetPosition = { x: hostHub.position.x, z: hostHub.position.z };
+        continue;
+      }
+
+      // Host was destroyed -> attempt to re-tether to another friendly Carrier or Hub in-system
+      const altCarrier = this.combatShips.find(
+        (s) =>
+          s.ownerId === fighter.ownerId &&
+          s.shipClassId === 'carrier' &&
+          s.currentSystemId === fighter.currentSystemId,
+      );
+      if (altCarrier) {
+        fighter.tetherHostId = altCarrier.id;
+        continue;
+      }
+      const altHub = this.deepSpaceStructures.find(
+        (ds) =>
+          ds.ownerId === fighter.ownerId &&
+          ds.structureId === 'logistics_hub' &&
+          ds.isComplete &&
+          ds.systemId === fighter.currentSystemId,
+      );
+      if (altHub) {
+        fighter.tetherHostId = altHub.id;
+        continue;
+      }
+      // No fighter support left in system -> stranded Fighter squadron lost
+      strandedFighterIds.push(fighter.id);
+    }
+
+    for (const fId of strandedFighterIds) {
+      this.destroyCombatShip(fId);
+    }
+  }
+
+  /**
+   * Resolves 5-class Shield vs. Hull RPS combat, Fleet Stances, Deep-Space Defence Towers,
+   * Orbital Structure defences, out-of-combat shield regen, and Logistics Hub hull repair.
+   */
+  private updateCombatAndDefences(deltaSeconds: number): void {
+    interface CombatTargetRef {
+      readonly id: string;
+      readonly ownerId: PlayerSlotId;
+      readonly systemId: string;
+      readonly position: Vector2D;
+      readonly targetClass: CombatShipClassId | 'harvester' | 'structure';
+      readonly evasion: number;
+      readonly visualRadius: number;
+      readonly getShields: () => number;
+      readonly getHull: () => number;
+      readonly applyDamage: (
+        alpha: number,
+        shieldMult: number,
+        hullMult: number,
+        luckMult: number,
+        attackerOwner: PlayerSlotId,
+      ) => void;
+    }
+
+    const buildTargetsInSystem = (
+      systemId: string,
+      attackerOwner: PlayerSlotId,
+    ): CombatTargetRef[] => {
+      const targets: CombatTargetRef[] = [];
+
+      for (const ship of this.combatShips) {
+        if (ship.ownerId === attackerOwner || ship.currentSystemId !== systemId || ship.hull <= 0) {
+          continue;
+        }
+        const cfg = SHIP_CLASSES[ship.shipClassId];
+        const radius =
+          ship.shipClassId === 'dreadnought'
+            ? 9
+            : ship.shipClassId === 'carrier'
+              ? 7
+              : ship.shipClassId === 'cruiser'
+                ? 5.5
+                : ship.shipClassId === 'destroyer'
+                  ? 4
+                  : 2.2;
+        targets.push({
+          id: ship.id,
+          ownerId: ship.ownerId,
+          systemId: ship.currentSystemId,
+          position: ship.position,
+          targetClass: ship.shipClassId,
+          evasion: cfg.evasionRating,
+          visualRadius: radius,
+          getShields: () => ship.shields,
+          getHull: () => ship.hull,
+          applyDamage: (alpha, sMult, hMult, luck) => {
+            const res = applyWeaponDamage(ship.shields, ship.hull, alpha, sMult, hMult, luck);
+            ship.shields = res.nextShields;
+            ship.hull = res.nextHull;
+            ship.lastDamageTakenAtSeconds = this.elapsedSeconds;
+            this.lastCombatActivityByPlayer.set(ship.ownerId, this.elapsedSeconds);
+            if (res.shieldDamageDealt > 0) {
+              this.emitCombatEvent({
+                type: 'shield_impact',
+                systemId,
+                fromPos: ship.position,
+                toPos: ship.position,
+                targetRadius: radius,
+                ownerId: ship.ownerId,
+              });
+            }
+            if (res.destroyed) {
+              this.emitCombatEvent({
+                type: 'hull_explosion',
+                systemId,
+                fromPos: ship.position,
+                toPos: ship.position,
+                targetRadius: radius,
+                ownerId: ship.ownerId,
+              });
+              this.destroyCombatShip(ship.id);
+            }
+          },
+        });
+      }
+
+      for (const h of this.harvesters) {
+        if (h.ownerId === attackerOwner || h.currentSystemId !== systemId || h.hull <= 0) {
+          continue;
+        }
+        targets.push({
+          id: h.id,
+          ownerId: h.ownerId,
+          systemId: h.currentSystemId,
+          position: h.position,
+          targetClass: 'harvester',
+          evasion: SHIP_CLASSES.harvester.evasionRating,
+          visualRadius: 4.5,
+          getShields: () => 0,
+          getHull: () => h.hull,
+          applyDamage: (alpha, sMult, hMult, luck) => {
+            const res = applyWeaponDamage(0, h.hull, alpha, sMult, hMult, luck);
+            h.hull = res.nextHull;
+            this.lastCombatActivityByPlayer.set(h.ownerId, this.elapsedSeconds);
+            if (res.destroyed) {
+              this.destroyHarvester(h);
+            }
+          },
+        });
+      }
+
+      for (const ds of this.deepSpaceStructures) {
+        if (ds.ownerId === attackerOwner || ds.systemId !== systemId || ds.hull <= 0) {
+          continue;
+        }
+        const radius = ds.structureId === 'logistics_hub' ? 11 : 5;
+        targets.push({
+          id: ds.id,
+          ownerId: ds.ownerId,
+          systemId: ds.systemId,
+          position: ds.position,
+          targetClass: 'structure',
+          evasion: 0,
+          visualRadius: radius,
+          getShields: () => ds.shields,
+          getHull: () => ds.hull,
+          applyDamage: (alpha, sMult, hMult, luck) => {
+            const res = applyWeaponDamage(ds.shields, ds.hull, alpha, sMult, hMult, luck);
+            ds.shields = res.nextShields;
+            ds.hull = res.nextHull;
+            ds.lastDamageTakenAtSeconds = this.elapsedSeconds;
+            this.lastCombatActivityByPlayer.set(ds.ownerId, this.elapsedSeconds);
+            if (res.shieldDamageDealt > 0) {
+              this.emitCombatEvent({
+                type: 'shield_impact',
+                systemId,
+                fromPos: ds.position,
+                toPos: ds.position,
+                targetRadius: radius,
+                ownerId: ds.ownerId,
+              });
+            }
+            if (res.destroyed) {
+              this.emitCombatEvent({
+                type: 'hull_explosion',
+                systemId,
+                fromPos: ds.position,
+                toPos: ds.position,
+                targetRadius: radius,
+                ownerId: ds.ownerId,
+              });
+              this.destroyDeepSpaceStructure(ds.id);
+            }
+          },
+        });
+      }
+
+      for (const planetState of this.planets.values()) {
+        if (planetState.planet.systemId !== systemId) {
+          continue;
+        }
+        for (const s of [...planetState.structures]) {
+          if (s.ownerId === attackerOwner || s.hull <= 0) {
+            continue;
+          }
+          const worldPos = this.getStructureWorldPosition(planetState, s);
+          const radius = ORBITAL_STRUCTURES[s.structureId].slotCost === 2 ? 12 : 8;
+          targets.push({
+            id: s.id,
+            ownerId: s.ownerId,
+            systemId,
+            position: worldPos,
+            targetClass: 'structure',
+            evasion: 0,
+            visualRadius: radius,
+            getShields: () => s.shields,
+            getHull: () => s.hull,
+            applyDamage: (alpha, sMult, hMult, luck) => {
+              const res = applyWeaponDamage(s.shields, s.hull, alpha, sMult, hMult, luck);
+              s.shields = res.nextShields;
+              s.hull = res.nextHull;
+              s.lastDamageTakenAtSeconds = this.elapsedSeconds;
+              this.lastCombatActivityByPlayer.set(s.ownerId, this.elapsedSeconds);
+              if (res.shieldDamageDealt > 0) {
+                this.emitCombatEvent({
+                  type: 'shield_impact',
+                  systemId,
+                  fromPos: worldPos,
+                  toPos: worldPos,
+                  targetRadius: radius,
+                  ownerId: s.ownerId,
+                });
+              }
+              if (res.destroyed) {
+                this.destroyOrbitalStructureInCombat(planetState, s);
+              }
+            },
+          });
+        }
+      }
+
+      return targets;
+    };
+
+    // 1. Combat Ship weapon firing & stance acquisition
+    for (const ship of [...this.combatShips]) {
+      if (ship.hull <= 0) {
+        continue;
+      }
+      const shipCfg = SHIP_CLASSES[ship.shipClassId];
+
+      // Tick weapon cooldowns
+      for (let wIdx = 0; wIdx < shipCfg.weapons.length; wIdx++) {
+        ship.weaponCooldowns[wIdx] = Math.max(
+          0,
+          (ship.weaponCooldowns[wIdx] ?? 0) - deltaSeconds,
+        );
+      }
+
+      if (ship.stance === 'passive') {
+        ship.inCombat = false;
+        ship.currentTargetId = null;
+        ship.currentTargetPos = null;
+        continue;
+      }
+
+      const hostiles = buildTargetsInSystem(ship.currentSystemId, ship.ownerId);
+      if (hostiles.length === 0) {
+        ship.inCombat = false;
+        ship.currentTargetId = null;
+        ship.currentTargetPos = null;
+        continue;
+      }
+
+      const maxWeaponRange = shipCfg.weapons.reduce((acc, w) => Math.max(acc, w.range), 0);
+      const acquisitionRange =
+        ship.stance === 'aggressive'
+          ? ship.tetherHostId
+            ? 240
+            : Infinity
+          : maxWeaponRange;
+
+      let bestTarget: CombatTargetRef | null = null;
+      let bestScore = -Infinity;
+      let bestDist = Infinity;
+      for (const cand of hostiles) {
+        if (cand.getHull() <= 0) continue;
+        const dist = Math.hypot(
+          cand.position.x - ship.position.x,
+          cand.position.z - ship.position.z,
+        );
+        if (dist > acquisitionRange) {
+          continue;
+        }
+        const score = scoreCombatTargetPriority(
+          ship.shipClassId,
+          cand.targetClass,
+          cand.getShields() > 0,
+          dist,
+        );
+        if (score > bestScore) {
+          bestScore = score;
+          bestTarget = cand;
+          bestDist = dist;
+        }
+      }
+
+      if (!bestTarget) {
+        ship.inCombat = false;
+        ship.currentTargetId = null;
+        ship.currentTargetPos = null;
+        continue;
+      }
+
+      ship.inCombat = true;
+      ship.currentTargetId = bestTarget.id;
+      ship.currentTargetPos = { x: bestTarget.position.x, z: bestTarget.position.z };
+
+      for (let wIdx = 0; wIdx < shipCfg.weapons.length; wIdx++) {
+        const weapon = shipCfg.weapons[wIdx]!;
+        if ((ship.weaponCooldowns[wIdx] ?? 0) > 0 || bestDist > weapon.range) {
+          continue;
+        }
+        if (bestTarget.getHull() <= 0) {
+          break;
+        }
+
+        ship.weaponCooldowns[wIdx] = weapon.reloadSeconds;
+        this.lastCombatActivityByPlayer.set(ship.ownerId, this.elapsedSeconds);
+
+        const weaponKind = classifyWeaponVisualKind(
+          ship.shipClassId,
+          weapon.tracking,
+          weapon.alphaDamage,
+        );
+        this.emitCombatEvent({
+          type: 'weapon_fire',
+          systemId: ship.currentSystemId,
+          fromPos: ship.position,
+          toPos: bestTarget.position,
+          weaponKind,
+          ownerId: ship.ownerId,
+        });
+
+        const hitProb = computeHitProbability(weapon.tracking, bestTarget.evasion);
+        const hitRoll = nextCombatRandom(this.combatRng);
+        if (hitRoll <= hitProb) {
+          let luckMult = 1.0;
+          if (
+            ship.shipClassId === 'fighter' &&
+            bestTarget.targetClass === 'fighter' &&
+            shipCfg.dogfightLuckVariance > 0
+          ) {
+            const luckRoll = nextCombatRandom(this.combatRng);
+            luckMult = 1.0 + (luckRoll * 2 - 1) * shipCfg.dogfightLuckVariance;
+          }
+          bestTarget.applyDamage(
+            weapon.alphaDamage,
+            weapon.shieldDamageMultiplier,
+            weapon.hullDamageMultiplier,
+            luckMult,
+            ship.ownerId,
+          );
+        }
+      }
+    }
+
+    // 2. Deep-Space Defence Towers (PD Tower & Hull Breaker Tower)
+    for (const ds of [...this.deepSpaceStructures]) {
+      if (
+        !ds.isComplete ||
+        ds.hull <= 0 ||
+        (ds.structureId !== 'point_defence_tower' && ds.structureId !== 'hull_breaker_tower')
+      ) {
+        continue;
+      }
+      const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
+      ds.weaponCooldownSeconds = Math.max(0, (ds.weaponCooldownSeconds ?? 0) - deltaSeconds);
+
+      // Towers require a live friendly Logistics Hub within 180u to stay powered
+      if (!this.isTowerPoweredByFriendlyHub(ds)) {
+        ds.currentTargetId = null;
+        ds.currentTargetPos = null;
+        continue;
+      }
+
+      const hostiles = buildTargetsInSystem(ds.systemId, ds.ownerId).filter(
+        (t) =>
+          t.getHull() > 0 &&
+          Math.hypot(t.position.x - ds.position.x, t.position.z - ds.position.z) <=
+            cfg.weaponRange,
+      );
+      if (hostiles.length === 0) {
+        ds.currentTargetId = null;
+        ds.currentTargetPos = null;
+        continue;
+      }
+
+      // PD Tower prioritizes fast/evasive craft; Hull Breaker Tower prioritizes slow capitals
+      const preferClass: CombatShipClassId =
+        ds.structureId === 'point_defence_tower' ? 'cruiser' : 'dreadnought';
+      let target = hostiles[0]!;
+      let bestScore = -Infinity;
+      for (const h of hostiles) {
+        const d = Math.hypot(h.position.x - ds.position.x, h.position.z - ds.position.z);
+        const s = scoreCombatTargetPriority(preferClass, h.targetClass, h.getShields() > 0, d);
+        if (s > bestScore) {
+          bestScore = s;
+          target = h;
+        }
+      }
+
+      ds.currentTargetId = target.id;
+      ds.currentTargetPos = { x: target.position.x, z: target.position.z };
+
+      if ((ds.weaponCooldownSeconds ?? 0) <= 0) {
+        ds.weaponCooldownSeconds = cfg.reloadSeconds;
+        this.lastCombatActivityByPlayer.set(ds.ownerId, this.elapsedSeconds);
+        const kind = classifyWeaponVisualKind(
+          ds.structureId === 'point_defence_tower' ? 'pd_tower' : 'hull_breaker_tower',
+          cfg.weaponTracking,
+          cfg.alphaDamage,
+        );
+        this.emitCombatEvent({
+          type: 'weapon_fire',
+          systemId: ds.systemId,
+          fromPos: ds.position,
+          toPos: target.position,
+          weaponKind: kind,
+          ownerId: ds.ownerId,
+        });
+
+        const hitProb = computeHitProbability(cfg.weaponTracking, target.evasion);
+        if (nextCombatRandom(this.combatRng) <= hitProb) {
+          const shieldMult = ds.structureId === 'hull_breaker_tower' ? 0.85 : 0.9;
+          const hullMult = ds.structureId === 'hull_breaker_tower' ? 1.75 : 1.15;
+          target.applyDamage(cfg.alphaDamage, shieldMult, hullMult, 1.0, ds.ownerId);
+        }
+      }
+    }
+
+    // 3. Orbital Structure Defences (C&C, Outpost, Dockyard, Heavy Defense Platform)
+    for (const planetState of this.planets.values()) {
+      for (const s of [...planetState.structures]) {
+        if (!s.isComplete || s.hull <= 0) {
+          continue;
+        }
+        const cfg = ORBITAL_STRUCTURES[s.structureId];
+        if (cfg.pointDefenceDps <= 0 && cfg.heavyWeaponDps <= 0) {
+          continue;
+        }
+        s.pdCooldownSeconds = Math.max(0, (s.pdCooldownSeconds ?? 0) - deltaSeconds);
+        s.heavyCooldownSeconds = Math.max(0, (s.heavyCooldownSeconds ?? 0) - deltaSeconds);
+
+        const worldPos = this.getStructureWorldPosition(planetState, s);
+        const hostiles = buildTargetsInSystem(planetState.planet.systemId, s.ownerId);
+        if (hostiles.length === 0) {
+          s.currentTargetId = null;
+          s.currentTargetPos = null;
+          continue;
+        }
+
+        if (cfg.pointDefenceDps > 0 && (s.pdCooldownSeconds ?? 0) <= 0) {
+          const pdTarget = hostiles.find(
+            (h) =>
+              h.getHull() > 0 &&
+              Math.hypot(h.position.x - worldPos.x, h.position.z - worldPos.z) <= 185,
+          );
+          if (pdTarget) {
+            s.pdCooldownSeconds = 0.5;
+            s.currentTargetId = pdTarget.id;
+            s.currentTargetPos = { x: pdTarget.position.x, z: pdTarget.position.z };
+            this.lastCombatActivityByPlayer.set(s.ownerId, this.elapsedSeconds);
+            this.emitCombatEvent({
+              type: 'weapon_fire',
+              systemId: planetState.planet.systemId,
+              fromPos: worldPos,
+              toPos: pdTarget.position,
+              weaponKind: 'pd',
+              ownerId: s.ownerId,
+            });
+            if (nextCombatRandom(this.combatRng) <= computeHitProbability(0.94, pdTarget.evasion)) {
+              pdTarget.applyDamage(cfg.pointDefenceDps * 0.5, 0.9, 1.1, 1.0, s.ownerId);
+            }
+          }
+        }
+
+        if (cfg.heavyWeaponDps > 0 && (s.heavyCooldownSeconds ?? 0) <= 0) {
+          const heavyTarget = hostiles.find(
+            (h) =>
+              h.getHull() > 0 &&
+              Math.hypot(h.position.x - worldPos.x, h.position.z - worldPos.z) <= 245,
+          );
+          if (heavyTarget) {
+            s.heavyCooldownSeconds = 2.0;
+            s.currentTargetId = heavyTarget.id;
+            s.currentTargetPos = { x: heavyTarget.position.x, z: heavyTarget.position.z };
+            this.lastCombatActivityByPlayer.set(s.ownerId, this.elapsedSeconds);
+            this.emitCombatEvent({
+              type: 'weapon_fire',
+              systemId: planetState.planet.systemId,
+              fromPos: worldPos,
+              toPos: heavyTarget.position,
+              weaponKind: 'heavy',
+              ownerId: s.ownerId,
+            });
+            if (
+              nextCombatRandom(this.combatRng) <= computeHitProbability(0.35, heavyTarget.evasion)
+            ) {
+              heavyTarget.applyDamage(cfg.heavyWeaponDps * 2.0, 1.1, 1.35, 1.0, s.ownerId);
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Out-of-Combat Shield Regeneration & Logistics Hub Hull Repair
+    for (const ship of this.combatShips) {
+      const cfg = SHIP_CLASSES[ship.shipClassId];
+      const outOfCombat =
+        this.elapsedSeconds - ship.lastDamageTakenAtSeconds >=
+        SHIELD_REGEN_OUT_OF_COMBAT_DELAY_SECONDS;
+      if (outOfCombat && cfg.hasShields && ship.shields < ship.maxShields) {
+        ship.shields = Math.min(
+          ship.maxShields,
+          ship.shields + cfg.shieldRegenPerSecond * deltaSeconds,
+        );
+      }
+      if (outOfCombat && ship.hull < ship.maxHull) {
+        const hubRadius = DEEP_SPACE_STRUCTURES.logistics_hub.buildRadiusProvided;
+        const nearFriendlyHub = this.deepSpaceStructures.some(
+          (ds) =>
+            ds.structureId === 'logistics_hub' &&
+            ds.ownerId === ship.ownerId &&
+            ds.systemId === ship.currentSystemId &&
+            ds.isComplete &&
+            Math.hypot(ds.position.x - ship.position.x, ds.position.z - ship.position.z) <=
+              hubRadius,
+        );
+        if (nearFriendlyHub) {
+          ship.hull = Math.min(
+            ship.maxHull,
+            ship.hull + LOGISTICS_HUB_REPAIR_PER_SECOND * deltaSeconds,
+          );
+        }
+      }
+    }
+
+    for (const ds of this.deepSpaceStructures) {
+      if (!ds.isComplete) continue;
+      const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
+      const outOfCombat =
+        this.elapsedSeconds - (ds.lastDamageTakenAtSeconds ?? -999) >=
+        SHIELD_REGEN_OUT_OF_COMBAT_DELAY_SECONDS;
+      if (outOfCombat && ds.shields < cfg.maxShields) {
+        ds.shields = Math.min(cfg.maxShields, ds.shields + cfg.shieldRegenPerSecond * deltaSeconds);
+      }
+    }
+
+    for (const planetState of this.planets.values()) {
+      for (const s of planetState.structures) {
+        if (!s.isComplete) continue;
+        const cfg = ORBITAL_STRUCTURES[s.structureId];
+        const outOfCombat =
+          this.elapsedSeconds - (s.lastDamageTakenAtSeconds ?? -999) >=
+          SHIELD_REGEN_OUT_OF_COMBAT_DELAY_SECONDS;
+        if (outOfCombat && s.shields < cfg.maxShields) {
+          s.shields = Math.min(cfg.maxShields, s.shields + cfg.shieldRegenPerSecond * deltaSeconds);
+        }
+      }
+    }
   }
 }

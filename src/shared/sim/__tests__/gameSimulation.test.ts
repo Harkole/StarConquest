@@ -1162,4 +1162,158 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(dockyard.productionQueue).toHaveLength(1);
     expect(dockyard.productionQueue[0]?.shipClassId).toBe('destroyer');
   });
+
+  it('resolves 5-class RPS combat, stances (Aggressive/Hold/Passive), Carrier fighter tethers, shield impact events, and C&C defeat', () => {
+    // 1. Stances: Passive never fires; Hold the Line holds position; Aggressive pursues in-system
+    const stanceSim = new GameSimulation('blitz_skirmish');
+    const passiveCruiser = stanceSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 200, z: 200 },
+      'cruiser',
+      'passive',
+    );
+    const enemyTarget = stanceSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 260, z: 200 },
+      'destroyer',
+      'passive',
+    );
+    stanceSim.stepTick(2.0);
+    expect(enemyTarget.hull).toBe(enemyTarget.maxHull);
+    expect(passiveCruiser.inCombat).toBe(false);
+
+    // Switch to hold_the_line -> fires immediately in range without moving
+    passiveCruiser.stance = 'hold_the_line';
+    const holdStartPos = { ...passiveCruiser.position };
+    stanceSim.stepTick(2.0);
+    expect(enemyTarget.hull).toBeLessThan(enemyTarget.maxHull);
+    expect(passiveCruiser.position.x).toBeCloseTo(holdStartPos.x, 3);
+    expect(stanceSim.isPlayerInActiveCombat('player_1')).toBe(true);
+
+    // Aggressive ship pursues a distant hostile in the same system
+    const aggressiveDestroyer = stanceSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 600, z: 200 },
+      'destroyer',
+      'aggressive',
+    );
+    const startDist = Math.hypot(
+      aggressiveDestroyer.position.x - enemyTarget.position.x,
+      aggressiveDestroyer.position.z - enemyTarget.position.z,
+    );
+    stanceSim.stepTick(2.0);
+    const afterDist = Math.hypot(
+      aggressiveDestroyer.position.x - enemyTarget.position.x,
+      aggressiveDestroyer.position.z - enemyTarget.position.z,
+    );
+    expect(afterDist).toBeLessThan(startDist - 50);
+
+    // 2. RPS: Fighter swarm strips shields & defeats a lone Dreadnought, emitting weapon_fire + shield_impact + hull_explosion
+    const fighterSim = new GameSimulation('blitz_skirmish');
+    for (let i = 0; i < 12; i++) {
+      fighterSim.spawnCombatShipDirect(
+        'player_1',
+        'system_central_hub',
+        { x: 300 + (i % 4) * 10, z: 300 + Math.floor(i / 4) * 10 },
+        'fighter',
+        'aggressive',
+      );
+    }
+    const loneDread = fighterSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 340, z: 310 },
+      'dreadnought',
+      'hold_the_line',
+    );
+
+    let sawWeaponFire = false;
+    let sawShieldImpact = false;
+    let sawExplosion = false;
+    for (let t = 0; t < 60; t++) {
+      fighterSim.stepTick(0.5);
+      for (const ev of fighterSim.consumeCombatEvents()) {
+        if (ev.type === 'weapon_fire') sawWeaponFire = true;
+        if (ev.type === 'shield_impact') sawShieldImpact = true;
+        if (ev.type === 'hull_explosion') sawExplosion = true;
+      }
+      if (!fighterSim.getCombatShipById(loneDread.id)) {
+        break;
+      }
+    }
+    expect(fighterSim.getCombatShipById(loneDread.id)).toBeUndefined();
+    expect(sawWeaponFire).toBe(true);
+    expect(sawShieldImpact).toBe(true);
+    expect(sawExplosion).toBe(true);
+
+    // 3. RPS: 2 Cruisers shred 6 Fighters with rapid Point Defence
+    const pdSim = new GameSimulation('blitz_skirmish');
+    pdSim.spawnCombatShipDirect('player_1', 'system_central_hub', { x: 200, z: 200 }, 'cruiser', 'hold_the_line');
+    pdSim.spawnCombatShipDirect('player_1', 'system_central_hub', { x: 215, z: 215 }, 'cruiser', 'hold_the_line');
+    for (let i = 0; i < 6; i++) {
+      pdSim.spawnCombatShipDirect(
+        'player_2',
+        'system_central_hub',
+        { x: 250 + i * 6, z: 200 },
+        'fighter',
+        'aggressive',
+      );
+    }
+    for (let t = 0; t < 40; t++) {
+      pdSim.stepTick(0.5);
+    }
+    const remainingP2Fighters = pdSim
+      .getAllCombatShips()
+      .filter((s) => s.ownerId === 'player_2');
+    const remainingP1Cruisers = pdSim
+      .getAllCombatShips()
+      .filter((s) => s.ownerId === 'player_1');
+    expect(remainingP2Fighters).toHaveLength(0);
+    expect(remainingP1Cruisers).toHaveLength(2);
+
+    // 4. Carrier auto-launches tethered Fighters (up to 4); destroying the Carrier strands & removes them
+    const carrierSim = new GameSimulation('blitz_skirmish');
+    const carrier = carrierSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 400, z: 400 },
+      'carrier',
+      'hold_the_line',
+    );
+    for (let t = 0; t < 30; t++) {
+      carrierSim.stepTick(1.0);
+    }
+    const launchedWings = carrierSim
+      .getAllCombatShips()
+      .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id);
+    expect(launchedWings).toHaveLength(4);
+
+    // Destroy the Carrier -> next tick cleans up stranded Fighters with no Hub/Carrier left
+    expect(carrierSim.destroyCombatShip(carrier.id)).toBe(true);
+    carrierSim.stepTick(0.5);
+    expect(
+      carrierSim.getAllCombatShips().filter((s) => s.shipClassId === 'fighter'),
+    ).toHaveLength(0);
+
+    // 5. Destroying a player's Homeworld C&C marks that player defeated
+    const defeatSim = new GameSimulation('blitz_skirmish');
+    const p2Home = defeatSim.getPlanetState('system_starter_2_homeworld');
+    const p2Cnc = p2Home.structures.find((s) => s.structureId === 'command_and_control')!;
+    const cncPos = defeatSim.getStructureWorldPosition(p2Home, p2Cnc);
+    p2Cnc.shields = 0;
+    p2Cnc.hull = 200;
+    defeatSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_2',
+      { x: cncPos.x + 80, z: cncPos.z },
+      'dreadnought',
+      'aggressive',
+    );
+    expect(defeatSim.isPlayerDefeated('player_2')).toBe(false);
+    defeatSim.stepTick(3.5);
+    expect(defeatSim.isPlayerDefeated('player_2')).toBe(true);
+  });
 });
