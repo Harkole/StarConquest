@@ -18,10 +18,10 @@ export interface FactionVisualPalette {
  */
 export const FACTION_PALETTES: Readonly<Record<PlayerSlotId, FactionVisualPalette>> = {
   player_1: {
-    accentHex: 0xcd8734,
-    tacticalHex: 0x38bdf8,
-    engineColor: [0.35, 0.85, 1.35],
-    label: 'Player 1 (Cyan / Ochre)',
+    accentHex: 0x8b5cf6,
+    tacticalHex: 0xa855f7,
+    engineColor: [0.95, 0.45, 1.45],
+    label: 'Player 1 (Purple)',
   },
   player_2: {
     accentHex: 0xdc2626,

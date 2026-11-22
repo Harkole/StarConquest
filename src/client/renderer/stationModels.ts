@@ -635,7 +635,7 @@ export class StationModelLibrary {
         break;
     }
 
-    if (isComplete && ownerId && ownerId !== 'player_1') {
+    if (isComplete && ownerId) {
       const factionAccent = this.getFactionAccentMaterial(ownerId);
       root.traverse((obj) => {
         if (obj instanceof THREE.Mesh && obj.material === this.accentOchreMat) {

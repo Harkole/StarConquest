@@ -570,7 +570,7 @@ export class ShipModelLibrary {
         break;
     }
 
-    if (options.ownerId && options.ownerId !== 'player_1' && !options.wireframe) {
+    if (options.ownerId && !options.wireframe) {
       const { accentMat, engineMat } = this.getFactionMaterials(options.ownerId);
       root.traverse((obj) => {
         if (!(obj instanceof THREE.Mesh)) {

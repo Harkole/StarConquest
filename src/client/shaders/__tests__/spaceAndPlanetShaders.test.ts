@@ -1100,6 +1100,7 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     );
     const ringColors = new Set<number>();
     const pipColors = new Set<number>();
+    let purpleAccentCount = 0;
     let crimsonAccentCount = 0;
     fleetRenderer.rootGroup.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
@@ -1111,20 +1112,38 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       }
       if (
         obj.material instanceof THREE.MeshStandardMaterial &&
+        obj.material.name === 'hull_faction_accent_player_1'
+      ) {
+        purpleAccentCount += 1;
+      }
+      if (
+        obj.material instanceof THREE.MeshStandardMaterial &&
         obj.material.name === 'hull_faction_accent_player_2'
       ) {
         crimsonAccentCount += 1;
       }
     });
-    expect(ringColors.has(0x38bdf8)).toBe(true);
+    expect(ringColors.has(0xa855f7)).toBe(true);
     expect(ringColors.has(0xef4444)).toBe(true);
-    expect(pipColors.has(0x38bdf8)).toBe(true);
+    expect(pipColors.has(0xa855f7)).toBe(true);
     expect(pipColors.has(0xef4444)).toBe(true);
+    expect(purpleAccentCount).toBeGreaterThan(0);
     expect(crimsonAccentCount).toBeGreaterThan(0);
 
     const stations = new StationModelLibrary();
+    const p1Hub = stations.buildStationMesh('logistics_hub', true, undefined, 'player_1');
     const enemyHub = stations.buildStationMesh('logistics_hub', true, undefined, 'player_2');
+    let p1StationAccentCount = 0;
     let enemyStationAccentCount = 0;
+    p1Hub.traverse((obj) => {
+      if (
+        obj instanceof THREE.Mesh &&
+        obj.material instanceof THREE.MeshStandardMaterial &&
+        obj.material.name === 'station_faction_accent_player_1'
+      ) {
+        p1StationAccentCount += 1;
+      }
+    });
     enemyHub.traverse((obj) => {
       if (
         obj instanceof THREE.Mesh &&
@@ -1134,6 +1153,7 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
         enemyStationAccentCount += 1;
       }
     });
+    expect(p1StationAccentCount).toBeGreaterThan(0);
     expect(enemyStationAccentCount).toBeGreaterThan(0);
     stations.dispose();
     fleetRenderer.dispose();
