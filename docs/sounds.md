@@ -28,7 +28,7 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 | `ambient_weight_of_the_far_horizon` | *Weight of the Far Horizon* | `Weight_of_the_Far_Horizon.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and macro economy phases | **Implemented** |
 | `ambient_passing_the_last_horizon` | *Passing The Last Horizon* | `Passing_The_Last_Horizon.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and macro economy phases | **Implemented** |
 | `ambient_armada_at_the_edge` | *Armada at the Edge* | `Armada_at_the_Edge.mp3` | `ambient` | `0.45` | Shuffled ambient playlist track for exploration and fleet buildup phases | **Implemented** |
-| `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Asset Ready** *(wire in Step 4)* |
+| `combat_iron_horizon` | *Iron Horizon* | `Iron_Horizon.mp3` | `combat` | `0.55` | Intense combat track triggered during active fleet engagements to signal danger and urgency | **Implemented** |
 
 
 ---

@@ -8,6 +8,7 @@ import {
 import { HarvesterFleetRenderer } from '../../renderer/harvesterFleetRenderer.ts';
 import { createProceduralHullTextures } from '../../renderer/proceduralHullTextures.ts';
 import { ShipModelLibrary } from '../../renderer/shipModels.ts';
+import { CombatVfxRenderer } from '../../renderer/combatVfxRenderer.ts';
 import { createStarSystemEnvironment } from '../../renderer/spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from '../../renderer/stationModels.ts';
 import {
@@ -877,5 +878,67 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     const techModule = stations.buildStationMesh('tech_module', true, 42.56);
     expect(techModule.getObjectByName('ship_carrier_vanguard')).toBeDefined();
     stations.dispose();
+  });
+
+  it('spawns and fades HDR weapon beams, dynamic shield impact ripples, and hull explosions in CombatVfxRenderer', () => {
+    const vfx = new CombatVfxRenderer();
+    expect(vfx.getActiveEffectCount()).toBe(0);
+
+    vfx.ingestEvents(
+      [
+        {
+          id: 1,
+          type: 'weapon_fire',
+          systemId: 'system_starter_1',
+          fromPos: { x: 100, z: 100 },
+          toPos: { x: 180, z: 120 },
+          weaponKind: 'siege',
+          ownerId: 'player_1',
+          timestampSeconds: 1.0,
+        },
+        {
+          id: 2,
+          type: 'shield_impact',
+          systemId: 'system_starter_1',
+          fromPos: { x: 180, z: 120 },
+          toPos: { x: 180, z: 120 },
+          targetRadius: 8,
+          ownerId: 'player_2',
+          timestampSeconds: 1.0,
+        },
+        {
+          id: 3,
+          type: 'hull_explosion',
+          systemId: 'system_starter_1',
+          fromPos: { x: 180, z: 120 },
+          toPos: { x: 180, z: 120 },
+          targetRadius: 8,
+          ownerId: 'player_2',
+          timestampSeconds: 1.0,
+        },
+        // Different system event must be ignored
+        {
+          id: 4,
+          type: 'weapon_fire',
+          systemId: 'system_central_hub',
+          fromPos: { x: 0, z: 0 },
+          toPos: { x: 50, z: 50 },
+          weaponKind: 'pd',
+          ownerId: 'player_1',
+          timestampSeconds: 1.0,
+        },
+      ],
+      'system_starter_1',
+    );
+
+    // 1 beam + 1 shield ripple + 2 explosion meshes (core + shockwave ring) = 4
+    expect(vfx.getActiveEffectCount()).toBe(4);
+    expect(vfx.rootGroup.children).toHaveLength(4);
+
+    // Advancing 1.0s expires and disposes all short-lived effects cleanly
+    vfx.update(1.0);
+    expect(vfx.getActiveEffectCount()).toBe(0);
+    expect(vfx.rootGroup.children).toHaveLength(0);
+    vfx.dispose();
   });
 });

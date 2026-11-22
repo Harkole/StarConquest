@@ -66,6 +66,8 @@ function bootstrapClient(): void {
   });
 
   const clock = new THREE.Clock();
+  const COMBAT_MUSIC_COOLDOWN_SECONDS = 14.0;
+  let lastCombatActivityElapsed = -999;
 
   function animate(): void {
     requestAnimationFrame(animate);
@@ -74,6 +76,20 @@ function bootstrapClient(): void {
 
     cameraController.update(deltaSeconds);
     sceneManager.update(elapsedSeconds, deltaSeconds);
+
+    // Dynamic ambient <-> combat music switching with 14s anti-flicker cooldown (docs/sounds.md)
+    if (simAdapter.simulation.isPlayerInActiveCombat(simAdapter.localPlayerId)) {
+      lastCombatActivityElapsed = elapsedSeconds;
+      if (musicPlayer.getCategory() !== 'combat') {
+        musicPlayer.setCategory('combat');
+      }
+    } else if (
+      musicPlayer.getCategory() === 'combat' &&
+      elapsedSeconds - lastCombatActivityElapsed >= COMBAT_MUSIC_COOLDOWN_SECONDS
+    ) {
+      musicPlayer.setCategory('ambient');
+    }
+
     composer.render();
   }
 

@@ -10,6 +10,7 @@ interface CombatShipRenderEntry {
   readonly group: THREE.Group;
   readonly selectionRing: THREE.Mesh;
   readonly hitMesh: THREE.Mesh;
+  readonly turretPivots: readonly THREE.Object3D[];
 }
 
 const HIT_RADIUS_BY_CLASS: Readonly<Record<CombatShipClassId, number>> = {
@@ -96,6 +97,18 @@ export class CombatFleetRenderer {
       entry.selectionRing.visible =
         ship.id === selectedShipId ||
         (selectedFleetId !== null && ship.fleetId === selectedFleetId);
+
+      // Active turret target-tracking rotation toward live combat target
+      if (ship.currentTargetPos && entry.turretPivots.length > 0) {
+        const worldBearing = Math.atan2(
+          ship.currentTargetPos.x - ship.position.x,
+          ship.currentTargetPos.z - ship.position.z,
+        );
+        const localYaw = worldBearing - ship.headingRadians;
+        for (const pivot of entry.turretPivots) {
+          pivot.rotation.y = localYaw;
+        }
+      }
     }
 
     for (const [id, entry] of this.entries.entries()) {
@@ -224,6 +237,9 @@ export class CombatFleetRenderer {
     hitMesh.userData.combatShipId = ship.id;
     group.add(hitMesh);
 
-    return { group, selectionRing, hitMesh };
+    const turretPivots = Array.isArray(model.userData.turretPivots)
+      ? (model.userData.turretPivots as THREE.Object3D[])
+      : [];
+    return { group, selectionRing, hitMesh, turretPivots };
   }
 }
