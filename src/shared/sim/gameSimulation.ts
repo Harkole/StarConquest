@@ -1203,6 +1203,9 @@ export class GameSimulation {
     for (const ship of this.combatShips) {
       this.updateCombatShip(ship, deltaSeconds);
     }
+
+    // 7. Enforce physical hull clearance between neighboring combat ships (prevent flight & formation overlap)
+    this.resolveCombatShipSeparation(deltaSeconds);
   }
 
   private initializeSimulationState(): void {
@@ -2565,6 +2568,112 @@ export class GameSimulation {
       fighterLaunchCooldownSeconds: 0,
       fighterRebuildProgressSeconds: 0,
     });
+  }
+
+  private getShipClearanceRadius(shipClassId: CombatShipClassId): number {
+    switch (shipClassId) {
+      case 'fighter':
+        return 3.5;
+      case 'destroyer':
+        return 7.0;
+      case 'cruiser':
+        return 10.0;
+      case 'carrier':
+        return 13.0;
+      case 'dreadnought':
+        return 17.0;
+    }
+  }
+
+  /**
+   * Pairwise inter-ship separation pass so combat ships maintain physical hull clearance
+   * during flight, formation holding, and broadsiding without clipping or merging together.
+   * Lighter hulls yield proportionally more than heavier capitals, and planet avoidance is preserved.
+   */
+  private resolveCombatShipSeparation(deltaSeconds: number): void {
+    const count = this.combatShips.length;
+    if (count < 2) {
+      return;
+    }
+    const maxPush = Math.max(12, 36 * deltaSeconds);
+    const touchedIndices = new Set<number>();
+
+    for (let i = 0; i < count; i++) {
+      const a = this.combatShips[i]!;
+      const radiusA = this.getShipClearanceRadius(a.shipClassId);
+      for (let j = i + 1; j < count; j++) {
+        const b = this.combatShips[j]!;
+        if (a.currentSystemId !== b.currentSystemId) {
+          continue;
+        }
+        const radiusB = this.getShipClearanceRadius(b.shipClassId);
+        const minDist = radiusA + radiusB;
+        const dx = b.position.x - a.position.x;
+        const dz = b.position.z - a.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist >= minDist) {
+          continue;
+        }
+
+        let nx: number;
+        let nz: number;
+        if (dist < 1e-4) {
+          const angle = ((i * 2.39996 + j * 1.13) % (Math.PI * 2));
+          nx = Math.cos(angle);
+          nz = Math.sin(angle);
+        } else {
+          nx = dx / dist;
+          nz = dz / dist;
+        }
+
+        const overlap = minDist - dist;
+        const totalPush = Math.min(overlap * 0.85, maxPush);
+        const weightA = radiusB / minDist;
+        const weightB = radiusA / minDist;
+
+        a.position = {
+          x: a.position.x - nx * totalPush * weightA,
+          z: a.position.z - nz * totalPush * weightA,
+        };
+        b.position = {
+          x: b.position.x + nx * totalPush * weightB,
+          z: b.position.z + nz * totalPush * weightB,
+        };
+        touchedIndices.add(i);
+        touchedIndices.add(j);
+      }
+    }
+
+    // Ensure separation never nudges any ship inside a planetary obstacle
+    if (touchedIndices.size > 0) {
+      const obstacleCache = new Map<string, readonly PlanetaryObstacle[]>();
+      for (const idx of touchedIndices) {
+        const ship = this.combatShips[idx]!;
+        let obstacles = obstacleCache.get(ship.currentSystemId);
+        if (!obstacles) {
+          obstacles = this.getPlanetaryObstaclesInSystem(ship.currentSystemId);
+          obstacleCache.set(ship.currentSystemId, obstacles);
+        }
+        for (const obs of obstacles) {
+          const ox = ship.position.x - obs.position.x;
+          const oz = ship.position.z - obs.position.z;
+          const d = Math.hypot(ox, oz);
+          if (d < obs.avoidRadius) {
+            const scale = d > 1e-4 ? obs.avoidRadius / d : 1;
+            ship.position =
+              d > 1e-4
+                ? {
+                    x: obs.position.x + ox * scale,
+                    z: obs.position.z + oz * scale,
+                  }
+                : {
+                    x: obs.position.x + obs.avoidRadius,
+                    z: obs.position.z,
+                  };
+          }
+        }
+      }
+    }
   }
 
   private updateCombatShip(ship: CombatShipUnitState, deltaSeconds: number): void {

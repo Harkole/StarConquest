@@ -1587,5 +1587,31 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       fleeSim.stepTick(0.5);
     }
     expect(ddFlee.isFleeing).toBe(false);
+
+    // 9. Inter-ship separation keeps neighboring combat hulls from overlapping/merging in flight & formation
+    const sepSim = new GameSimulation('blitz_skirmish');
+    const crA = sepSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 350, z: 350 },
+      'cruiser',
+      'hold_the_line',
+    );
+    const crB = sepSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 350, z: 350 },
+      'cruiser',
+      'hold_the_line',
+    );
+    for (let i = 0; i < 6; i++) {
+      sepSim.stepTick(0.25);
+    }
+    const sepDist = Math.hypot(
+      crA.position.x - crB.position.x,
+      crA.position.z - crB.position.z,
+    );
+    // Two Cruisers (10u clearance radius each -> 20u combined clearance) separate cleanly without clipping
+    expect(sepDist).toBeGreaterThanOrEqual(19.0);
   });
 });
