@@ -1156,6 +1156,47 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
     expect(p1StationAccentCount).toBeGreaterThan(0);
     expect(enemyStationAccentCount).toBeGreaterThan(0);
     stations.dispose();
+
+    // Harvesters also apply per-faction hull accents and ownership rings for all 4 player slots
+    const harvRenderer = new HarvesterFleetRenderer();
+    const mkHarv = (id: string, ownerId: 'player_1' | 'player_2' | 'player_3' | 'player_4') => ({
+      id,
+      ownerId,
+      homeStructureId: 'cnc_1',
+      homePlanetId: 'p_1',
+      homeSystemId: 'system_starter_1',
+      currentSystemId: 'system_starter_1',
+      position: { x: 0, z: 0 },
+      headingRadians: 0,
+      currentSpeed: 40,
+      cargoType: 'ore' as const,
+      cargoAmount: 0,
+      cargoCapacity: 40,
+      depositAccumulator: 0,
+      hull: 300,
+      maxHull: 300,
+      state: 'flying_to_belt' as const,
+      targetBeltId: null,
+      targetRockWorldPos: null,
+      miningStandoffAngle: 0,
+      mineCrossSystemHub: false,
+    });
+    harvRenderer.syncHarvesters([
+      mkHarv('h1', 'player_1'),
+      mkHarv('h2', 'player_2'),
+      mkHarv('h3', 'player_3'),
+      mkHarv('h4', 'player_4'),
+    ]);
+    const harvAccentNames = new Set<string>();
+    harvRenderer.rootGroup.traverse((obj) => {
+      if (obj instanceof THREE.Mesh && obj.material instanceof THREE.MeshStandardMaterial) {
+        if (obj.material.name.startsWith('harvester_faction_accent_')) {
+          harvAccentNames.add(obj.material.name);
+        }
+      }
+    });
+    expect(harvAccentNames.size).toBe(4);
+    harvRenderer.dispose();
     fleetRenderer.dispose();
   });
 });
