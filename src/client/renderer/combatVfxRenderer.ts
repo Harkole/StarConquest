@@ -5,9 +5,12 @@ import type { CombatVisualEvent } from '../../shared/sim/gameSimulation.ts';
 interface ActiveVfxItem {
   readonly object: THREE.Object3D;
   readonly material: THREE.Material;
-  readonly kind: 'beam' | 'shield_ripple' | 'explosion';
+  readonly kind: 'beam' | 'shield_patch' | 'explosion';
   readonly baseScale: number;
   readonly durationSeconds: number;
+  readonly targetId?: string;
+  readonly impactDirX?: number;
+  readonly impactDirZ?: number;
   ageSeconds: number;
 }
 
@@ -24,11 +27,15 @@ const WEAPON_BEAM_STYLE: Readonly<
   siege: { color: new THREE.Color(2.1, 0.42, 0.2), radius: 0.52, duration: 0.42 },
 };
 
+const SHIELD_PATCH_HOLD_SECONDS = 0.38;
+const SHIELD_PATCH_DURATION_SECONDS = 1.15;
+
 /**
  * Renders selective-HDR-bloom combat VFX in the active star system from authoritative
  * `CombatVisualEvent` packets:
  * - Weapon tracers & heavy siege salvos (`weapon_fire`)
- * - Dynamic Shield impact ripples that flash ONLY on shield absorption (`shield_impact`)
+ * - Localized solid-fill curved Shield deflection patches right where each shot was blocked
+ *   (`shield_impact`), holding steady and fading smoothly so rapid hits never pulse
  * - Hull detonation flashes & shockwave rings (`hull_explosion`)
  */
 export class CombatVfxRenderer {
@@ -37,7 +44,16 @@ export class CombatVfxRenderer {
   private readonly unitBeamGeom = new THREE.CylinderGeometry(1, 1, 1, 6).rotateX(
     Math.PI / 2,
   );
-  private readonly unitShieldSphereGeom = new THREE.SphereGeometry(1, 18, 14);
+  // Localized spherical cap facing +Z (pole rotated from +Y to +Z) so lookAt(attacker) aims the patch directly at the hit
+  private readonly unitShieldPatchGeom = new THREE.SphereGeometry(
+    1,
+    22,
+    12,
+    0,
+    Math.PI * 2,
+    0,
+    Math.PI * 0.3,
+  ).rotateX(Math.PI / 2);
   private readonly unitExplosionCoreGeom = new THREE.SphereGeometry(1, 12, 10);
   private readonly unitShockwaveRingGeom = new THREE.RingGeometry(0.72, 1.0, 28).rotateX(
     -Math.PI / 2,
@@ -66,7 +82,7 @@ export class CombatVfxRenderer {
       if (ev.type === 'weapon_fire') {
         this.spawnWeaponBeam(ev);
       } else if (ev.type === 'shield_impact') {
-        this.spawnShieldRipple(ev);
+        this.spawnOrRefreshShieldPatch(ev);
       } else if (ev.type === 'hull_explosion') {
         this.spawnHullExplosion(ev);
       }
@@ -89,12 +105,17 @@ export class CombatVfxRenderer {
       if (item.kind === 'beam') {
         const mat = item.material as THREE.MeshBasicMaterial;
         mat.opacity = (1 - t) * 0.92;
-      } else if (item.kind === 'shield_ripple') {
+      } else if (item.kind === 'shield_patch') {
         const mat = item.material as THREE.MeshBasicMaterial;
-        // Brief bright impact flash followed by smooth outward ripple fade
-        mat.opacity = (1 - t) * (1 - t) * 0.62;
-        const scale = item.baseScale * (0.98 + t * 0.22);
-        item.object.scale.setScalar(scale);
+        // Hold steady solid opacity during initial block window, then fade smoothly without pulsing
+        if (item.ageSeconds <= SHIELD_PATCH_HOLD_SECONDS) {
+          mat.opacity = 0.68;
+        } else {
+          const fadeT =
+            (item.ageSeconds - SHIELD_PATCH_HOLD_SECONDS) /
+            Math.max(0.01, item.durationSeconds - SHIELD_PATCH_HOLD_SECONDS);
+          mat.opacity = Math.max(0, (1 - fadeT) * 0.68);
+        }
       } else if (item.kind === 'explosion') {
         const mat = item.material as THREE.MeshBasicMaterial;
         mat.opacity = (1 - t) * 0.9;
@@ -115,7 +136,7 @@ export class CombatVfxRenderer {
   public dispose(): void {
     this.clear();
     this.unitBeamGeom.dispose();
-    this.unitShieldSphereGeom.dispose();
+    this.unitShieldPatchGeom.dispose();
     this.unitExplosionCoreGeom.dispose();
     this.unitShockwaveRingGeom.dispose();
   }
@@ -150,27 +171,57 @@ export class CombatVfxRenderer {
     });
   }
 
-  private spawnShieldRipple(ev: CombatVisualEvent): void {
-    const radius = Math.max(3.5, ev.targetRadius ?? 6.0) * 1.15;
+  private spawnOrRefreshShieldPatch(ev: CombatVisualEvent): void {
+    const dx = ev.fromPos.x - ev.toPos.x;
+    const dz = ev.fromPos.z - ev.toPos.z;
+    const len = Math.hypot(dx, dz);
+    const dirX = len > 1e-4 ? dx / len : 1;
+    const dirZ = len > 1e-4 ? dz / len : 0;
+    const radius = Math.max(3.5, ev.targetRadius ?? 6.0) * 1.12;
+
+    // Refresh existing solid shield patch on the same target & impact side so rapid hits stay steady without pulsing
+    if (ev.targetId) {
+      const existing = this.activeItems.find(
+        (item) =>
+          item.kind === 'shield_patch' &&
+          item.targetId === ev.targetId &&
+          (item.impactDirX ?? 0) * dirX + (item.impactDirZ ?? 0) * dirZ >= 0.78,
+      );
+      if (existing) {
+        existing.ageSeconds = Math.min(existing.ageSeconds, 0.1);
+        existing.object.position.set(ev.toPos.x, 1.6, ev.toPos.z);
+        existing.object.lookAt(
+          ev.toPos.x + dirX * 20,
+          1.6,
+          ev.toPos.z + dirZ * 20,
+        );
+        return;
+      }
+    }
+
     const mat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(0.35, 1.15, 1.85),
+      color: new THREE.Color(0.22, 0.78, 1.25),
       transparent: true,
-      opacity: 0.62,
-      wireframe: true,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.68,
+      wireframe: false,
+      side: THREE.DoubleSide,
       depthWrite: false,
     });
-    const mesh = new THREE.Mesh(this.unitShieldSphereGeom, mat);
+    const mesh = new THREE.Mesh(this.unitShieldPatchGeom, mat);
     mesh.position.set(ev.toPos.x, 1.6, ev.toPos.z);
+    mesh.lookAt(ev.toPos.x + dirX * 20, 1.6, ev.toPos.z + dirZ * 20);
     mesh.scale.setScalar(radius);
     this.rootGroup.add(mesh);
 
     this.activeItems.push({
       object: mesh,
       material: mat,
-      kind: 'shield_ripple',
+      kind: 'shield_patch',
       baseScale: radius,
-      durationSeconds: 0.42,
+      durationSeconds: SHIELD_PATCH_DURATION_SECONDS,
+      targetId: ev.targetId,
+      impactDirX: dirX,
+      impactDirZ: dirZ,
       ageSeconds: 0,
     });
   }

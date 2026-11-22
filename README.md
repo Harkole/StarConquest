@@ -316,8 +316,12 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 5. **Pre-Match Lobby & AI Opponents (`feature/lobby-and-ai`)**: Build the pre-match mode selector (Blitz Skirmish, Standard Tactical, Grand Conquest) with configurable Human/AI slots and `GameCommand`-driven AI bots for full 4-player local matches.
 6. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**: Add an in-game encyclopaedia documenting every ship, orbital platform, deep-space installation, how-to-play mechanics, and victory goals, complete with an interactive 3D preview viewport (orbit, zoom, and pan) rendering live models from `ShipModelLibrary` and `StationModelLibrary` alongside live data-driven stats from `src/shared/config/`.
 
-### Shield Visual Effects & Energized Hull Plating Art Pass
-* **Planned Art Pass**: Static always-on shield meshes were removed from both the **Aegis Heavy Orbital Defense Platform** and the **Atlas Deep-Space Logistics Hub**. No shield meshes or effects should be rendered on any platform or ship until a dedicated Shield VFX art pass decides whether shields render dynamically only on weapon impact ripples or as energized hull plating along armor seams.
+### Faction & Player Ownership Visual Differentiation
+* **Planned Art & UI Feature**: Update orbital platforms, deep-space structures, and combat fleets so ownership is immediately obvious at a glance (currently all 4 players share identical gunmetal/ochre hull trims and blue selection cues). Introduce distinct per-player faction accent colors, emissive trims, and ownership indicators so friendly vs. hostile ships and bases are unmistakable in combat.
+
+### Known Fleet Bugs
+* **Fleet Focus Centroid Drift**: Clicking Fleet Focus (or a fleet tab) should focus on the single ship (when 1 ship) or the **majority cluster** of ships in the fleet rather than averaging into empty space between the main fleet and newly built reinforcements still en route from a distant dockyard.
+* **Ship-to-Ship Collision & Overlap During Flight**: Ships within a fleet currently merge and clip into each other during flight and formation holding. Add inter-ship separation/clearance steering in `src/shared/sim/gameSimulation.ts` so every hull class maintains physical clearance from neighboring ships.
 
 ### In-Game Codex / Wiki & Interactive 3D Model Viewer
 * **Planned Feature (`feature/ingame-codex-wiki`)**: Build an in-game wiki/codex overlay accessible from the tactical HUD and pre-match lobby with:

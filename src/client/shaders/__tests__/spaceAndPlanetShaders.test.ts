@@ -900,11 +900,24 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
           id: 2,
           type: 'shield_impact',
           systemId: 'system_starter_1',
-          fromPos: { x: 180, z: 120 },
+          fromPos: { x: 100, z: 100 },
           toPos: { x: 180, z: 120 },
+          targetId: 'ship_target_1',
           targetRadius: 8,
           ownerId: 'player_2',
           timestampSeconds: 1.0,
+        },
+        // Rapid second hit on the same target & impact side refreshes the solid shield patch without stacking/pulsing
+        {
+          id: 20,
+          type: 'shield_impact',
+          systemId: 'system_starter_1',
+          fromPos: { x: 102, z: 101 },
+          toPos: { x: 180, z: 120 },
+          targetId: 'ship_target_1',
+          targetRadius: 8,
+          ownerId: 'player_2',
+          timestampSeconds: 1.05,
         },
         {
           id: 3,
@@ -931,11 +944,13 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       'system_starter_1',
     );
 
-    // 1 beam + 1 shield ripple + 2 explosion meshes (core + shockwave ring) = 4
+    // 1 beam + 1 deduplicated solid shield patch + 2 explosion meshes (core + shockwave ring) = 4
     expect(vfx.getActiveEffectCount()).toBe(4);
     expect(vfx.rootGroup.children).toHaveLength(4);
 
-    // Advancing 1.0s expires and disposes all short-lived effects cleanly
+    // Shield patch holds steady through 0.35s, then fades cleanly over 1.15s total
+    vfx.update(0.35);
+    expect(vfx.getActiveEffectCount()).toBeGreaterThanOrEqual(1);
     vfx.update(1.0);
     expect(vfx.getActiveEffectCount()).toBe(0);
     expect(vfx.rootGroup.children).toHaveLength(0);

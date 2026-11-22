@@ -120,6 +120,7 @@ export interface CombatVisualEvent {
   readonly systemId: string;
   readonly fromPos: Vector2D;
   readonly toPos: Vector2D;
+  readonly targetId?: string;
   readonly weaponKind?: WeaponVisualKind;
   readonly targetRadius?: number;
   readonly ownerId: PlayerSlotId;
@@ -3234,6 +3235,7 @@ export class GameSimulation {
         hullMult: number,
         luckMult: number,
         attackerOwner: PlayerSlotId,
+        attackerPos: Vector2D,
       ) => void;
     }
 
@@ -3268,7 +3270,7 @@ export class GameSimulation {
           visualRadius: radius,
           getShields: () => ship.shields,
           getHull: () => ship.hull,
-          applyDamage: (alpha, sMult, hMult, luck) => {
+          applyDamage: (alpha, sMult, hMult, luck, _attackerOwner, attackerPos) => {
             const res = applyWeaponDamage(ship.shields, ship.hull, alpha, sMult, hMult, luck);
             ship.shields = res.nextShields;
             ship.hull = res.nextHull;
@@ -3278,8 +3280,9 @@ export class GameSimulation {
               this.emitCombatEvent({
                 type: 'shield_impact',
                 systemId,
-                fromPos: ship.position,
+                fromPos: attackerPos,
                 toPos: ship.position,
+                targetId: ship.id,
                 targetRadius: radius,
                 ownerId: ship.ownerId,
               });
@@ -3339,7 +3342,7 @@ export class GameSimulation {
           visualRadius: radius,
           getShields: () => ds.shields,
           getHull: () => ds.hull,
-          applyDamage: (alpha, sMult, hMult, luck) => {
+          applyDamage: (alpha, sMult, hMult, luck, _attackerOwner, attackerPos) => {
             const res = applyWeaponDamage(ds.shields, ds.hull, alpha, sMult, hMult, luck);
             ds.shields = res.nextShields;
             ds.hull = res.nextHull;
@@ -3349,8 +3352,9 @@ export class GameSimulation {
               this.emitCombatEvent({
                 type: 'shield_impact',
                 systemId,
-                fromPos: ds.position,
+                fromPos: attackerPos,
                 toPos: ds.position,
+                targetId: ds.id,
                 targetRadius: radius,
                 ownerId: ds.ownerId,
               });
@@ -3390,7 +3394,7 @@ export class GameSimulation {
             visualRadius: radius,
             getShields: () => s.shields,
             getHull: () => s.hull,
-            applyDamage: (alpha, sMult, hMult, luck) => {
+            applyDamage: (alpha, sMult, hMult, luck, _attackerOwner, attackerPos) => {
               const res = applyWeaponDamage(s.shields, s.hull, alpha, sMult, hMult, luck);
               s.shields = res.nextShields;
               s.hull = res.nextHull;
@@ -3400,8 +3404,9 @@ export class GameSimulation {
                 this.emitCombatEvent({
                   type: 'shield_impact',
                   systemId,
-                  fromPos: worldPos,
+                  fromPos: attackerPos,
                   toPos: worldPos,
+                  targetId: s.id,
                   targetRadius: radius,
                   ownerId: s.ownerId,
                 });
@@ -3535,6 +3540,7 @@ export class GameSimulation {
             weapon.hullDamageMultiplier,
             luckMult,
             ship.ownerId,
+            ship.position,
           );
         }
       }
@@ -3609,7 +3615,7 @@ export class GameSimulation {
         if (nextCombatRandom(this.combatRng) <= hitProb) {
           const shieldMult = ds.structureId === 'hull_breaker_tower' ? 0.85 : 0.9;
           const hullMult = ds.structureId === 'hull_breaker_tower' ? 1.75 : 1.15;
-          target.applyDamage(cfg.alphaDamage, shieldMult, hullMult, 1.0, ds.ownerId);
+          target.applyDamage(cfg.alphaDamage, shieldMult, hullMult, 1.0, ds.ownerId, ds.position);
         }
       }
     }
@@ -3655,7 +3661,7 @@ export class GameSimulation {
               ownerId: s.ownerId,
             });
             if (nextCombatRandom(this.combatRng) <= computeHitProbability(0.94, pdTarget.evasion)) {
-              pdTarget.applyDamage(cfg.pointDefenceDps * 0.5, 0.9, 1.1, 1.0, s.ownerId);
+              pdTarget.applyDamage(cfg.pointDefenceDps * 0.5, 0.9, 1.1, 1.0, s.ownerId, worldPos);
             }
           }
         }
@@ -3682,7 +3688,7 @@ export class GameSimulation {
             if (
               nextCombatRandom(this.combatRng) <= computeHitProbability(0.35, heavyTarget.evasion)
             ) {
-              heavyTarget.applyDamage(cfg.heavyWeaponDps * 2.0, 1.1, 1.35, 1.0, s.ownerId);
+              heavyTarget.applyDamage(cfg.heavyWeaponDps * 2.0, 1.1, 1.35, 1.0, s.ownerId, worldPos);
             }
           }
         }
