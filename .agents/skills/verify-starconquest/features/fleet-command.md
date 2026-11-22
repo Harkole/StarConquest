@@ -15,7 +15,7 @@ Fleet Command lets a player create a fleet with a 3D rally point, configure desi
 
 - Click `+ Create Fleet (Click 3D Rally)` in the **Fleet Command** section of `#hud-overlay`, then left-click open 3D space on `#app-canvas`.
 - Click any fleet tab (`Fleet #1`) or click any combat ship in 3D space to select the entire fleet.
-- Use `−`/`+` steppers, `Focus`, `Resupply`, `Aggressive`/`Hold the Line`/`Passive`, `Patrol Route (2 Clicks)`, `Split`, `Merge`, `Disband`, and `Collapse ▲` / `Expand ▼`.
+- Use `−`/`+` steppers, `Focus`, `Resupply`, `Aggressive`/`Hold the Line`/`Passive`, `Patrol Route (2 Clicks)`, `Flee` (`[data-fleet-flee]`), `Split`, `Merge`, `Disband`, and `Collapse ▲` / `Expand ▼`.
 
 ## Driving it with browser
 
@@ -35,5 +35,5 @@ Preconditions:
 ## Gotchas
 
 - Clicking `#app-canvas` while the pointer is over `#hud-overlay` hits the HUD instead of placing the rally point; always click open canvas space to the right of the HUD.
-- Cruisers require `1` completed Tech Module (`tech_module`), Carriers require `2`, and Dreadnoughts require `3`; incrementing them before Tech Modules exist updates the template count, but Dockyards will hold production until tech/resources/supply are satisfied.
+- Cruisers require `1` completed Tech Module (`tech_module`), Carriers require `2`, and Dreadnoughts require `2`; incrementing them before Tech Modules exist updates the template count, but Dockyards will hold production until tech/resources/supply are satisfied.
 - Right-dragging `> 5px` orbits the camera instead of issuing a fleet Move order; right-click Move requires a short tap (`<= 5px` movement).

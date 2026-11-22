@@ -7,7 +7,7 @@ This document is the canonical source of truth for all music tracks, dynamic aud
 ## 1. Audio Architecture & Playback Rules
 
 * **Static Audio Assets**: Store music and SFX files under `public/audio/` and resolve URLs using `${import.meta.env.BASE_URL}audio/<filename>` so paths work identically on Vite dev (`/`), production builds (`/StarConquest/`), and P2P sessions.
-* **Browser Autoplay Handling**: Browsers may block unmuted audio before the first user interaction. `AmbientMusicPlayer` attempts playback on launch and automatically arms a one-shot `pointerdown` / `keydown` listener if blocked, starting the soundtrack seamlessly on the player's first click or keypress (unless the player muted it first).
+* **Browser Autoplay Handling**: Browsers may block unmuted audio before the first user interaction. `AmbientMusicPlayer` attempts playback on launch and registers persistent capture-phase `pointerdown`, `pointerup`, `click`, and `keydown` listeners (`AUTOPLAY_UNLOCK_EVENTS`) if blocked, retrying until `play()` resolves or the player mutes/disposes. The unlock handler ignores clicks on `[data-action="toggle-music"]`; clicking the speaker button while autoplay is blocked starts playback cleanly instead of muting.
 * **HUD Mute / Unmute Behavior**:
   * A dedicated speaker icon toggle button sits in the top-right tactical HUD bar next to the simulation speed controls.
   * **Muted**: Immediately stops music playback (`pause()`) and resets the playhead to `0`.
@@ -41,7 +41,7 @@ Dynamic switching between `ambient`-flagged and `combat`-flagged tracks is activ
    * Enter **Combat Music Mode** when any friendly ship or structure takes weapon fire or engages an enemy target.
    * Crossfade smoothly over `1.8s` (fading out ambient while fading in *Iron Horizon*) so entering combat feels dramatic rather than jarring.
 2. **Combat Exit Hysteresis (Anti-Flicker Cooldown)**:
-   * Remain in **Combat Music Mode** until `14 seconds` have elapsed with zero active combat events involving the local player, preventing rapid switching during skirmishes.
+   * Remain in **Combat Music Mode** for `14.0s` wall-clock (`COMBAT_MUSIC_COOLDOWN_SECONDS` in `src/client/main.ts`) after `isPlayerInActiveCombat` (which uses a `2.0s` simulation-time activity window) returns `false` — effectively `16.0s` at `1x`, `15.0s` at `2x`, and `14.5s` at `4x` — preventing rapid switching during skirmishes.
    * Fade out combat music smoothly over `3.0s` back into the `ambient` rotation so combat end is never abrupt.
 3. **Mute Override**:
    * Muting always stops all active and fading channels immediately (both `ambient` and `combat`), resetting playhead to `0`; unmuting restarts whichever category matches the current tactical state from the beginning.

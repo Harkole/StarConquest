@@ -11,7 +11,7 @@ Deep-Space Installations let a player place free-floating Atlas Logistics Hubs a
 
 ## How to get to it (user POV)
 
-- Click `+ Place Logistics Hub (...)`, `+ Place Point Defence Tower (...)`, or `+ Place Hull Breaker Tower (...)` in the **Deep-Space Installations** section of `#hud-overlay`.
+- Click `+ Place Logistics Hub (...)`, `+ Place Point Defence (PD) Tower (...)`, or `+ Place Hull Breaker Tower (...)` in the **Deep-Space Installations** section of `#hud-overlay`.
 - Move the cursor over `#app-canvas` to inspect the green (valid) or red (invalid) wireframe ghost, then left-click to place or press `Escape` / click `Cancel Placement (Esc)` to cancel.
 
 ## Driving it with browser
@@ -19,13 +19,13 @@ Deep-Space Installations let a player place free-floating Atlas Logistics Hubs a
 Preconditions:
 
 - StarConquest is healthy at `http://127.0.0.1:5179/` (Doctor passed).
-- Player has at least `320` Ore and `120` Crystal (starting resources satisfy Logistics Hub placement immediately).
+- Player has at least `250` Ore and `100` Crystal (starting resources satisfy Logistics Hub placement immediately).
 
 - **Confirm tower gating.** Verify `[data-place-deepspace="point_defence_tower"]` and `[data-place-deepspace="hull_breaker_tower"]` both have the `disabled` attribute on initial load.
 - **Enter Hub placement & cancel with Escape.** Click `[data-place-deepspace="logistics_hub"]`. Button becomes `active` and `[data-action="cancel-deepspace"]` appears. Press `Escape`. Placement cancels and `.hud-status-msg` reads `Cancelled deep-space placement mode.`.
-- **Place Atlas Logistics Hub.** Click `[data-action="overview"]` for wide clear space, click `[data-place-deepspace="logistics_hub"]`, and left-click clear space on `#app-canvas` well away from the Homeworld orbital ring. `.hud-status-msg` confirms placement, `[data-focus-deepspace]` appears with a progress percentage badge, and `#econ-ore-val` drops by `320`.
+- **Place Atlas Logistics Hub.** Click `[data-action="overview"]` for wide clear space, click `[data-place-deepspace="logistics_hub"]`, and left-click clear space on `#app-canvas` well away from the Homeworld orbital ring. `.hud-status-msg` confirms placement, `[data-focus-deepspace]` appears with a progress percentage badge, and `#econ-ore-val` drops by `250`.
 - **Complete Hub & unlock Defence Towers.** Click `[data-speed="4"]` and wait `~5.5s` (`20s` build time at `4x`). The `[data-deepspace-badge]` updates to `Operational`, `#econ-supply-val` cap increases by `+15`, and `[data-place-deepspace="point_defence_tower"]` is no longer `disabled`.
-- **Focus Hub & place Point Defence Tower.** Click `[data-focus-deepspace]` to center the camera on the Hub's cyan `180u` tether ring. Click `[data-place-deepspace="point_defence_tower"]` and left-click inside the tether ring (at least `42u` from the Hub center). A second `[data-focus-deepspace]` button (`Point Defence Tower #2`) appears.
+- **Focus Hub & place Point Defence Tower.** Click `[data-focus-deepspace]` to center the camera on the Hub's cyan `180u` tether ring. Click `[data-place-deepspace="point_defence_tower"]` and left-click inside the tether ring (at least `42u` from the Hub center). A second `[data-focus-deepspace]` button (`Point Defence (PD) Tower #2`) appears.
 - **Proof.** Capture a screenshot showing the operational Atlas Logistics Hub with its `180u` radius ring and the Point Defence Tower under construction/operational inside it, plus before/after supply cap and `0` console errors.
 
 ## Gotchas
