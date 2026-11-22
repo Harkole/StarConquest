@@ -862,6 +862,9 @@ export function mountSystemHud(
               <button class="hud-btn ${isFleetPatrolPending ? 'active' : ''}" data-fleet-patrol="${selectedFleet.id}">
                 ${isFleetPatrolPending ? `Patrol Wp #${(pendingOrderGlobal?.waypointCount ?? 0) + 1}/2...` : 'Patrol Route (2 Clicks)'}
               </button>
+              <button class="hud-btn ${selectedFleet.orderType === 'flee' ? 'active' : ''}" data-fleet-flee="${selectedFleet.id}" title="Flee at full speed to the nearest Logistics Hub, Planetary Outpost, or C&C">
+                Flee
+              </button>
               <button class="hud-btn" data-fleet-split="${selectedFleet.id}" ${fleetShips.length < 2 ? 'disabled' : ''}>Split</button>
               ${mergeBtns}
               <button class="hud-btn" data-fleet-disband="${selectedFleet.id}">Disband</button>
@@ -1447,6 +1450,24 @@ export function mountSystemHud(
           sceneManager.startFleetPatrolPlacement(fId);
           statusBannerMessage =
             'Click 2 points in 3D space to set the Fleet Patrol Route (Esc to cancel).';
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-fleet-flee]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const fId = btn.dataset.fleetFlee;
+          if (!fId) return;
+          const res = simAdapter.submitPlayerCommand({
+            type: 'ORDER_FLEET_FLEE',
+            playerId,
+            fleetId: fId,
+          });
+          statusBannerMessage = res.ok
+            ? 'Fleet ordered to flee at maximum speed to nearest friendly sanctuary!'
+            : `Cannot flee: ${res.reason}`;
           renderMainPanel();
         });
       });

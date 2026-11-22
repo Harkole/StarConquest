@@ -1479,5 +1479,72 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(shooter).toBeDefined();
     losSim.stepTick(2.0);
     expect(blockedEnemy.hull).toBe(blockedEnemy.maxHull);
+
+    // 8. Fleet Flee command routes ships at full individual speed to nearest Logistics Hub / Outpost / C&C
+    const fleeSim = new GameSimulation('blitz_skirmish');
+    const p1Flee = fleeSim.getPlayerState('player_1');
+    p1Flee.ore = 2000;
+    p1Flee.crystal = 1000;
+    expect(
+      fleeSim.submitCommand({
+        type: 'BUILD_DEEP_SPACE_STRUCTURE',
+        playerId: 'player_1',
+        systemId: 'system_starter_1',
+        position: { x: 420, z: 200 },
+        structureId: 'logistics_hub',
+      }).ok,
+    ).toBe(true);
+    fleeSim.stepTick(21);
+
+    expect(
+      fleeSim.submitCommand({
+        type: 'CREATE_FLEET',
+        playerId: 'player_1',
+        rallySystemId: 'system_starter_1',
+        rallyPosition: { x: 520, z: 200 },
+      }).ok,
+    ).toBe(true);
+    const fleeingFleet = fleeSim.getFleetsForPlayer('player_1')[0]!;
+    const ddFlee = fleeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 520, z: 200 },
+      'destroyer',
+      'aggressive',
+      null,
+      fleeingFleet.id,
+    );
+    const dnFlee = fleeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 530, z: 210 },
+      'dreadnought',
+      'aggressive',
+      null,
+      fleeingFleet.id,
+    );
+
+    expect(
+      fleeSim.submitCommand({
+        type: 'ORDER_FLEET_FLEE',
+        playerId: 'player_1',
+        fleetId: fleeingFleet.id,
+      }).ok,
+    ).toBe(true);
+    expect(fleeingFleet.orderType).toBe('flee');
+    // Nearest sanctuary is the completed Logistics Hub at (420, 200), closer than Homeworld C&C at (0, 0)
+    expect(fleeingFleet.orderPosition).toEqual({ x: 420, z: 200 });
+    expect(ddFlee.isFleeing).toBe(true);
+    expect(dnFlee.isFleeing).toBe(true);
+
+    // Destroyer runs at full 68 u/s (faster than Dreadnought's 18 u/s) and clears isFleeing on arrival
+    const ddStartX = ddFlee.position.x;
+    const dnStartX = dnFlee.position.x;
+    fleeSim.stepTick(1.0);
+    expect(ddStartX - ddFlee.position.x).toBeGreaterThan(dnStartX - dnFlee.position.x + 30);
+    for (let i = 0; i < 15; i++) {
+      fleeSim.stepTick(0.5);
+    }
+    expect(ddFlee.isFleeing).toBe(false);
   });
 });

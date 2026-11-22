@@ -238,7 +238,7 @@ export type CombatShipActivityState =
   | 'patrolling'
   | 'transiting_wormhole';
 
-export type FleetOrderType = 'rally' | 'move' | 'attack' | 'patrol';
+export type FleetOrderType = 'rally' | 'move' | 'attack' | 'patrol' | 'flee';
 
 export interface FleetInstance {
   readonly id: string;
@@ -287,6 +287,7 @@ export interface CombatShipUnitState {
   currentTargetPos: Vector2D | null;
   currentTargetRadius?: number;
   currentTargetClass?: CombatShipClassId | 'harvester' | 'structure';
+  isFleeing?: boolean;
   tetherHostId: string | null;
   fighterReplenishCooldownSeconds: number;
 }
@@ -1062,6 +1063,8 @@ export class GameSimulation {
           command.fleetId,
           command.waypoints,
         );
+      case 'ORDER_FLEET_FLEE':
+        return this.handleOrderFleetFlee(command.playerId, command.fleetId);
       case 'SPLIT_FLEET':
         return this.handleSplitFleet(
           command.playerId,
@@ -1861,6 +1864,7 @@ export class GameSimulation {
 
     for (const ship of this.combatShips) {
       if (ship.fleetId === fleetId) {
+        ship.isFleeing = false;
         ship.patrolWaypoints = [];
         ship.patrolIndex = 0;
         ship.targetSystemId = targetSystemId;
@@ -1897,6 +1901,7 @@ export class GameSimulation {
 
     for (const ship of this.combatShips) {
       if (ship.fleetId === fleetId) {
+        ship.isFleeing = false;
         ship.patrolWaypoints = [];
         ship.patrolIndex = 0;
         ship.targetSystemId = targetSystemId;
@@ -1907,6 +1912,106 @@ export class GameSimulation {
             : 'transiting_wormhole';
       }
     }
+    return { ok: true };
+  }
+
+  private handleOrderFleetFlee(
+    playerId: PlayerSlotId,
+    fleetId: string,
+  ): CommandResult {
+    const fleet = this.getFleetById(fleetId);
+    if (!fleet || fleet.ownerId !== playerId) {
+      return { ok: false, reason: 'Fleet not found or not owned by player' };
+    }
+
+    const anchor = this.getFleetLiveAnchor(fleetId) ?? {
+      systemId: fleet.orderSystemId,
+      position: fleet.orderPosition,
+    };
+
+    // Find nearest friendly completed Logistics Hub, Planetary Outpost, or Command & Control
+    let bestSanctuary: { readonly systemId: string; readonly position: Vector2D } | null = null;
+    let bestScore = Infinity;
+
+    for (const ds of this.deepSpaceStructures) {
+      if (
+        ds.ownerId === playerId &&
+        ds.structureId === 'logistics_hub' &&
+        ds.isComplete &&
+        ds.hull > 0
+      ) {
+        const sameSysBonus = ds.systemId === anchor.systemId ? 0 : 100000;
+        const dist = Math.hypot(
+          ds.position.x - anchor.position.x,
+          ds.position.z - anchor.position.z,
+        );
+        if (sameSysBonus + dist < bestScore) {
+          bestScore = sameSysBonus + dist;
+          bestSanctuary = {
+            systemId: ds.systemId,
+            position: { x: ds.position.x, z: ds.position.z },
+          };
+        }
+      }
+    }
+
+    for (const planetState of this.planets.values()) {
+      for (const s of planetState.structures) {
+        if (
+          s.ownerId === playerId &&
+          s.isComplete &&
+          s.hull > 0 &&
+          (s.structureId === 'command_and_control' || s.structureId === 'planetary_outpost')
+        ) {
+          const pos = this.getStructureWorldPosition(planetState, s);
+          const sameSysBonus =
+            planetState.planet.systemId === anchor.systemId ? 0 : 100000;
+          const dist = Math.hypot(pos.x - anchor.position.x, pos.z - anchor.position.z);
+          if (sameSysBonus + dist < bestScore) {
+            bestScore = sameSysBonus + dist;
+            bestSanctuary = {
+              systemId: planetState.planet.systemId,
+              position: { x: pos.x, z: pos.z },
+            };
+          }
+        }
+      }
+    }
+
+    if (!bestSanctuary) {
+      return {
+        ok: false,
+        reason: 'No friendly Logistics Hub, Planetary Outpost, or C&C available to flee to',
+      };
+    }
+
+    fleet.orderType = 'flee';
+    fleet.orderSystemId = bestSanctuary.systemId;
+    fleet.orderPosition = { x: bestSanctuary.position.x, z: bestSanctuary.position.z };
+    fleet.attackTargetId = null;
+    fleet.patrolWaypoints = [];
+    fleet.patrolIndex = 0;
+
+    for (const ship of this.combatShips) {
+      if (ship.fleetId === fleetId) {
+        ship.isFleeing = true;
+        ship.inCombat = false;
+        ship.currentTargetId = null;
+        ship.currentTargetPos = null;
+        ship.patrolWaypoints = [];
+        ship.patrolIndex = 0;
+        ship.targetSystemId = bestSanctuary.systemId;
+        ship.targetPosition = {
+          x: bestSanctuary.position.x,
+          z: bestSanctuary.position.z,
+        };
+        ship.state =
+          ship.currentSystemId === bestSanctuary.systemId
+            ? 'moving_to_rally'
+            : 'transiting_wormhole';
+      }
+    }
+
     return { ok: true };
   }
 
@@ -2452,9 +2557,9 @@ export class GameSimulation {
 
   private updateCombatShip(ship: CombatShipUnitState, deltaSeconds: number): void {
     const shipCfg = SHIP_CLASSES[ship.shipClassId];
-    // Match slowest ship in the fleet while cruising; break to individual hull speed in combat
+    // Match slowest ship in the fleet while cruising; break to full individual hull speed in combat or when fleeing
     const effectiveSpeed =
-      !ship.inCombat && ship.fleetId
+      !ship.inCombat && !ship.isFleeing && ship.fleetId
         ? Math.min(shipCfg.speed, this.getFleetCruiseSpeed(ship.fleetId) || shipCfg.speed)
         : shipCfg.speed;
     const maxStep = effectiveSpeed * deltaSeconds;
@@ -2650,6 +2755,9 @@ export class GameSimulation {
       } else {
         ship.state = 'holding_position';
         ship.currentSpeed = 0;
+        if (ship.isFleeing) {
+          ship.isFleeing = false;
+        }
       }
     } else {
       ship.state =
@@ -3837,7 +3945,7 @@ export class GameSimulation {
         );
       }
 
-      if (ship.stance === 'passive') {
+      if (ship.stance === 'passive' || ship.isFleeing) {
         ship.inCombat = false;
         ship.currentTargetId = null;
         ship.currentTargetPos = null;
