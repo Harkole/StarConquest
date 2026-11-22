@@ -322,9 +322,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
   * When a friendly ship or sensor leaves an area, structures and orbital platforms remain visible under Fog of War as a **last-known snapshot** (ghosted/dimmed state of what was last observed there) rather than updating live.
   * When a friendly unit next re-enters sensor range of that area, the snapshot refreshes immediately to reflect what is presently there (newly built or destroyed structures, updated ownership, and live hostile fleets).
 
-### Known Fleet Bugs
-* **Fleet Focus Centroid Drift**: Clicking Fleet Focus (or a fleet tab) should focus on the single ship (when 1 ship) or the **majority cluster** of ships in the fleet rather than averaging into empty space between the main fleet and newly built reinforcements still en route from a distant dockyard.
-
 ### In-Game Codex / Wiki & Interactive 3D Model Viewer
 * **Planned Feature (`feature/ingame-codex-wiki`)**: Build an in-game wiki/codex overlay accessible from the tactical HUD and pre-match lobby with:
   * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).

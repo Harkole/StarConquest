@@ -844,7 +844,12 @@ export class GameSimulation {
   }
 
   /**
-   * Returns the live centroid position of ships currently in `fleetId`, or its Rally Point if empty.
+   * Returns the live focus anchor for `fleetId`:
+   * - If empty: its ordered position/rally point.
+   * - If 1 ship: that ship's exact position.
+   * - If 2+ ships: the centroid of the **majority spatial cluster** (140u radius) in the
+   *   system holding the most fleet ships, breaking ties toward `fleet.orderPosition` so
+   *   distant en-route reinforcements never pull the camera into empty space.
    */
   public getFleetLiveAnchor(
     fleetId: string,
@@ -860,19 +865,86 @@ export class GameSimulation {
         position: fleet.orderPosition,
       };
     }
-    // Prefer members in the fleet's ordered system; otherwise use the first member's system
-    const inOrderSys = members.filter((m) => m.currentSystemId === fleet.orderSystemId);
-    const group = inOrderSys.length > 0 ? inOrderSys : [members[0]!];
-    const systemId = group[0]!.currentSystemId;
+    if (members.length === 1) {
+      const only = members[0]!;
+      return {
+        systemId: only.currentSystemId,
+        position: { x: only.position.x, z: only.position.z },
+      };
+    }
+
+    // 1. Pick the star system containing the most fleet ships (ties favor fleet.orderSystemId)
+    const bySystem = new Map<string, CombatShipUnitState[]>();
+    for (const m of members) {
+      const list = bySystem.get(m.currentSystemId);
+      if (list) {
+        list.push(m);
+      } else {
+        bySystem.set(m.currentSystemId, [m]);
+      }
+    }
+    let bestSystemId = members[0]!.currentSystemId;
+    let group: CombatShipUnitState[] = [];
+    for (const [sysId, list] of bySystem.entries()) {
+      if (
+        list.length > group.length ||
+        (list.length === group.length && sysId === fleet.orderSystemId)
+      ) {
+        bestSystemId = sysId;
+        group = list;
+      }
+    }
+    if (group.length === 1) {
+      const only = group[0]!;
+      return {
+        systemId: bestSystemId,
+        position: { x: only.position.x, z: only.position.z },
+      };
+    }
+
+    // 2. Find the majority spatial cluster within 140u (ties favor proximity to fleet.orderPosition)
+    const CLUSTER_RADIUS = 140;
+    let bestCluster: CombatShipUnitState[] = [group[0]!];
+    let bestClusterOrderDist = Infinity;
+
+    for (const seed of group) {
+      const cluster = group.filter(
+        (other) =>
+          Math.hypot(
+            other.position.x - seed.position.x,
+            other.position.z - seed.position.z,
+          ) <= CLUSTER_RADIUS,
+      );
+      let cx = 0;
+      let cz = 0;
+      for (const s of cluster) {
+        cx += s.position.x;
+        cz += s.position.z;
+      }
+      cx /= cluster.length;
+      cz /= cluster.length;
+      const distToOrder = Math.hypot(
+        cx - fleet.orderPosition.x,
+        cz - fleet.orderPosition.z,
+      );
+      if (
+        cluster.length > bestCluster.length ||
+        (cluster.length === bestCluster.length && distToOrder < bestClusterOrderDist)
+      ) {
+        bestCluster = cluster;
+        bestClusterOrderDist = distToOrder;
+      }
+    }
+
     let sumX = 0;
     let sumZ = 0;
-    for (const m of group) {
+    for (const m of bestCluster) {
       sumX += m.position.x;
       sumZ += m.position.z;
     }
     return {
-      systemId,
-      position: { x: sumX / group.length, z: sumZ / group.length },
+      systemId: bestSystemId,
+      position: { x: sumX / bestCluster.length, z: sumZ / bestCluster.length },
     };
   }
 

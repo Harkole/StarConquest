@@ -1613,5 +1613,62 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     );
     // Two Cruisers (10u clearance radius each -> 20u combined clearance) separate cleanly without clipping
     expect(sepDist).toBeGreaterThanOrEqual(19.0);
+
+    // 10. Fleet Focus Anchor focuses on the single ship or majority spatial cluster (no drift from distant reinforcements)
+    const anchorSim = new GameSimulation('blitz_skirmish');
+    expect(
+      anchorSim.submitCommand({
+        type: 'CREATE_FLEET',
+        playerId: 'player_1',
+        rallySystemId: 'system_starter_1',
+        rallyPosition: { x: 500, z: 500 },
+      }).ok,
+    ).toBe(true);
+    const anchorFleet = anchorSim.getFleetsForPlayer('player_1')[0]!;
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 500, z: 500 },
+      'cruiser',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    // Single ship -> exact ship position
+    expect(anchorSim.getFleetLiveAnchor(anchorFleet.id)?.position).toEqual({ x: 500, z: 500 });
+
+    // Add 2 more ships to the main cluster + 1 distant reinforcement en route at (50, 50)
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 520, z: 500 },
+      'cruiser',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 510, z: 520 },
+      'destroyer',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    anchorSim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_1',
+      { x: 50, z: 50 },
+      'destroyer',
+      'hold_the_line',
+      null,
+      anchorFleet.id,
+    );
+    const clusterAnchor = anchorSim.getFleetLiveAnchor(anchorFleet.id);
+    expect(clusterAnchor?.systemId).toBe('system_starter_1');
+    // Majority cluster average is (510, 506.67), NOT pulled into empty space at (395, 392.5)
+    expect(clusterAnchor!.position.x).toBeCloseTo(510, 1);
+    expect(clusterAnchor!.position.z).toBeCloseTo(506.67, 1);
   });
 });
