@@ -3,6 +3,7 @@ import { SHIP_CLASSES, DEEP_SPACE_STRUCTURES } from '../../config/index.ts';
 import {
   applyWeaponDamage,
   computeHitProbability,
+  hasClearLineOfSight,
   nextCombatRandom,
   scoreCombatTargetPriority,
 } from '../combat.ts';
@@ -80,5 +81,35 @@ describe('combat RPS math', () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
+  });
+
+  it('blocks weapon line of sight through planets and intervening friendly hulls', () => {
+    const planetBlocker = { id: 'planet_1', position: { x: 100, z: 0 }, radius: 30 };
+    const friendlyShip = { id: 'ship_ally', position: { x: 50, z: 2 }, radius: 6 };
+
+    // Blocked by planet right in the middle
+    expect(
+      hasClearLineOfSight({ x: 0, z: 0 }, { x: 200, z: 0 }, [planetBlocker]),
+    ).toBe(false);
+
+    // Clear when firing past the planet
+    expect(
+      hasClearLineOfSight({ x: 0, z: 50 }, { x: 200, z: 50 }, [planetBlocker]),
+    ).toBe(true);
+
+    // Blocked by friendly capital ship in front of the shooter
+    expect(
+      hasClearLineOfSight({ x: 0, z: 0 }, { x: 120, z: 0 }, [friendlyShip]),
+    ).toBe(false);
+
+    // Ignored IDs (self/target) do not self-block
+    expect(
+      hasClearLineOfSight(
+        { x: 0, z: 0 },
+        { x: 120, z: 0 },
+        [friendlyShip],
+        new Set(['ship_ally']),
+      ),
+    ).toBe(true);
   });
 });

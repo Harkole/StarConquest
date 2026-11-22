@@ -1,6 +1,62 @@
 import type { CombatShipClassId } from '../config/index.ts';
+import type { Vector2D } from '../protocol/commands.ts';
 
 export type WeaponVisualKind = 'fighter' | 'pd' | 'medium' | 'heavy' | 'siege';
+
+export interface LineOfSightBlocker {
+  readonly id: string;
+  readonly position: Vector2D;
+  readonly radius: number;
+}
+
+/**
+ * Returns true if the 2D line segment `from -> to` does not intersect any blocking circle
+ * (planets or friendly hulls) strictly between the endpoints.
+ */
+export function hasClearLineOfSight(
+  from: Vector2D,
+  to: Vector2D,
+  blockers: readonly LineOfSightBlocker[],
+  ignoreIds?: ReadonlySet<string>,
+): boolean {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const segLenSq = dx * dx + dz * dz;
+  if (segLenSq < 1e-6) {
+    return true;
+  }
+
+  for (const b of blockers) {
+    if (ignoreIds?.has(b.id) || b.radius <= 0) {
+      continue;
+    }
+    const fx = b.position.x - from.x;
+    const fz = b.position.z - from.z;
+    const t = Math.max(0, Math.min(1, (fx * dx + fz * dz) / segLenSq));
+    // Ignore blockers behind/at the shooter or target endpoints
+    if (t <= 0.04 || t >= 0.96) {
+      continue;
+    }
+    const closestX = from.x + dx * t;
+    const closestZ = from.z + dz * t;
+    const distSq =
+      (b.position.x - closestX) * (b.position.x - closestX) +
+      (b.position.z - closestZ) * (b.position.z - closestZ);
+    if (distSq < b.radius * b.radius) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/** Shortest signed angular delta from `fromAngle` to `toAngle` in `[-PI, PI]`. */
+export function shortestAngleDelta(fromAngle: number, toAngle: number): number {
+  let diff = (toAngle - fromAngle) % (Math.PI * 2);
+  if (diff > Math.PI) diff -= Math.PI * 2;
+  if (diff < -Math.PI) diff += Math.PI * 2;
+  return diff;
+}
 
 export interface DamageResolution {
   readonly nextShields: number;

@@ -35,12 +35,15 @@ import {
   findWormholeHop,
 } from './navigation.ts';
 import {
+  type LineOfSightBlocker,
   type WeaponVisualKind,
   applyWeaponDamage,
   classifyWeaponVisualKind,
   computeHitProbability,
+  hasClearLineOfSight,
   nextCombatRandom,
   scoreCombatTargetPriority,
+  shortestAngleDelta,
 } from './combat.ts';
 
 export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
@@ -257,6 +260,7 @@ export interface CombatShipUnitState {
   lastDamageTakenAtSeconds: number;
   currentTargetId: string | null;
   currentTargetPos: Vector2D | null;
+  currentTargetRadius?: number;
   tetherHostId: string | null;
   fighterReplenishCooldownSeconds: number;
 }
@@ -2407,33 +2411,113 @@ export class GameSimulation {
       return;
     }
 
-    // 2. Aggressive combat pursuit (breaks formation to individual hull speed; never chases across wormholes)
-    if (ship.inCombat && ship.stance === 'aggressive' && ship.currentTargetPos) {
+    // 2. Combat maneuvering: Fighter close-orbit swarming, aggressive pursuit & capital broadsiding
+    if (ship.inCombat && ship.currentTargetPos) {
+      const targetPos = ship.currentTargetPos;
+      const toTargetX = targetPos.x - ship.position.x;
+      const toTargetZ = targetPos.z - ship.position.z;
+      const distToTarget = Math.hypot(toTargetX, toTargetZ);
+      const bearingToTarget = Math.atan2(toTargetX, toTargetZ);
+
+      // 2a. Fighters swarm in a close orbital ring just outside the target's shield bubble,
+      //     drifting tangentially while keeping their fixed nose weapons pointed at the target.
+      if (ship.shipClassId === 'fighter' && ship.stance === 'aggressive') {
+        const shieldRadius = Math.max(4.5, ship.currentTargetRadius ?? 6.5) * 1.15;
+        const idNum = Number(ship.id.replace(/\D/g, '')) || 0;
+        const orbitSign = idNum % 2 === 0 ? 1 : -1;
+        const orbitRadius = shieldRadius + 6.5 + (idNum % 3) * 2.5;
+
+        if (distToTarget > orbitRadius + 10) {
+          const step = computeObstacleAwareStep(
+            ship.position,
+            targetPos,
+            maxStep,
+            obstacles,
+            orbitRadius,
+          );
+          ship.position = step.position;
+        } else {
+          const radialLen = Math.max(0.001, distToTarget);
+          const rx = (ship.position.x - targetPos.x) / radialLen;
+          const rz = (ship.position.z - targetPos.z) / radialLen;
+          // Tangent direction around target + smooth radial correction to hold exact orbit outside shield
+          const tx = -rz * orbitSign;
+          const tz = rx * orbitSign;
+          const radialError = orbitRadius - radialLen;
+          const radialCorrection = Math.max(-0.55, Math.min(0.55, radialError * 0.12));
+          const moveX = tx + rx * radialCorrection;
+          const moveZ = tz + rz * radialCorrection;
+          const moveLen = Math.max(0.001, Math.hypot(moveX, moveZ));
+          const nextPos: Vector2D = {
+            x: ship.position.x + (moveX / moveLen) * maxStep,
+            z: ship.position.z + (moveZ / moveLen) * maxStep,
+          };
+          const step = computeObstacleAwareStep(
+            ship.position,
+            nextPos,
+            maxStep,
+            obstacles,
+            0.25,
+          );
+          ship.position = step.position;
+        }
+        // High maneuverability: Fighter drifts along the orbital path while facing the target
+        ship.headingRadians = Math.atan2(
+          targetPos.x - ship.position.x,
+          targetPos.z - ship.position.z,
+        );
+        ship.currentSpeed = effectiveSpeed;
+        return;
+      }
+
+      // 2b. Multi-turret capitals turn broadside (side-on) once in weapon range so all turrets have LOS
+      const isBroadsideCapital =
+        ship.shipClassId === 'dreadnought' ||
+        ship.shipClassId === 'cruiser' ||
+        ship.shipClassId === 'carrier';
       const maxWeaponRange = shipCfg.weapons.reduce(
         (acc, w) => Math.max(acc, w.range),
         80,
       );
-      const desiredStandoff =
-        ship.shipClassId === 'fighter' ? 28 : Math.max(40, maxWeaponRange * 0.72);
-      const step = computeObstacleAwareStep(
-        ship.position,
-        ship.currentTargetPos,
-        maxStep,
-        obstacles,
-        desiredStandoff,
-      );
-      ship.position = step.position;
-      if (step.movedDistance > 1e-5) {
-        ship.headingRadians = step.headingRadians;
-      } else {
-        // Face target while holding firing standoff
-        ship.headingRadians = Math.atan2(
-          ship.currentTargetPos.x - ship.position.x,
-          ship.currentTargetPos.z - ship.position.z,
+      const desiredStandoff = Math.max(45, maxWeaponRange * 0.72);
+
+      if (ship.stance === 'aggressive' && distToTarget > desiredStandoff + 4) {
+        const step = computeObstacleAwareStep(
+          ship.position,
+          targetPos,
+          maxStep,
+          obstacles,
+          desiredStandoff,
         );
+        ship.position = step.position;
+        if (step.movedDistance > 1e-5) {
+          ship.headingRadians = step.headingRadians;
+        }
+        ship.currentSpeed = step.arrived ? 0 : effectiveSpeed;
+        return;
       }
-      ship.currentSpeed = step.arrived ? 0 : effectiveSpeed;
-      return;
+
+      // Holding firing standoff (or Hold the Line): rotate hull to broadside (capitals) or face target
+      if (isBroadsideCapital) {
+        const portBroadside = bearingToTarget + Math.PI / 2;
+        const stbdBroadside = bearingToTarget - Math.PI / 2;
+        const dPort = Math.abs(shortestAngleDelta(ship.headingRadians, portBroadside));
+        const dStbd = Math.abs(shortestAngleDelta(ship.headingRadians, stbdBroadside));
+        const desiredHeading = dPort <= dStbd ? portBroadside : stbdBroadside;
+        const turnRate = ship.shipClassId === 'cruiser' ? 2.2 : 1.4;
+        const delta = shortestAngleDelta(ship.headingRadians, desiredHeading);
+        const maxTurn = turnRate * deltaSeconds;
+        ship.headingRadians += Math.max(-maxTurn, Math.min(maxTurn, delta));
+      } else {
+        const delta = shortestAngleDelta(ship.headingRadians, bearingToTarget);
+        const maxTurn = 3.2 * deltaSeconds;
+        ship.headingRadians += Math.max(-maxTurn, Math.min(maxTurn, delta));
+      }
+
+      if (ship.stance === 'aggressive') {
+        ship.currentSpeed = 0;
+        return;
+      }
     }
 
     // 3. Same-system navigation (Patrol Route loop or Rally Point formation)
@@ -3661,17 +3745,55 @@ export class GameSimulation {
         continue;
       }
 
+      const buildLosBlockers = (
+        systemId: string,
+        friendlyOwner: PlayerSlotId,
+      ): LineOfSightBlocker[] => {
+        const blockers: LineOfSightBlocker[] = this.getPlanetaryObstaclesInSystem(systemId).map(
+          (p) => ({
+            id: p.id,
+            position: p.position,
+            radius: p.avoidRadius,
+          }),
+        );
+        for (const ally of this.combatShips) {
+          if (
+            ally.ownerId !== friendlyOwner ||
+            ally.currentSystemId !== systemId ||
+            ally.hull <= 0 ||
+            ally.shipClassId === 'fighter'
+          ) {
+            continue;
+          }
+          const radius =
+            ally.shipClassId === 'dreadnought'
+              ? 8.5
+              : ally.shipClassId === 'carrier'
+                ? 6.5
+                : ally.shipClassId === 'cruiser'
+                  ? 5.0
+                  : 3.5;
+          blockers.push({ id: ally.id, position: ally.position, radius });
+        }
+        return blockers;
+      };
+
+      const losBlockers = buildLosBlockers(ship.currentSystemId, ship.ownerId);
+      const ignoreSelf = new Set<string>([ship.id]);
+
       const maxWeaponRange = shipCfg.weapons.reduce((acc, w) => Math.max(acc, w.range), 0);
       const acquisitionRange =
         ship.stance === 'aggressive'
           ? ship.tetherHostId
-            ? 240
+            ? 280
             : Infinity
           : maxWeaponRange;
 
       let bestTarget: CombatTargetRef | null = null;
       let bestScore = -Infinity;
       let bestDist = Infinity;
+      let bestTargetHasLos = false;
+
       for (const cand of hostiles) {
         if (cand.getHull() <= 0) continue;
         const dist = Math.hypot(
@@ -3681,16 +3803,28 @@ export class GameSimulation {
         if (dist > acquisitionRange) {
           continue;
         }
-        const score = scoreCombatTargetPriority(
-          ship.shipClassId,
-          cand.targetClass,
-          cand.getShields() > 0,
-          dist,
+        const clearLos = hasClearLineOfSight(
+          ship.position,
+          cand.position,
+          losBlockers,
+          ignoreSelf,
         );
+        // Prefer targets with clear Line of Sight; in Hold the Line ignore obstructed targets
+        if (!clearLos && ship.stance !== 'aggressive') {
+          continue;
+        }
+        const score =
+          scoreCombatTargetPriority(
+            ship.shipClassId,
+            cand.targetClass,
+            cand.getShields() > 0,
+            dist,
+          ) + (clearLos ? 35 : 0);
         if (score > bestScore) {
           bestScore = score;
           bestTarget = cand;
           bestDist = dist;
+          bestTargetHasLos = clearLos;
         }
       }
 
@@ -3698,12 +3832,19 @@ export class GameSimulation {
         ship.inCombat = false;
         ship.currentTargetId = null;
         ship.currentTargetPos = null;
+        ship.currentTargetRadius = undefined;
         continue;
       }
 
       ship.inCombat = true;
       ship.currentTargetId = bestTarget.id;
       ship.currentTargetPos = { x: bestTarget.position.x, z: bestTarget.position.z };
+      ship.currentTargetRadius = bestTarget.visualRadius;
+
+      // Never shoot through planets or friendly ships
+      if (!bestTargetHasLos) {
+        continue;
+      }
 
       for (let wIdx = 0; wIdx < shipCfg.weapons.length; wIdx++) {
         const weapon = shipCfg.weapons[wIdx]!;

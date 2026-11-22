@@ -1346,5 +1346,90 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(4);
     expect(simArena.clearBattleSimulatorShips()).toBe(4);
     expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(0);
+
+    // 7. Combat movement & LOS: Fighters orbit closely while facing target, Dreadnoughts turn broadside,
+    //    and ships never shoot through planets or friendly hulls
+    const tacticsSim = new GameSimulation('blitz_skirmish');
+    const dread = tacticsSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 300, z: 300 },
+      'dreadnought',
+      'hold_the_line',
+    );
+    // Start Dreadnought pointed straight at the enemy (+X = PI/2)
+    dread.headingRadians = Math.PI / 2;
+    const enemyDread = tacticsSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 450, z: 300 },
+      'dreadnought',
+      'passive',
+    );
+    enemyDread.hull = 5000;
+
+    for (let i = 0; i < 12; i++) {
+      tacticsSim.stepTick(0.2);
+    }
+    // Dreadnought should have turned broadside (~0 or ~PI, perpendicular to bearing PI/2)
+    const bearingToEnemy = Math.atan2(
+      enemyDread.position.x - dread.position.x,
+      enemyDread.position.z - dread.position.z,
+    );
+    const angleFromBearing = Math.abs(
+      Math.atan2(
+        Math.sin(dread.headingRadians - bearingToEnemy),
+        Math.cos(dread.headingRadians - bearingToEnemy),
+      ),
+    );
+    expect(angleFromBearing).toBeGreaterThan(Math.PI / 2 - 0.15);
+
+    // Fighter orbits around target continuously (never stationary) while facing the target
+    const fighter = tacticsSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 470, z: 300 },
+      'fighter',
+      'aggressive',
+    );
+    const posBefore = { ...fighter.position };
+    tacticsSim.stepTick(0.2);
+    const moved = Math.hypot(
+      fighter.position.x - posBefore.x,
+      fighter.position.z - posBefore.z,
+    );
+    expect(moved).toBeGreaterThan(5);
+    const fighterBearing = Math.atan2(
+      enemyDread.position.x - fighter.position.x,
+      enemyDread.position.z - fighter.position.z,
+    );
+    expect(fighter.headingRadians).toBeCloseTo(fighterBearing, 2);
+
+    // Friendly hull directly between shooter and enemy blocks LOS (no friendly-fire shoot-through)
+    const losSim = new GameSimulation('blitz_skirmish');
+    const shooter = losSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 200, z: 200 },
+      'cruiser',
+      'hold_the_line',
+    );
+    losSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 250, z: 200 },
+      'dreadnought',
+      'passive',
+    );
+    const blockedEnemy = losSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 300, z: 200 },
+      'destroyer',
+      'passive',
+    );
+    expect(shooter).toBeDefined();
+    losSim.stepTick(2.0);
+    expect(blockedEnemy.hull).toBe(blockedEnemy.maxHull);
   });
 });
