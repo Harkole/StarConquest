@@ -1331,7 +1331,9 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       'aggressive',
     );
     expect(defeatSim.isPlayerDefeated('player_2')).toBe(false);
-    defeatSim.stepTick(3.5);
+    for (let i = 0; i < 6; i++) {
+      defeatSim.stepTick(0.5);
+    }
     expect(defeatSim.isPlayerDefeated('player_2')).toBe(true);
 
     // 6. Fleet Battle Simulator spawns customizable Friendly vs Hostile sides and clears cleanly
@@ -1347,19 +1349,53 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(simArena.clearBattleSimulatorShips()).toBe(4);
     expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(0);
 
-    // 7. Combat movement & LOS: Fighters orbit closely while facing target, Dreadnoughts turn broadside,
-    //    and ships never shoot through planets or friendly hulls
+    // 7. Combat movement & LOS: Dreadnoughts turn bow-on for Spinal Siege vs Capitals/Structures,
+    //    broadside for Heavy Turrets vs Cruisers/Destroyers, Fighters orbit closely, and LOS blocks friendly hulls
     const tacticsSim = new GameSimulation('blitz_skirmish');
-    const dread = tacticsSim.spawnCombatShipDirect(
+    const dreadVsCruiser = tacticsSim.spawnCombatShipDirect(
       'player_1',
       'system_central_hub',
       { x: 300, z: 300 },
       'dreadnought',
       'hold_the_line',
     );
-    // Start Dreadnought pointed straight at the enemy (+X = PI/2)
-    dread.headingRadians = Math.PI / 2;
-    const enemyDread = tacticsSim.spawnCombatShipDirect(
+    dreadVsCruiser.headingRadians = Math.PI / 2;
+    const enemyCruiser = tacticsSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 450, z: 300 },
+      'cruiser',
+      'passive',
+    );
+    enemyCruiser.hull = 5000;
+
+    for (let i = 0; i < 12; i++) {
+      tacticsSim.stepTick(0.2);
+    }
+    // Against a Cruiser, Dreadnought turns broadside to focus its dorsal & broadside heavy turrets
+    const bearingToCruiser = Math.atan2(
+      enemyCruiser.position.x - dreadVsCruiser.position.x,
+      enemyCruiser.position.z - dreadVsCruiser.position.z,
+    );
+    const broadsideAngle = Math.abs(
+      Math.atan2(
+        Math.sin(dreadVsCruiser.headingRadians - bearingToCruiser),
+        Math.cos(dreadVsCruiser.headingRadians - bearingToCruiser),
+      ),
+    );
+    expect(broadsideAngle).toBeGreaterThan(Math.PI / 2 - 0.15);
+
+    // Against an enemy Dreadnought, Dreadnought turns bow-on for its forward Spinal Siege Battery
+    const siegeSim = new GameSimulation('blitz_skirmish');
+    const siegeDread = siegeSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 300, z: 300 },
+      'dreadnought',
+      'hold_the_line',
+    );
+    siegeDread.headingRadians = 0; // Starts side-on
+    const enemyDread = siegeSim.spawnCombatShipDirect(
       'player_2',
       'system_central_hub',
       { x: 450, z: 300 },
@@ -1367,25 +1403,23 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       'passive',
     );
     enemyDread.hull = 5000;
-
     for (let i = 0; i < 12; i++) {
-      tacticsSim.stepTick(0.2);
+      siegeSim.stepTick(0.2);
     }
-    // Dreadnought should have turned broadside (~0 or ~PI, perpendicular to bearing PI/2)
     const bearingToEnemy = Math.atan2(
-      enemyDread.position.x - dread.position.x,
-      enemyDread.position.z - dread.position.z,
+      enemyDread.position.x - siegeDread.position.x,
+      enemyDread.position.z - siegeDread.position.z,
     );
-    const angleFromBearing = Math.abs(
+    const bowOffAngle = Math.abs(
       Math.atan2(
-        Math.sin(dread.headingRadians - bearingToEnemy),
-        Math.cos(dread.headingRadians - bearingToEnemy),
+        Math.sin(siegeDread.headingRadians - bearingToEnemy),
+        Math.cos(siegeDread.headingRadians - bearingToEnemy),
       ),
     );
-    expect(angleFromBearing).toBeGreaterThan(Math.PI / 2 - 0.15);
+    expect(bowOffAngle).toBeLessThan(0.2);
 
     // Fighter orbits around target continuously (never stationary) while facing the target
-    const fighter = tacticsSim.spawnCombatShipDirect(
+    const fighter = siegeSim.spawnCombatShipDirect(
       'player_1',
       'system_central_hub',
       { x: 470, z: 300 },
@@ -1393,7 +1427,7 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       'aggressive',
     );
     const posBefore = { ...fighter.position };
-    tacticsSim.stepTick(0.2);
+    siegeSim.stepTick(0.2);
     const moved = Math.hypot(
       fighter.position.x - posBefore.x,
       fighter.position.z - posBefore.z,

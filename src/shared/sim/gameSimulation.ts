@@ -261,6 +261,7 @@ export interface CombatShipUnitState {
   currentTargetId: string | null;
   currentTargetPos: Vector2D | null;
   currentTargetRadius?: number;
+  currentTargetClass?: CombatShipClassId | 'harvester' | 'structure';
   tetherHostId: string | null;
   fighterReplenishCooldownSeconds: number;
 }
@@ -1400,7 +1401,7 @@ export class GameSimulation {
           s.ownerId === playerId &&
           s.isComplete &&
           Math.hypot(position.x - s.position.x, position.z - s.position.z) <=
-            hubConfig.buildRadiusProvided,
+          hubConfig.buildRadiusProvided,
       );
       if (!insideFriendlyHub) {
         return {
@@ -2470,11 +2471,19 @@ export class GameSimulation {
         return;
       }
 
-      // 2b. Multi-turret capitals turn broadside (side-on) once in weapon range so all turrets have LOS
+      // 2b. Dreadnoughts align bow forward for their Spinal Siege cannon against Structures, Carriers,
+      //     and enemy Dreadnoughts, but turn broadside to focus their heavy turrets against smaller ships.
+      //     Cruisers & Carriers turn broadside once in firing standoff.
+      const dreadUsingSpinalSiege =
+        ship.shipClassId === 'dreadnought' &&
+        (ship.currentTargetClass === 'structure' ||
+          ship.currentTargetClass === 'carrier' ||
+          ship.currentTargetClass === 'dreadnought');
       const isBroadsideCapital =
-        ship.shipClassId === 'dreadnought' ||
-        ship.shipClassId === 'cruiser' ||
-        ship.shipClassId === 'carrier';
+        !dreadUsingSpinalSiege &&
+        (ship.shipClassId === 'dreadnought' ||
+          ship.shipClassId === 'cruiser' ||
+          ship.shipClassId === 'carrier');
       const maxWeaponRange = shipCfg.weapons.reduce(
         (acc, w) => Math.max(acc, w.range),
         80,
@@ -2497,7 +2506,7 @@ export class GameSimulation {
         return;
       }
 
-      // Holding firing standoff (or Hold the Line): rotate hull to broadside (capitals) or face target
+      // Holding firing standoff (or Hold the Line): rotate hull to broadside (turret focus) or bow-on (spinal siege)
       if (isBroadsideCapital) {
         const portBroadside = bearingToTarget + Math.PI / 2;
         const stbdBroadside = bearingToTarget - Math.PI / 2;
@@ -2510,7 +2519,7 @@ export class GameSimulation {
         ship.headingRadians += Math.max(-maxTurn, Math.min(maxTurn, delta));
       } else {
         const delta = shortestAngleDelta(ship.headingRadians, bearingToTarget);
-        const maxTurn = 3.2 * deltaSeconds;
+        const maxTurn = ship.shipClassId === 'dreadnought' ? 1.4 * deltaSeconds : 3.2 * deltaSeconds;
         ship.headingRadians += Math.max(-maxTurn, Math.min(maxTurn, delta));
       }
 
@@ -2524,13 +2533,13 @@ export class GameSimulation {
     const goalPos: Vector2D =
       ship.patrolWaypoints.length >= 2
         ? {
-            x: ship.targetPosition.x + ship.formationOffset.x * 0.45,
-            z: ship.targetPosition.z + ship.formationOffset.z * 0.45,
-          }
+          x: ship.targetPosition.x + ship.formationOffset.x * 0.45,
+          z: ship.targetPosition.z + ship.formationOffset.z * 0.45,
+        }
         : {
-            x: ship.targetPosition.x + ship.formationOffset.x,
-            z: ship.targetPosition.z + ship.formationOffset.z,
-          };
+          x: ship.targetPosition.x + ship.formationOffset.x,
+          z: ship.targetPosition.z + ship.formationOffset.z,
+        };
 
     const arrivalTol = ship.patrolWaypoints.length >= 2 ? 12 : 4;
     const step = computeObstacleAwareStep(
@@ -3214,7 +3223,7 @@ export class GameSimulation {
         ds.systemId === tower.systemId &&
         ds.isComplete &&
         Math.hypot(ds.position.x - tower.position.x, ds.position.z - tower.position.z) <=
-          hubRadius,
+        hubRadius,
     );
   }
 
@@ -3833,6 +3842,7 @@ export class GameSimulation {
         ship.currentTargetId = null;
         ship.currentTargetPos = null;
         ship.currentTargetRadius = undefined;
+        ship.currentTargetClass = undefined;
         continue;
       }
 
@@ -3840,11 +3850,17 @@ export class GameSimulation {
       ship.currentTargetId = bestTarget.id;
       ship.currentTargetPos = { x: bestTarget.position.x, z: bestTarget.position.z };
       ship.currentTargetRadius = bestTarget.visualRadius;
+      ship.currentTargetClass = bestTarget.targetClass;
 
       // Never shoot through planets or friendly ships
       if (!bestTargetHasLos) {
         continue;
       }
+
+      const bearingToTarget = Math.atan2(
+        bestTarget.position.x - ship.position.x,
+        bestTarget.position.z - ship.position.z,
+      );
 
       for (let wIdx = 0; wIdx < shipCfg.weapons.length; wIdx++) {
         const weapon = shipCfg.weapons[wIdx]!;
@@ -3855,14 +3871,30 @@ export class GameSimulation {
           break;
         }
 
+        // Forward-only spinal siege cannons fire exclusively at structures, Carriers, and Dreadnoughts
+        // and require the ship's bow to be aligned within +-20 degrees of the target.
+        if (weapon.firingArc === 'forward') {
+          const isSiegePriorityTarget =
+            bestTarget.targetClass === 'structure' ||
+            bestTarget.targetClass === 'carrier' ||
+            bestTarget.targetClass === 'dreadnought';
+          const bowOffAngle = Math.abs(shortestAngleDelta(ship.headingRadians, bearingToTarget));
+          if (!isSiegePriorityTarget || bowOffAngle > 0.35) {
+            continue;
+          }
+        }
+
         ship.weaponCooldowns[wIdx] = weapon.reloadSeconds;
         this.lastCombatActivityByPlayer.set(ship.ownerId, this.elapsedSeconds);
 
-        const weaponKind = classifyWeaponVisualKind(
-          ship.shipClassId,
-          weapon.tracking,
-          weapon.alphaDamage,
-        );
+        const weaponKind =
+          weapon.firingArc === 'forward'
+            ? 'siege'
+            : classifyWeaponVisualKind(
+                ship.shipClassId === 'dreadnought' ? 'cruiser' : ship.shipClassId,
+                weapon.tracking,
+                weapon.alphaDamage,
+              );
         this.emitCombatEvent({
           type: 'weapon_fire',
           systemId: ship.currentSystemId,
@@ -3919,7 +3951,7 @@ export class GameSimulation {
         (t) =>
           t.getHull() > 0 &&
           Math.hypot(t.position.x - ds.position.x, t.position.z - ds.position.z) <=
-            cfg.weaponRange,
+          cfg.weaponRange,
       );
       if (hostiles.length === 0) {
         ds.currentTargetId = null;
@@ -4066,7 +4098,7 @@ export class GameSimulation {
             ds.systemId === ship.currentSystemId &&
             ds.isComplete &&
             Math.hypot(ds.position.x - ship.position.x, ds.position.z - ship.position.z) <=
-              hubRadius,
+            hubRadius,
         );
         if (nearFriendlyHub) {
           ship.hull = Math.min(

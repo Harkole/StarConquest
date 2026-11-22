@@ -17,6 +17,8 @@ export interface ShipWeaponProfile {
   readonly reloadSeconds: number;
   readonly shieldDamageMultiplier: number;
   readonly hullDamageMultiplier: number;
+  /** 'forward' weapons require bow alignment and prioritize capitals/structures; defaults to 'turret'. */
+  readonly firingArc?: 'forward' | 'turret';
 }
 
 export interface ShipClassConfig {
@@ -194,12 +196,23 @@ export const SHIP_CLASSES: Readonly<Record<ShipClassId, ShipClassConfig>> = {
     weapons: [
       {
         name: 'Spinal Siege Batteries',
-        range: 230,
-        tracking: 0.18,
+        range: 240,
+        tracking: 0.14,
         alphaDamage: 280,
-        reloadSeconds: 2.8,
+        reloadSeconds: 3.2,
         shieldDamageMultiplier: 1.25,
-        hullDamageMultiplier: 1.5,
+        hullDamageMultiplier: 1.65,
+        firingArc: 'forward',
+      },
+      {
+        name: 'Dorsal & Broadside Heavy Turrets',
+        range: 210,
+        tracking: 0.34,
+        alphaDamage: 115,
+        reloadSeconds: 1.8,
+        shieldDamageMultiplier: 1.15,
+        hullDamageMultiplier: 1.35,
+        firingArc: 'turret',
       },
     ],
   },
