@@ -28,6 +28,7 @@ import {
   type WormholeInstanceHandle,
 } from './spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from './stationModels.ts';
+import { aimPlusXTurretPivots, extractTurretPivots } from './turretPivots.ts';
 
 const BATTLE_VOID_SYSTEM: StarSystemNode = {
   id: BATTLE_SIMULATOR_SYSTEM_ID,
@@ -688,13 +689,14 @@ export class SystemSceneManager {
       if (group) {
         this.deepSpaceModels.updateStationAnimation(group, elapsedSeconds, null);
         // Active turret tracking rotation for PD Towers & Hull Breaker Towers when engaging targets
-        if (ds.currentTargetPos && Array.isArray(group.userData.turretPivots)) {
-          const bearing = Math.atan2(
-            ds.currentTargetPos.x - ds.position.x,
-            ds.currentTargetPos.z - ds.position.z,
-          );
-          for (const pivot of group.userData.turretPivots as THREE.Object3D[]) {
-            pivot.rotation.y = bearing;
+        if (ds.currentTargetPos) {
+          const pivots = extractTurretPivots(group.userData.turretPivots);
+          if (pivots.length > 0) {
+            aimPlusXTurretPivots(
+              pivots,
+              ds.currentTargetPos.x - ds.position.x,
+              ds.currentTargetPos.z - ds.position.z,
+            );
           }
         }
       }
