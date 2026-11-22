@@ -19,17 +19,17 @@ To ensure every ship and orbital platform shares a cohesive visual language acro
 
 | Material Role | Hex Color | Metalness | Roughness | Emissive / Special Notes |
 | :--- | :---: | :---: | :---: | :--- |
-| **Primary Hull Armor (Gunmetal Slate)** | `#3e4652` | `0.68` | `0.42` | Main fuselage spine, outer nacelle casings, primary armor plates |
-| **Secondary Accent Armor (Weathered Ochre / Amber)** | `#c27d2c` | `0.55` | `0.48` | Forward cheek armor, engine cowlings, industrial hazard panels |
-| **Structural Frame & Ribs (Dark Charcoal Iron)** | `#1e232a` | `0.78` | `0.35` | Cargo pod rib bands, wing pylons, drill barrels, landing gear, turret rings |
-| **Trim & Mechanical Detail (Steel Grey)** | `#64748b` | `0.76` | `0.48` | Piston rods, dorsal hatches, muzzle collars, antenna masts (brushed steel PBR map) |
-| **Weapon & Turret Barrels (Machined Gunmetal Steel)** | `#8492a6` | `0.84` | `0.38` | All orbital & deep-space turret barrels (brushed metallic steel PBR map, never violet) |
-| **Cockpit / Bridge Interior (Warm Cabin Amber)** | `#fbbf24` | `0.15` | `0.20` | Emissive `#d97706` (`0.85` intensity) behind dark canopy frame struts |
-| **Crystal / Ion Containment Glow (Subspace Cyan)** | `#38bdf8` | `0.20` | `0.18` | Emissive `#0284c7` (`0.75` intensity) for cargo pod windows & intake slits |
-| **Ore Containment / Molten Glow (Warm Industrial Amber)** | `#f59e0b` | `0.20` | `0.22` | Emissive `#b45309` (`0.75` intensity) when cargo pods carry Ore |
+| **Primary Hull Armor (Gunmetal Slate)** | `#46505e` | `0.68` | `0.56–0.58` | Main fuselage spine, outer nacelle casings, primary armor plates |
+| **Secondary Accent Armor (Weathered Ochre / Amber)** | `#cd8734` | `0.55` | `0.62–0.64` | Forward cheek armor, engine cowlings, industrial hazard panels (overridden per-player by `factionColors.ts`) |
+| **Structural Frame & Ribs (Dark Charcoal Iron)** | `#242a33` | `0.78` | `0.50–0.52` | Cargo pod rib bands, wing pylons, drill barrels, landing gear, turret rings (`#1e232a` for geodesic lattices) |
+| **Trim & Mechanical Detail (Steel Grey)** | `#6b7c93` | `0.76` | `0.46–0.48` | Piston rods, dorsal hatches, muzzle collars, antenna masts (brushed steel PBR map) |
+| **Weapon & Turret Barrels (Machined Gunmetal Steel)** | `#8492a6` | `0.84` | `0.36–0.38` | All ship, orbital & deep-space turret barrels (brushed metallic steel PBR map, never violet) |
+| **Cockpit / Bridge Interior (Warm Cabin Amber)** | `#fbbf24` | `0.15` | `0.20` | Emissive `#d97706` (`0.85–0.90` intensity) behind dark canopy frame struts (Stinger Fighter uses `#7dd3fc` glass canopy) |
+| **Crystal / Ion Containment Glow (Subspace Cyan)** | `#38bdf8` | `0.20` | `0.18–0.20` | Emissive `#0284c7` (`0.75–0.85` intensity) for cargo pod windows & intake slits |
+| **Ore Containment / Molten Glow (Warm Industrial Amber)** | `#f59e0b` | `0.20` | `0.22` | Emissive `#b45309` (`0.22–1.00` dynamic intensity scaling with cargo fill) when cargo pods carry Ore |
 | **Thruster Exhaust Core (Ion Blue-White)** | `#7dd3fc` | — | — | `MeshBasicMaterial` (`[0.35, 0.85, 1.35]`) inside dark thruster nozzle bells |
 | **Navigation / Antenna Beacon (Signal Red)** | `#ef4444` | — | — | Small pinpoint beacon at the tip of dorsal communication masts |
-| **Station Prow / Spire Tip Accent (Crimson Oxide)** | `#b91c1c` | `0.45` | `0.50` | Weathered red-tipped prows on radial docking arms and command spires |
+| **Station Prow / Spire Tip Accent (Crimson Oxide)** | `#c22222` | `0.45` | `0.64` | Weathered red-tipped prows on radial docking arms and command spires |
 | **Solar Array Panels (Deep Photovoltaic Blue)** | `#1e3a5f` | `0.65` | `0.25` | Solar collector wings with subtle dark structural frame borders |
 | **Forge Heat-Sink Glow (Molten Copper-Orange)** | `#fb923c` | `0.25` | `0.25` | Emissive `#ea580c` (`0.95` intensity) between dark radiator fins on Refinery banks |
 | **Quantum R&D Prism Glow (Quantum Violet-Indigo)** | `#c084fc` | `0.25` | `0.20` | Emissive `#7e22ce` (`0.95` intensity) for R&D multi-prism sensor nodes & quantum data cores |
@@ -54,13 +54,13 @@ When building ships (`src/client/renderer/`) and orbital platforms (`src/client/
 1. **Multi-Part Functional Sub-Assemblies (Never Single Primitives)**:
    * Never represent a ship or station with a single box, sphere, or cylinder.
    * Construct each model as a `THREE.Group` composed of distinct architectural layers:
-     1. **Core Hull Spine**: Tapered/chamfered central fuselage (`Primary Gunmetal Slate #3e4652`).
-     2. **Accent Armor Panels**: Raised cheek/shoulder/cowling plates (`Weathered Ochre #c27d2c`) that break up large hull surfaces.
-     3. **Structural Ribbing & Frames**: Dark `#1e232a` straps, collars, and trusses that visually bind pods and wings to the main hull.
+     1. **Core Hull Spine**: Tapered/chamfered central fuselage (`Primary Gunmetal Slate #46505e`).
+     2. **Accent Armor Panels**: Raised cheek/shoulder/cowling plates (`Weathered Ochre #cd8734`) that break up large hull surfaces.
+     3. **Structural Ribbing & Frames**: Dark `#242a33` straps, collars, and trusses that visually bind pods and wings to the main hull.
      4. **Framed Bridge / Cockpit Canopy**: Recessed glowing warm-amber cabin windows (`#fbbf24`) framed by dark structural canopy bars, plus a dorsal hatch and antenna mast.
      5. **Propulsion & Utility Gear**: Multi-nozzle rear engine clusters (dark outer bells with inset glowing ion cores), outboard stabilizer nacelles, and ventral skids/sensors.
 2. **Dynamic State Feedback on the Model**:
-   * Models must visually reflect their live simulation state (e.g., the Harvester's 8 side cargo pods dynamically illuminate and scale their containment glow as cargo fills from `0` to `40`, and its nose mining drill articulates toward the target asteroid).
+   * Models must visually reflect their live simulation state (e.g., the Harvester's 8 side cargo pods dynamically illuminate and scale their containment glow as cargo fills from `0` to `40`, and its dual-layer mining laser beam locks onto the target asteroid).
 3. **Dual-Layer Beams & Surface Impact VFX**:
    * Energy beams (such as the Harvester's mining laser) must use a **tight high-energy inner core** (`#e0f2fe` / `#38bdf8`) surrounded by a **wider translucent outer plasma sheath** (`#f59e0b` / `#ea580c`), terminating in a **molten impact flare and debris ring** on the target surface.
 
@@ -77,15 +77,15 @@ Each ship and orbital platform is designed and locked in one at a time.
 * **Renderer Implementation**: [harvesterFleetRenderer.ts](../src/client/renderer/harvesterFleetRenderer.ts)
 
 #### Anatomical Breakdown ("Prospector" Class)
-1. **Forward Hull & Articulating Mining Drill (`+Z` Nose)**:
+1. **Forward Hull & Mining Drill (`+Z` Nose)**:
    * Tapered gunmetal nose housing flanked by weathered ochre-amber cheek armor plates and forward pinpoint spotlights.
-   * **Articulating Mining Drill Assembly**: Multi-stage stepped dark-iron cylindrical drill barrel extending from the nose with upper and lower stabilizer prongs, a glowing cyan muzzle ring, and pitch/yaw articulation that tracks the target asteroid.
+   * **Mining Drill Assembly**: Multi-stage stepped dark-iron cylindrical drill barrel extending from the nose with upper and lower stabilizer prongs and a glowing cyan muzzle ring; during extraction, the mining laser beam (`entry.beamGroup`) aims directly at the target asteroid center.
 2. **Elevated Cockpit Module & Dorsal Spine**:
    * Trapezoidal raised bridge module behind the nose with warm amber-lit cabin windows (`#fbbf24`) separated by dark canopy frame struts.
    * Overhead twin floodlight blisters, a circular dorsal maintenance hatch on the mid-spine, and a vertical communications antenna with a red tip beacon.
 3. **2x2 Port & Starboard Ribbed Cargo Pods (8 Pods Total)**:
    * Four modular industrial cargo pods mounted on the port flank (2 upper, 2 lower) and four on the starboard flank (2 upper, 2 lower).
-   * Each pod features a gunmetal casing wrapped in three dark charcoal structural rib straps (`#1e232a`) and glowing side containment windows (`#38bdf8` cyan for Crystal / `#f59e0b` amber for Ore) whose brightness and fill reflect current mined cargo (`0–40`).
+   * Each pod features a gunmetal casing wrapped in three dark charcoal structural rib straps (`#242a33`) and glowing side containment windows (`#38bdf8` cyan for Crystal / `#f59e0b` amber for Ore) whose brightness and fill reflect current mined cargo (`0–40`).
 4. **Outboard Wing Pylons & Thruster Nacelles**:
    * Horizontal structural wing struts extending left and right between the upper and lower cargo pod rows.
    * Terminates in heavy outboard thruster nacelles (gunmetal + ochre cowling) with forward cyan intake slits, rear thruster nozzles, and underslung cylindrical auxiliary pods.
@@ -109,10 +109,10 @@ Each ship and orbital platform is designed and locked in one at a time.
    * **Central Citadel (`1.5x` Scale)**: Anchored at the midpoint between the two occupied slots; its horizontal radial docking arms reach `~9.4` units inward (`-X`), staying clear of the planet's outer atmosphere halo while its upper spire (`+Y`) and lower conical ballast hull (`-Y`) tower vertically.
    * **Flanking Left & Right Wing Towers (`0.68x` Scale)**: Positioned at `±12.8` units along the curved orbital arc and joined to the central citadel by **armored skybridge causeways** with dark structural trusses and glowing cyan transit conduits—filling the full 2-slot orbital section.
 2. **Central Command Core & Upper Observation Deck**:
-   * Multi-tiered stepped octagonal/cylindrical central hub in Gunmetal Slate (`#3e4652`) bound by Dark Charcoal (`#1e232a`) structural collars.
+   * Multi-tiered stepped octagonal/cylindrical central hub in Gunmetal Slate (`#46505e`) bound by Dark Charcoal (`#242a33`) structural collars.
    * **Upper Observation Deck**: Panoramic wrap-around angled bridge ring with glowing cyan-white/warm-amber observation windows (`#38bdf8` / `#fbbf24`) segmented by dark structural mullions, topped by communications dishes and a red-tipped sensor mast.
 3. **Upper Command Spire (`+Y`) & Lower Conical Ballast Hull (`-Y`)**:
-   * Tall tapered octagonal spire rising above the central command core with Weathered Ochre (`#c27d2c`) armor panels, dark ribbing, and a **Crimson Oxide (`#b91c1c`)** tipped prow.
+   * Tall tapered octagonal spire rising above the central command core with Weathered Ochre (`#cd8734`) armor panels, dark ribbing, and a **Crimson Oxide (`#c22222`)** tipped prow.
    * Matching tapered lower conical ballast/cargo hull descending below the hub (`-Y`) with a dark ribbed neck collar, ochre paneling, and a crimson-tipped lower prow.
 4. **4 Main Horizontal Radial Arms + 2 Angled Ventral Docking Arms**:
    * Four heavy radial habitation/docking arms (`±X`, `±Z`) plus two ventral docking arms angled downward-outward (`±Z` tangent plane so they never angle toward the planet).
@@ -131,9 +131,9 @@ Each ship and orbital platform is designed and locked in one at a time.
 1. **Orbital Ring Arc Curvature (1-Slot Footprint)**:
    * Rather than a rigid flat rectangle, the "Hephaes" platform (`1.5x` scale: `~21.2u` arc length × `~10.2u` radial width) is segmented and **bent along the host planet's exact `orbitalRingRadius`** so its spine, deck aprons, and heat-sink rows follow the orbital ring track seamlessly without overlapping adjacent slots.
 2. **Central Linear Forge Spine & Ventral Material Transport Elevators**:
-   * Stepped Gunmetal Slate (`#3e4652`) central spine running along the curved arc, crowned by a central refinery control tower and underpinned by a tapered ventral cargo/elevator keel (`-Y`).
+   * Stepped Gunmetal Slate (`#46505e`) central spine running along the curved arc, crowned by a central refinery control tower and underpinned by a tapered ventral cargo/elevator keel (`-Y`).
 3. **Parallel Glowing Heat-Sink Banks (Iron/Silicate Smelters)**:
-   * Twin rows of parallel, slightly V-canted radiator fin banks flanking the central spine. Dark Charcoal Iron (`#1e232a`) fin plates frame glowing **Molten Copper-Orange (`#fb923c` / emissive `#ea580c`)** smelter cores, matching the signature thermal glow in the schematic.
+   * Twin rows of parallel, slightly V-canted radiator fin banks flanking the central spine. Dark Charcoal Iron (`#242a33`) fin plates frame glowing **Molten Copper-Orange (`#fb923c` / emissive `#ea580c`)** smelter cores, matching the signature thermal glow in the schematic.
 4. **Flanking Landing & Cargo Pads + Crystal Processing Array**:
    * Outer deck aprons along both sides of the heat-sink banks feature recessed Harvester landing/cargo pads with subtle cyan/amber beacon strips, plus a Crystal Processing Array at the end of the central spine.
 
@@ -147,12 +147,12 @@ Each ship and orbital platform is designed and locked in one at a time.
 #### Anatomical Breakdown & Orbital Arc Curvature
 1. **Elongated Curved Rectangular Bastion Deck (1-Slot Footprint)**:
    * Stretched into a rectangular profile (`1.5x` scale across 7 curved arc segments: `~21.2u` arc length × `~8.2u` radial width) with chamfered hexagonal end-prows and **bent along the host planet's exact `orbitalRingRadius`** so it fills the full 1-slot section on Small (6-slot), Medium (8-slot), or Super-Earth (12-slot) orbital rings while keeping strict atmosphere clearance.
-   * Raised Dark Charcoal Iron (`#1e232a`) perimeter armor berms and recessed Molten Copper-Orange (`#fb923c` / emissive `#ea580c`) conduit channels frame the sunken supply deck bays.
+   * Raised Dark Charcoal Iron (`#242a33`) perimeter armor berms and recessed Molten Copper-Orange (`#fb923c` / emissive `#ea580c`) conduit channels frame the sunken supply deck bays.
 2. **Fortified Command & Control Core + Phased-Array Geodesic Sensor Sphere**:
-   * Central stepped octagonal command bunker in Gunmetal Slate (`#3e4652`) and Weathered Ochre (`#c27d2c`) with warm amber bridge slits (`#fbbf24`), a Long-Range Communications Array mast with a red tip beacon, and a ventral **Planetary Surface Interface & Approach Docking Point** hull (`-Y`).
+   * Central stepped octagonal command bunker in Gunmetal Slate (`#46505e`) and Weathered Ochre (`#cd8734`) with warm amber bridge slits (`#fbbf24`), a Long-Range Communications Array mast with a red tip beacon, and a ventral **Planetary Surface Interface & Approach Docking Point** hull (`-Y`).
    * **Phased-Array Sensor Sphere**: Elevated glowing pale ice-blue geodesic dome (`#38bdf8` / emissive `#0284c7`) encased inside a dark structural geodesic wireframe lattice (`IcosahedronGeometry` detail `2`), visually signaling its `240` sensor range.
 3. **Sunken Fleet Supply Depots (Cargo Module Stacks)**:
-   * Flanking curved supply courts house rows of Weathered Ochre (`#c27d2c`) cargo containers paired with horizontal Steel Grey (`#64748b`) cylindrical supply canisters, visually representing the Outpost's `+10` Fleet Supply contribution.
+   * Flanking curved supply courts house rows of Weathered Ochre (`#cd8734`) cargo containers paired with horizontal Steel Grey (`#6b7c93`) cylindrical supply canisters, visually representing the Outpost's `+10` Fleet Supply contribution.
 4. **4 Automated Light Point-Defense Turrets & Planetary Anchoring Thrusters**:
    * Four twin-barrel automated Gatling PD turrets mounted on raised octagonal pedestals around the central core, each featuring a swiveling gunmetal housing, twin ochre side ammo drums, and dual elevated barrels (`15` Point Defence DPS).
    * Four outrigger **Planetary Anchoring Thrusters** at the fore/aft chamfered prows and central lateral flanks.
@@ -187,7 +187,7 @@ Each ship and orbital platform is designed and locked in one at a time.
 
 #### Anatomical Breakdown, Sci-Fi R&D Accents & Live Holographic Projections
 1. **Curved 1-Slot R&D Bastion Deck & Data Conduit Spine**:
-   * Curves across 7 arc segments (`1.5x` scale: `~21.2u` arc length × `~8.2u` radial width) along the host planet's exact `orbitalRingRadius` to fill its 1-slot footprint while staying anchored in the faction's Gunmetal Slate (`#3e4652`), Weathered Ochre (`#c27d2c`), and Dark Charcoal Iron (`#1e232a`) industrial foundation.
+   * Curves across 7 arc segments (`1.5x` scale: `~21.2u` arc length × `~8.2u` radial width) along the host planet's exact `orbitalRingRadius` to fill its 1-slot footprint while staying anchored in the faction's Gunmetal Slate (`#46505e`), Weathered Ochre (`#cd8734`), and Dark Charcoal Iron (`#242a33`) industrial foundation.
    * External Weathered Ochre **Data Conduit Spine** pipes run along both lower hull flanks, while raised perimeter armor berms carry pulsing **Multi-Prism Quantum Sensor Nodes** (`#c084fc` / emissive `#7e22ce`).
 2. **Central Data Core, Translucent Geodesic Dome & 4 Data Relay Spires**:
    * Stepped multi-story R&D command center at the center segment topped by a **translucent cyan Geodesic Data Core Dome** (`opacity: 0.58` inside a dark wireframe lattice) that reveals **3 rotating internal Quantum Computing Server Monoliths**, flanked by 4 tall vertical **Data Relay & Sensor Array Spires**.
@@ -211,11 +211,11 @@ Each ship and orbital platform is designed and locked in one at a time.
    * **Slot 1 (Primary Heavy Battery) & Slot 2 (Secondary Bombardment Array)**: Twin stepped octagonal armored bastions (`1.35x` scale at `±8.4u` along the curved orbital arc, `~33u` total span) equipped with glowing copper-orange **Coolant System Radiators**, vertical **Ammunition Hoist Systems**, and **Planetary Shield Emitter Pylons**.
 2. **Articulated Triple-Barrel Spinal-Mount Heavy Cannons & Macro-Turrets (Inset Detail)**:
    * Each bastion lobe mounts a massive swiveling **Spinal-Mount Heavy Cannon Battery** with rear ochre ammunition feed drums and **three parallel machined steel grey barrels** (`#8492a6`), flanked by a twin-barrel **Turreted Macro-Cannon Battery** (`65` Heavy DPS + `45` Point Defence DPS).
-   * Static always-on shield bubble meshes are intentionally omitted from the bastion hull so the gunmetal-and-ochre industrial detail stays crisp; shield visuals are reserved for a dedicated future shield VFX art pass.
+   * Static always-on shield bubble meshes are intentionally omitted from the bastion hull so the gunmetal-and-ochre industrial detail stays crisp; localized solid-fill shield deflection patches flash on active hits via `CombatVfxRenderer`.
 3. **3 Remote-Controlled Vertical Sentry Turrets (`aegis_remote_sentry_turrets`)**:
-   * Built simultaneously with the main platform at `theta = -108°`, `180°` (far opposite side of the planet), and `+108°` at `orbitalRingRadius + 31u` (`AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET`), placing them cleanly outside the outward reach of the largest orbital platform (such as the Titan Orbital Dockyard's extended parallel slipways) with safety clearance while ensuring line-of-sight coverage against hostile fleets approaching from behind the planet.
-   * Purely cosmetic extension of the main platform: as long as any turret or battery has line of sight, the full DPS of the platform applies, and destroying the main platform automatically destroys all three remote sentry turrets.
-   * Each remote turret features a tall armored **Vertical Sentry Gun Spine** (`4.4u` height) with dark structural rib collars and copper-orange power conduits, a flared upper crown mounting a rotating **Heavy Plasma Sentry Turret**, **3 vertically stacked rotating Point-Defense (`PDx2`) Turrets** down its outward face, and a lower **Reactor & Power Core Access Base** with twin rear station-keeping thrusters.
+   * Built simultaneously with the main platform at `theta = -108°`, `180°` (far opposite side of the planet), and `+108°` at `orbitalRingRadius + 31u` (`AEGIS_REMOTE_SENTRY_STANDOFF_OFFSET`), placing them cleanly outside the outward reach of the largest orbital platform (such as the Titan Orbital Dockyard's extended parallel slipways) with safety clearance while ensuring visual perimeter coverage around the planet.
+   * Purely cosmetic extension of the main platform: destroying the main platform automatically destroys all three remote sentry turrets.
+   * Each remote turret features a tall armored **Vertical Sentry Gun Spine** (`4.4u` height) with dark structural rib collars and copper-orange power conduits, a flared upper crown mounting a rotating **Heavy Plasma Sentry Turret**, **3 vertically stacked rotating Point-Defense (`PDx2`) Turrets** down its outward face, and a lower **Reactor & Power Core Access Base** with 4 radial station-keeping thrusters.
 
 ---
 
@@ -227,9 +227,9 @@ Each ship and orbital platform is designed and locked in one at a time.
 #### Anatomical Breakdown, Radial Fighter Hangar Bays & Pagoda Fabrication Spire
 1. **Free-Floating Radial Saucer Apron**:
    * Because the Logistics Hub operates in open deep space near wormholes or asteroid belts (rather than on a curved planetary orbital ring), it uses a 360-degree symmetrical radial saucer/octagonal apron (`radius ~9.6u`) underpinned by a lower-deck **Reactor & Power Core Access** housing and a quad **Ventral Thruster Assembly**.
-   * Static always-on shield ring meshes are omitted; no shields are rendered on any platform until the dedicated Shield VFX art pass is completed.
+   * Static always-on shield ring meshes are omitted; localized solid-fill shield impact patches flash only during active shield hits via `CombatVfxRenderer`.
 2. **4 Diagonal Rectangular Open Fighter Hangar Bays (`45°, 135°, 225°, 315°` — Inset Detail)**:
-   * Four sunken diagonal flight-deck courts framed by Weathered Ochre (`#c27d2c`) berms and pulsing Molten Copper-Orange (`#fb923c`) **Launch Catapult System** tracks.
+   * Four sunken diagonal flight-deck courts framed by Weathered Ochre (`#cd8734`) berms and pulsing Molten Copper-Orange (`#fb923c`) **Launch Catapult System** tracks.
    * Each bay stages **6 Fighter craft (`2x3` formation, 24 fighters total)** facing an outer sloped **Atmospheric Containment Force-Field Hangar Portal** (`#7dd3fc`).
 3. **4 Cardinal Logistics, Fleet Supply & Tower-Construction Wedges (`0°, 90°, 180°, 270°`)**:
    * Between the diagonal fighter bays sit four industrial cardinal wedges containing paired **Material Storage Silos**, **Cargo Modules** (`+15` Fleet Supply), the **Turret / Hull-Breaker Construction Core**, and outer **Remote Maneuvering Thrusters**.
@@ -246,12 +246,12 @@ Each ship and orbital platform is designed and locked in one at a time.
 
 #### Shared Chassis & Variant Loadouts
 1. **Shared Cylindrical Vertical Sentry Column (360° Turret Clearance)**:
-   * Both deep-space Defence Towers share a symmetrical cylindrical vertical armored column (`CylinderGeometry` spine, circular Dark Charcoal `#1e232a` rib collars, 4 radial Molten Copper-Orange `#fb923c` conduit strips, and a circular lower **Reactor Column Base** with 4 radial ventral thrusters) so that both the upper crown weapon and all **3 vertically stacked `PDx2` turret collar rings** can rotate cleanly through a full **360 degrees** around the column.
+   * Both deep-space Defence Towers share a symmetrical cylindrical vertical armored column (`CylinderGeometry` spine, circular Dark Charcoal `#242a33` rib collars, 4 radial Molten Copper-Orange `#fb923c` conduit strips, and a circular lower **Reactor Column Base** with 4 radial ventral thrusters) so that both the upper crown weapon and all **3 vertically stacked `PDx2` turret collar rings** can rotate cleanly through a full **360 degrees** around the column.
    * **Idle Turret Behavior**: Defence Tower weapons do **not** animate while idle; turret pivots (`userData.turretPivots`) remain stationary at rest and only activate and rotate when tracking an active combat target.
 2. **Hull Breaker Tower (`hull_breaker_tower`, `1.45x` Scale)**:
    * Crowns the vertical column with the heavy anti-capital spinal plasma cannon mount (`320` alpha, `3.5s` reload, slow `0.15` tracking).
 3. **Point Defence Tower (`point_defence_tower`, `1.30x` Scale)**:
-   * Replaces the heavy crown cannon with a compact, rapid-tracking **Quad-Barrel Point-Defence Gatling Crown Turret** (Steel Grey `#64748b` barrels and twin Weathered Ochre `#c27d2c` side ammo drums) paired with a dorsal targeting sensor mast (`18` alpha, `0.35s` reload, rapid `0.95` tracking).
+   * Replaces the heavy crown cannon with a compact, rapid-tracking **Quad-Barrel Point-Defence Gatling Crown Turret** (Machined Gunmetal Steel `#8492a6` barrels and twin Weathered Ochre `#cd8734` side ammo drums) paired with a dorsal targeting sensor mast (`18` alpha, `0.35s` reload, rapid `0.95` tracking).
 
 ---
 
@@ -263,10 +263,10 @@ Each ship and orbital platform is designed and locked in one at a time.
 
 #### Anatomical Breakdown ("Stinger" Class — Smallest Ship in Game)
 1. **Tiny Carrier/Hub-Borne Scale (`~1.22u` Length × `~1.04u` Wingspan × `~0.50u` Height)**:
-   * Deliberately the smallest combat craft in StarConquest (~38% the length of the Prospector Mining Frigate), sized to fit `2x3` launch catapult formations inside the **Atlas Deep-Space Logistics Hub** and future **Carrier** hangars.
+   * Deliberately the smallest combat craft in StarConquest, sized to fit `2x3` launch catapult formations inside the **Atlas Deep-Space Logistics Hub** and **Vanguard Fleet Carrier** flight decks.
    * Always operates tethered to a Carrier or Logistics Hub.
 2. **Faceted Multi-Pane Cockpit Canopy (`+Z` Nose) & Signature Weathered Ochre Band**:
-   * Prominent sloped armored glass canopy framed by Dark Charcoal (`#1e232a`) structural mullions atop a rounded gunmetal chin housing.
+   * Prominent sloped armored glass canopy framed by Dark Charcoal (`#242a33`) structural mullions atop a rounded gunmetal chin housing.
    * Chunky procedural PBR Gunmetal Slate (`#46505e`) mid-fuselage wrapped in a vertical **Weathered Ochre (`#cd8734`)** industrial band immediately aft of the cockpit, topped by a small dorsal sensor blister.
 3. **Chin-Mounted Gimbaled Twin-Barrel Autocannon & Cheek Pods**:
    * Ventral chin gimbal turret mounting **twin parallel machined steel grey (`#8492a6`) barrels** projecting forward past the nose, flanked by paired cylindrical nose-cheek weapon/sensor pods.
@@ -284,7 +284,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 | Ship Class | `maxHull` | Canonical 3D Length | Relative to Fighter |
 | :--- | :---: | :---: | :---: |
 | **Light Fighter "Stinger"** | `110` | `~1.2u` | `1.0x` |
-| **Resource Harvester "Prospector"** | `300` | `~3.0u` | `2.5x` |
+| **Resource Harvester "Prospector"** | `300` | `~7.95u` *(hull `~6.1u` + nose drill)* | `6.5x` |
 | **Destroyer "Havoc"** | `420` | `~4.8u` | `4.0x` |
 | **Cruiser** | `750` | `~7.5u` | `6.2x` |
 | **Fleet Carrier "Vanguard"** | `1,100` | `~10.5u` | `8.7x` |
@@ -315,11 +315,11 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 
 * **Concept Reference**: ![Cruiser Concept Art](./cruiser-concept.jpg)
 * **Orthographic Blueprint**: ![Cruiser Orthographic Reference](./cruiser-orthographic.jpg)
-* **Renderer Implementation**: `ShipModelLibrary.buildCruiserMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also staged in Titan Orbital Dockyard Slot 2 via [stationModels.ts](../src/client/renderer/stationModels.ts))
+* **Renderer Implementation**: `ShipModelLibrary.buildCruiserMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also dynamically staged in Titan Orbital Dockyard slipways when queued via [stationModels.ts](../src/client/renderer/stationModels.ts))
 
 #### Anatomical Breakdown (Cruiser Class — `~7.5u` Length, `~1.56x` Havoc)
 1. **Heavy Broadside Armored Hull & Continuous Dorsal Spine Ridge (`+Z` Bow)**:
-   * Elongated shielded capital-escort hull (`~7.5u` length × `~2.95u` aft pod span × `~1.65u` height) in procedural PBR Gunmetal Slate (`#46505e`) with a continuous raised Dark Charcoal (`#1e232a`) dorsal spine ridge, horizontal **Weathered Ochre (`#cd8734`)** flank stripes, octagonal armored mid-aft side bulkheads, and recessed warm-amber (`#fbbf24`) bridge observation bays.
+   * Elongated shielded capital-escort hull (`~7.5u` length × `~2.95u` aft pod span × `~1.65u` height) in procedural PBR Gunmetal Slate (`#46505e`) with a continuous raised Dark Charcoal (`#242a33`) dorsal spine ridge, horizontal **Weathered Ochre (`#cd8734`)** flank stripes, octagonal armored mid-aft side bulkheads, and recessed warm-amber (`#fbbf24`) bridge observation bays.
 2. **Twin Elevated Dorsal Heavy Turret Emplacements (`cruiser_dorsal_turret_fore` & `cruiser_dorsal_turret_aft`)**:
    * Fore and aft circular armored barbettes mounting chunky gunmetal turrets with **dual heavy machined steel grey (`#8492a6`) barrels** (`Dual Heavy Turrets`).
 3. **Dense Rapid Point-Defence Arrays (9 Twin-Barrel PD Turrets)**:
@@ -333,7 +333,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 
 * **Concept Reference**: ![Imperator Dreadnought Concept Art](./dreadnought-imperator-concept.jpg)
 * **Orthographic Blueprint**: ![Imperator Dreadnought Orthographic Reference](./dreadnought-imperator-orthographic.jpg)
-* **Renderer Implementation**: `ShipModelLibrary.buildImperatorDreadnoughtMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also progressively fabricated inside Titan Orbital Dockyard Slot 1 via [stationModels.ts](../src/client/renderer/stationModels.ts))
+* **Renderer Implementation**: `ShipModelLibrary.buildImperatorDreadnoughtMesh` in [shipModels.ts](../src/client/renderer/shipModels.ts) (also dynamically fabricated in Titan Orbital Dockyard slipways when queued via [stationModels.ts](../src/client/renderer/stationModels.ts))
 
 #### Anatomical Breakdown ("Imperator" Class — `~14.5u` Length, `~12x` Stinger)
 1. **Split Armored Jaw Prow & Integrated Glowing Spinal Siege Battery (`+Z` Bow)**:
@@ -355,7 +355,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
 
 #### Anatomical Breakdown ("Vanguard" Class — `~10.5u` Length, `~8.7x` Stinger)
 1. **Expansive Flat-Top Flight Deck Module & Under-Deck Launch Hangar (`+Z` Bow)**:
-   * Wide flat-topped forward flight deck (`carrier_flight_deck`, `~6.2u` × `~2.9u`) in Dark Charcoal (`#1e232a`) tarmac framed by Gunmetal Slate (`#46505e`) deck edges, twin **Weathered Ochre (`#cd8734`)** runway border stripes, and Steel Grey centerline markings, staging **4 parked Stinger Light Fighters** right on deck.
+   * Wide flat-topped forward flight deck (`carrier_flight_deck`, `~6.2u` × `~2.9u`) in Dark Charcoal (`#242a33`) tarmac framed by Gunmetal Slate (`#46505e`) deck edges, twin **Weathered Ochre (`#cd8734`)** runway border stripes, and Steel Grey centerline markings, staging **4 parked Stinger Light Fighters** right on deck.
    * Under-deck bow launch hangar mouth with glowing cyan-blue (`#38bdf8`) containment strip.
 2. **Aft Command Bridge Island & Dorsal Geodesic Radar Sphere**:
    * Multi-tier aft flight-control island (`carrier_command_island`) with warm-amber (`#fbbf24`) panoramic windows, crowned by a prominent **Dorsal Geodesic Radar Sphere** (`290` sensor range) and tall communications mast, backed by Weathered Ochre stern deck armor.

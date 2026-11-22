@@ -15,14 +15,14 @@ This file defines the architectural, visual, and gameplay invariants for **StarC
 To deliver high-end space visuals in the browser while supporting both **instant 100% local vs. AI play** and **4-player online multiplayer**, this project uses:
 
 * **Language**: **TypeScript (Strict Mode)** across the entire stack (shared simulation core, 3D browser client, AI controllers, and networking adapters).
-* **3D Rendering Engine**: **Three.js** with **Custom GLSL Shaders** and **`postprocessing`** (Selective HDR Bloom, Tone Mapping, SMAA).
-  * *Why Three.js*: Gives full low-level control over custom planetary shaders (drifting clouds, atmospheric Fresnel glow, animated lava fissures, procedural deep-space nebulae) and high-performance `InstancedMesh` rendering for asteroid belts, projectiles, and fighter swarms.
+* **3D Rendering Engine**: **Three.js** with **Custom GLSL Shaders** and **`postprocessing`** (Selective HDR Bloom, ACES Filmic Tone Mapping; optional SMAA planned).
+  * *Why Three.js*: Gives full low-level control over custom planetary shaders (drifting clouds, atmospheric Fresnel glow, animated lava fissures, procedural deep-space nebulae) and high-performance `InstancedMesh` rendering for asteroid belts.
 * **Bundler & Dev Tooling**: **Vite** (with GLSL shader import support) for fast HMR and asset bundling, plus **Vitest** for unit and headless balance testing.
 * **UI Overlay**: Decoupled HTML/CSS/TypeScript tactical HUD layered over the Three.js canvas (keeping 2D UI crisp and separated from 3D WebGL passes).
 * **Networking & Multiplayer**: **Transport-Agnostic Authoritative Simulation** supporting:
-  1. **Purely Local Execution (`LocalSimAdapter`)**: Runs 100% inside the user's browser (or Web Worker) with zero network/server dependency for single-player vs. AI matches.
-  2. **Player-Hosted P2P (`WebRTCPeerAdapter`)**: One player's browser acts as the authoritative listen-server host and up to 3 other players connect peer-to-peer via **WebRTC DataChannels** using room codes (no dedicated game servers required).
-  3. **Optional Headless Host (`WebSocketAdapter`)**: Because the simulation has zero browser/DOM imports, it remains ready to wrap in a headless Node.js server in the future if ever needed.
+  1. **Purely Local Execution (`LocalSimAdapter`)**: Runs 100% inside the user's browser main thread (with optional Web Worker support in future) with zero network/server dependency for single-player vs. AI matches.
+  2. **Player-Hosted P2P (`WebRTCPeerAdapter` — Planned)**: One player's browser acts as the authoritative listen-server host and up to 3 other players connect peer-to-peer via **WebRTC DataChannels** using room codes (no dedicated game servers required).
+  3. **Optional Headless Host (`WebSocketAdapter` — Planned)**: Because the simulation has zero browser/DOM imports, it remains ready to wrap in a headless Node.js server in the future if ever needed.
 
 ---
 
@@ -40,17 +40,17 @@ src/
 ├── client/              # Browser application
 │   ├── renderer/        # Three.js scene, orbital camera, planets, nebulae, ships, VFX
 │   ├── shaders/         # Custom GLSL vertex/fragment shaders (clouds, atmosphere, lava, wormholes)
-│   ├── audio/           # Web Audio API sound effects & ambient space audio
-│   ├── ui/              # HUD, orbital slot radial/ring builder, dockyard queues, lobby
-│   └── net/             # Transport adapters: LocalSimAdapter (100% local vs. AI) & WebRTCPeerAdapter (P2P Host/Client)
-└── server/              # (Optional future) Headless Node.js host wrapping src/shared/sim + src/shared/ai
+│   ├── audio/           # Dynamic HTMLAudioElement music player (planned Web Audio API SFX)
+│   ├── ui/              # HUD, orbital slot ring builder, fleet command panel (planned lobby)
+│   └── net/             # Transport adapters: LocalSimAdapter (live) & WebRTCPeerAdapter (planned)
+└── server/              # (Planned future) Headless Node.js host wrapping src/shared/sim + src/shared/ai
 ```
 
 ### Architectural Invariants
 1. **Purely Local AI Matches**: Single-player vs. AI matches must execute 100% locally in the user's browser with zero external server dependency.
 2. **Player-Hosted P2P Multiplayer**: In online matches, the hosting player's browser runs the authoritative `src/shared/sim` loop (plus any AI bot slots) and exchanges `GameCommand` and `StateSnapshot` packets with up to 3 connected peers over WebRTC DataChannels.
 3. **No Game Logic in the Renderer**: `src/client/renderer/` and `src/client/ui/` render state snapshots/interpolations and emit `GameCommand` objects. They must never directly mutate authoritative health, resources, or ship positions.
-4. **Unified Player & AI Command Interface**: Human players (local or remote P2P peers) and AI Bots (`src/shared/ai/`) interact with the simulation exclusively by submitting valid `GameCommand` actions (e.g., `BUILD_ORBITAL_STRUCTURE`, `QUEUE_SHIP`, `SET_RALLY_POINT`, `SET_PATROL_ROUTE`, `BUILD_TOWER`).
+4. **Unified Player & AI Command Interface**: Human players (local or remote P2P peers) and AI Bots (`src/shared/ai/`) interact with the simulation exclusively by submitting valid `GameCommand` actions (e.g., `BUILD_ORBITAL_STRUCTURE`, `BUILD_DEEP_SPACE_STRUCTURE`, `QUEUE_SHIP`, `CREATE_FLEET`, `UPDATE_FLEET_TEMPLATE`, `ORDER_FLEET_MOVE`, `SET_FLEET_STANCE`).
 5. **Any Slot Can Be Human or AI**: Every 4-player match supports any mix of Human and AI players (e.g., 1 Human + 3 AI locally, or 2 Humans P2P + 2 AI run by the host).
 6. **Data-Driven Balancing**: Never hardcode ship HP, shield values, weapon tracking, costs, or build times inside simulation classes. All balance numbers must live in `src/shared/config/` so they can be tweaked and tested via headless AI-vs-AI simulations.
 
@@ -74,9 +74,9 @@ A core pillar of **StarConquest** is selling a rich, atmospheric 2.5D/3D space t
      * **Scorched Atmosphere**: Warm orange/ember Fresnel rim haze.
 3. **Orbital Rings, Wormholes & Combat VFX**:
    * **Orbital Rings**: Planets display a sleek orbital ring track with visible slot nodes (`6`, `8`, `10`, or `12` slots depending on planet class) where constructed stations physically orbit or lock into place.
-   * **Wormholes**: Render as swirling gravitational lensing / accretion vortex shaders with particle inflow, visually signaling an active spatial choke point.
+   * **Wormholes**: Rest as a compact subspace anomaly marker when idle and erupt on proximity (`240` units) with a DS9-style gravimetric cross-flare, shockwave ring, and 3D depth-displaced swirling cloud funnel.
    * **Selective HDR Bloom**: Use post-processing bloom selectively for ship engine trails, weapon fire (PD tracers vs. heavy Hull Breaker plasma/rail salvos), shield impact ripples, and planetary lava glow.
-   * **Performance**: Use `THREE.InstancedMesh` for asteroid belts, Fighter squadrons, and projectiles to maintain 60 FPS in browser.
+   * **Performance**: Use `THREE.InstancedMesh` for asteroid belts (and pooled/lightweight meshes for combat ships and projectiles) to maintain 60 FPS in browser.
 
 ---
 
@@ -86,9 +86,9 @@ Do not alter these core mechanics without explicit user direction:
 
 1. **Macro-Focused Tug-of-War Control**:
    * Players do **not** micro-manage individual ships in combat.
-   * Players control the war via **Dockyard production queues (with auto-repeat)**, **Rally Points**, **Patrol Routes**, and **Fleet Stances**. Fleets engage and prioritize targets automatically using combat AI.
+   * Players control the war via **Fleet Composition Templates** (with distributed dual-bay Dockyard construction and **Auto-Resupply**), **Rally Points**, **Patrol Routes**, and **Fleet Stances**. Fleets engage and prioritize targets automatically using combat AI.
 2. **5-System Hub-and-Spoke Galaxy**:
-   * **4 Starter Systems** (each with 1 guaranteed **Large** 10-slot Homeworld + randomized **Small** 6-slot / **Medium** 8-slot planets, and an identical balanced Ore-heavy / Crystal-scarce finite resource profile whose inner belt depletes quickly).
+   * **4 Starter Systems** (each with 1 guaranteed **Large** 10-slot Homeworld + secondary **Small** 6-slot / **Medium** 8-slot planets, and an identical balanced Ore-heavy / Crystal-scarce finite resource profile whose inner belt depletes quickly).
    * **1 Central Neutral System** (anchored by 1 **Super-Earth** 12-slot planet + enriched `1.6x` high-yield asteroid belts + 4 permanent open wormholes connecting to all 4 starter systems, even empty ones).
 3. **Planetary Orbital Slots & Building Costs**:
    * **Planet Capacities**: Small = `6`, Medium = `8`, Large = `10`, Super-Earth = `12`.

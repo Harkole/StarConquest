@@ -26,11 +26,11 @@ A match supports up to **4 players** across **5 star systems** arranged in a hub
 
 ```mermaid
 flowchart TD
-    P1["Player 1 System<br/>(1 Large Homeworld + Random Small/Med)"] <-->|Open Wormhole| HUB
-    P2["Player 2 System<br/>(1 Large Homeworld + Random Small/Med)"] <-->|Open Wormhole| HUB
-    HUB["Central Neutral System<br/>(1 Super-Earth + Rich Asteroid Belts + Random Small/Med)"]
-    HUB <-->|Open Wormhole| P3["Player 3 System<br/>(1 Large Homeworld + Random Small/Med)"]
-    HUB <-->|Open Wormhole| P4["Player 4 System<br/>(1 Large Homeworld + Random Small/Med)"]
+    P1["Player 1 System<br/>(1 Large Homeworld + Small/Med Planets)"] <-->|Open Wormhole| HUB
+    P2["Player 2 System<br/>(1 Large Homeworld + Small/Med Planets)"] <-->|Open Wormhole| HUB
+    HUB["Central Neutral System<br/>(1 Super-Earth + Rich Asteroid Belts + Small/Med Planets)"]
+    HUB <-->|Open Wormhole| P3["Player 3 System<br/>(1 Large Homeworld + Small/Med Planets)"]
+    HUB <-->|Open Wormhole| P4["Player 4 System<br/>(1 Large Homeworld + Small/Med Planets)"]
 ```
 
 ### System Rules
@@ -66,7 +66,7 @@ Resources are mined from asteroid belts scattered randomly throughout each star 
   * **Visual Belt Depletion & Automatic Wormhole Expansion**: As a deposit's reserves are mined down, its 3D asteroid/crystal cluster visually shrinks and disappears completely when exhausted. Harvesters naturally deplete the nearby Inner Homeworld Belt (`r ~ 420`) first, then push out to the Mid/Outer pockets (`r ~ 1,120–1,620`), and **automatically transit the wormhole into the Central Nexus** once their starter system runs out of their target resource.
   * **Selection & Camera Pin**: Clicking any Harvester (or Planet) in 3D space or the HUD pins the camera to follow it and displays its target resource and live cargo progress (`x / 40`); panning manually with the mouse or `WASD` breaks the camera pin.
   * **Home Platform & Unload Rates**: Every Harvester docks directly at its originating **Refinery** (`10` units/sec unload) or **Command & Control** (`4` units/sec unload) orbital platform.
-  * **Platform Docking Capacity (Queueing)**: A **Refinery** can unload **`2` Harvester frigates simultaneously** (`20/s` max), while a **Command & Control** is capped at **`1` concurrent Harvester dock** in Standard Tactical / Grand Conquest (`2` in **Blitz Skirmish**). Additional arriving Harvesters wait in a holding queue until a docking pad clears, making Refineries essential for scaling income.
+  * **Platform Docking Capacity (Queueing)**: A **Refinery** can unload **`2` Harvester frigates simultaneously** (`20/s` max) in Standard Tactical / Grand Conquest (**`4`** concurrent docks, `40/s` max in **Blitz Skirmish**), while a **Command & Control** is capped at **`1` concurrent Harvester dock** in Standard Tactical / Grand Conquest (`2` in **Blitz Skirmish**). Additional arriving Harvesters wait in a holding queue until a docking pad clears, making Refineries essential for scaling income.
   * **Platform Mining Focus**: Players can set each Refinery or C&C platform's mining target to **`Auto`**, **`Ore Only`**, or **`Crystal Only`**, directing all Harvesters assigned to that platform to focus on the needed resource.
   * **Fallback on Platform Destruction**: If a Harvester's assigned home platform is destroyed, it automatically reassigns to the closest friendly Refinery or C&C platform at the time of loss.
 * **The Central Super-Earth Advantage**:
@@ -81,8 +81,8 @@ Structures are built in a visible **orbital ring** around planets. Each planet c
 
 | Planet Class | Orbital Slots | Typical Location |
 | :--- | :---: | :--- |
-| **Small Planet** | **6 Slots** | Randomized secondary planets in starter & central systems |
-| **Medium Planet** | **8 Slots** | Randomized secondary planets in starter & central systems |
+| **Small Planet** | **6 Slots** | Secondary planets in starter & central systems *(deterministic layout; future randomization planned)* |
+| **Medium Planet** | **8 Slots** | Secondary planets in starter & central systems *(deterministic layout; future randomization planned)* |
 | **Large Planet** | **10 Slots** | Guaranteed starting Homeworld for each player |
 | **Super-Earth** | **12 Slots** | Unique centerpiece of the Central Neutral System |
 
@@ -92,10 +92,10 @@ Structures are built in a visible **orbital ring** around planets. Each planet c
 | :--- | :---: | :--- |
 | **Command & Control (C&C)** | **2 Slots** | **Unique Homeworld headquarters.** Massive HP pool, built-in basic resource drop-off, base Fleet Supply, and limited Point Defence turrets. **If a player's C&C is destroyed, they are defeated.** |
 | **Planetary Outpost / Hub** | **1 Slot** | Required first structure to claim an unowned secondary planet (Small, Medium, or Super-Earth) and unlock its remaining orbital slots. |
-| **Orbital Dockyard (Shipyard)** | **2 Slots** | Constructs combat ships via manual queues or **toggleable auto-repeat**. Players set rally points or patrol routes directly from Dockyards. Initial Dockyards only build basic craft until expanded via Tech Modules. |
+| **Orbital Dockyard (Shipyard)** | **2 Slots** | Dual-bay dry-dock (`2` parallel slipways) that automatically constructs and resupplies ships for active **Fleet Composition Templates** (with a per-Dockyard `Fleet Building` enable/pause toggle in the HUD). Unlocks Cruisers (`1` Tech Module), Carriers (`2`), and Dreadnoughts (`2`). |
 | **Refinery** | **1 Slot** | Local drop-off and processing center for Ore and Crystals. Spawns 1 free Harvester on completion and can queue additional Harvesters. |
 | **Tech / Specialization Module** | **1 Slot** | Orbital expansion modules that unlock advanced ship hulls (Cruisers, Carriers, Dreadnoughts), increase **Fleet Supply**, or grant doctrine bonuses (e.g., enhanced fighter bays, heavy siege calibration, shield boosters). |
-| **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries, figure-8 planetary shielding, and **3 remote-controlled perimeter sentry turrets** stationed around the far sides of the planet so hostile fleets never have a line-of-sight blind spot (if any gun has line of sight, full platform DPS applies; destroying the main platform destroys its remote sentry turrets). |
+| **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries (`65` Heavy DPS + `45` PD DPS) and **3 remote-controlled perimeter sentry turrets** rendered around the far sides of the planet (in simulation, full platform DPS currently fires from the main platform position without planetary LOS occlusion; destroying the main platform destroys its remote sentry turrets). |
 
 ---
 
@@ -167,7 +167,7 @@ flowchart LR
 * **Formation Cruise & Combat Breakaway**:
   * While cruising across a system or transiting a wormhole, ships in a fleet **match the speed of the slowest hull** so the formation arrives together. Once entering combat range, ships **break formation to individual hull speeds** so fast Destroyers can flank while heavy capitals hold the line.
 * **Fleet Orders & Three Engagement Stances**:
-  * Players direct selected fleets with right-click **Move**, right-click **Attack**, and **Patrol Routes** (multi-waypoint loops, including across wormholes), paired with three clear **Fleet Stances**:
+  * Players direct selected fleets with right-click **Move**, **Patrol Routes** (multi-waypoint loops, including across wormholes), and **Flee** retreat orders (`ORDER_FLEET_ATTACK` also exists in `src/shared/protocol/commands.ts` for future right-click Attack client wiring), paired with three clear **Fleet Stances**:
     1. **Aggressive**: Chases any visible hostile ships anywhere in the **current star system** (respecting Fog of War; never chasing unprompted through wormholes), then returns to its last ordered position / rally point once hostiles are cleared.
     2. **Hold the Line**: Holds its current position and engages any hostile that enters weapons range without moving to pursue.
     3. **Passive**: Neither moves to engage nor fires at hostiles.
@@ -176,22 +176,22 @@ flowchart LR
 
 ## 7. Match Modes & Lobby Presets
 
-Before starting a game, players can select from three match presets tailored to different session lengths and strategic preferences:
+Before starting a game, players will select from three match presets defined in `src/shared/config/presets.ts` *(currently `LocalSimAdapter` defaults to `standard_tactical` until the Pre-Match Lobby, Fog of War, and King of the Hill timer logic are wired)*:
 
 1. **Blitz Skirmish (15–30 Minutes)**
-   * **Economy**: Accelerated harvesting rates and lower initial structure costs.
-   * **Visibility**: Open System Visibility (full vision in systems where you own a unit or structure; only unvisited systems are hidden).
+   * **Economy**: Higher starting resources (`800` Ore / `400` Crystal), `1.6x` accelerated harvesting rate, and expanded concurrent Harvester docking (`2` C&C / `4` Refinery).
+   * **Visibility**: Open System Visibility *(planned — full vision in systems where you own a unit or structure; only unvisited systems are hidden)*.
    * **Victory Condition**: **Last Command & Control Standing**.
 2. **Standard Tactical (20–40 Minutes)**
-   * **Economy**: Standard harvesting and progression pacing.
-   * **Visibility**: **Sensor-Range Fog of War** (visibility is strictly limited to the radar radius of friendly units, orbital structures, and Logistics Hubs).
+   * **Economy**: Standard starting resources (`500` Ore / `250` Crystal), `1.0x` harvesting rate, `1.25x` asteroid reserves, and standard docking (`1` C&C / `2` Refinery).
+   * **Visibility**: **Sensor-Range Fog of War** *(planned — visibility limited to the radar radius of friendly units, orbital structures, and Logistics Hubs)*.
    * **Victory Condition**: **Last Command & Control Standing**.
 3. **Grand Conquest (45+ Minutes)**
-   * **Economy**: Full strategic economy with larger asteroid reserves and extended tech scaling.
-   * **Visibility**: **Sensor-Range Fog of War**.
+   * **Economy**: Full strategic economy with `2.0x` asteroid reserves (`500` Ore / `250` Crystal start, `1.0x` harvest rate).
+   * **Visibility**: **Sensor-Range Fog of War** *(planned)*.
    * **Victory Conditions**:
      * **Last Command & Control Standing**, OR
-     * **King of the Hill**: Capture the Central Neutral System's **Super-Earth** and defend it continuously for a set countdown timer.
+     * **King of the Hill** *(planned — `centralSuperEarthKingOfTheHillSeconds: 600` configured in `presets.ts`; simulation timer not yet wired)*: Capture the Central Neutral System's **Super-Earth** and defend it continuously for 10 minutes.
 
 ---
 
@@ -215,13 +215,13 @@ A core goal of **StarConquest** is delivering rich, atmospheric 2.5D/3D space vi
 3. **Orbital Rings, Wormholes & Combat VFX**:
    * **Orbital Rings**: Sleek orbital ring tracks around every planet (`src/client/renderer/planetFactory.ts`) with visible slot nodes (`6`, `8`, `10`, or `12` slots) on empty slots where stations can be constructed. Once a 1-slot or 2-slot platform occupies a slot (such as the 2-slot Command & Control flagship station on starter Homeworlds), its blue orbital build slot marker is automatically hidden so only genuinely free slots remain visible.
    * **Wormholes (DS9-Style Proximity Opening Event)**: Wormholes (`src/client/shaders/wormholeShader.ts` & `src/client/renderer/spaceEnvironmentFactory.ts`) rest as a compact, shimmering subspace anomaly marker when idle. When a ship approaches within proximity (`240` units—or when triggered from the HUD for inspection), the wormhole erupts with a Deep Space 9-inspired gravimetric cross-flare and shockwave ring before unfurling into a 3D depth-displaced swirling cloud funnel and luminous tunnel throat.
-   * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`), Fighter squadrons, and projectiles use `THREE.InstancedMesh` to sustain 60 FPS.
+   * **Selective HDR Bloom & Instancing**: HDR bloom illuminates ship engine trails, weapon salvos (rapid Point Defence tracers vs. heavy Hull Breaker plasma/rail shots), shield impact ripples, and planetary lava. Asteroid belts (`src/client/renderer/spaceEnvironmentFactory.ts`) use `THREE.InstancedMesh` to sustain 60 FPS (combat ships and VFX use grouped/pooled Three.js meshes).
 4. **Orbital Camera & Sector Navigation (`src/client/renderer/orbitalCamera.ts` & `src/client/ui/systemHud.ts`)**:
    * **Pan**: Left-drag, middle-drag, or `WASD` / Arrow keys across the star system plane.
    * **Orbit & Tilt**: Right-drag to rotate azimuth and polar viewing angles.
    * **Zoom & Planet Focus**: Mouse wheel zooms smoothly from system-wide tactical overview down to close-up planetary surface/cloud inspection; clicking any planet or system in the HUD smoothly glides the camera to that target.
 5. **Ship & Orbital Platform 3D Art Style ([docs/artstyle.md](./docs/artstyle.md))**:
-   * All 3D ship and orbital platform models follow the **Grounded Industrial Space Opera** style guide and master material palette defined in [docs/artstyle.md](./docs/artstyle.md) (gunmetal slate `#3e4652`, weathered ochre `#c27d2c`, dark charcoal iron `#1e232a` ribbing, warm amber `#fbbf24` bridges, and cool cyan `#38bdf8` / amber `#f59e0b` containment & thruster lighting).
+   * All 3D ship and orbital platform models follow the **Grounded Industrial Space Opera** style guide and master material palette defined in [docs/artstyle.md](./docs/artstyle.md) (gunmetal slate `#46505e`, weathered ochre `#cd8734`, dark charcoal iron `#242a33` ribbing, warm amber `#fbbf24` bridges, cool cyan `#38bdf8` / amber `#f59e0b` containment & thruster lighting, and per-player faction palette overrides in `src/client/renderer/factionColors.ts`).
    * Whenever generating or modifying any ship or orbital platform model, always consult and update [docs/artstyle.md](./docs/artstyle.md), building and approving one model at a time.
 
 ---
@@ -251,15 +251,15 @@ flowchart TD
     end
 ```
 
-1. **Local vs. AI Matches (100% Local in Browser)**:
-   * Runs **purely locally** inside the user's browser (main thread or Web Worker) via `LocalSimAdapter`.
-   * Requires **zero servers and zero network traffic**—ideal for instant play, offline play, and rapid AI/balance tuning.
-2. **Online Multiplayer (Player-Hosted P2P via WebRTC)**:
-   * One player creates a match and acts as the **Authoritative Listen-Server Host** directly in their browser.
+1. **Local vs. AI Matches (100% Local in Browser — Implemented)**:
+   * Runs **purely locally** inside the user's browser main thread via `LocalSimAdapter` (`src/client/net/localSimAdapter.ts`; Web Worker offloading optional in future).
+   * Requires **zero servers and zero network traffic**—ideal for instant play, offline play, and rapid AI/balance tuning. *(Note: `StandardAIBot` in `src/shared/ai/aiController.ts` is currently a minimal stub pending Roadmap #5 `feature/lobby-and-ai`.)*
+2. **Online Multiplayer (Player-Hosted P2P via WebRTC — Planned)**:
+   * One player creates a match and acts as the **Authoritative Listen-Server Host** directly in their browser (`WebRTCPeerAdapter`, not yet implemented).
    * Up to 3 other human players join peer-to-peer using a short **Room Code** over **WebRTC DataChannels** (with any remaining slots filled by AI bots running on the host).
    * Eliminates the need to run or pay for dedicated game simulation servers while keeping latency smooth for macro-focused RTS controls.
-3. **Optional Dedicated Headless Host (Future-Proofed)**:
-   * Because `src/shared/sim` has no browser dependencies, it can also be wrapped in a lightweight Node.js WebSocket server later if public matchmaking or dedicated rooms are ever desired.
+3. **Optional Dedicated Headless Host (Future-Proofed — Planned)**:
+   * Because `src/shared/sim` has no browser dependencies, it can also be wrapped in a lightweight Node.js WebSocket server (`src/server/`, not yet created) if public matchmaking or dedicated rooms are ever desired.
 
 ---
 
@@ -275,7 +275,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 | **Destroyer** | 140 / 40 | 12s | 2 | 0 *(Hull Only)* | 420 | 68 | 0.55 | Medium guns (`1.35x` Hull mult) + light Flak PD |
 | **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
 | **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
-| **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.18` tracking) |
+| **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.14` tracking, forward arc) + Dorsal/Broadside Heavy Turrets (`115` alpha, `0.34` tracking) |
 | **Resource Harvester** | 100 / 20 | 9s | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine), max queue `5` |
 
 ### Deep-Space Structures (`src/shared/config/structures.ts`)
