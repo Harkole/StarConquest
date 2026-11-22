@@ -1,5 +1,6 @@
 import {
   DEEP_SPACE_STRUCTURES,
+  MATCH_PRESETS,
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
@@ -21,8 +22,13 @@ import {
   SMALLEST_FIRST_FLEET_HULLS,
 } from '../../shared/sim/gameSimulation.ts';
 import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
+import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
+import {
+  LobbyController,
+  formatMatchClockSeconds,
+} from './lobbyController.ts';
 
 const BUILDABLE_STRUCTURE_IDS: readonly OrbitalStructureId[] = [
   'planetary_outpost',
@@ -223,8 +229,13 @@ export function mountSystemHud(
   musicPlayer?: AmbientMusicPlayer,
 ): void {
   const simAdapter = sceneManager.simAdapter;
-  const sim = simAdapter.simulation;
-  const playerId = simAdapter.localPlayerId;
+  let sim = simAdapter.simulation;
+  let playerId = simAdapter.localPlayerId;
+
+  function syncSimRefs(): void {
+    sim = simAdapter.simulation;
+    playerId = simAdapter.localPlayerId;
+  }
 
   let selectedSlotIndex = 2;
   let statusBannerMessage = '';
@@ -250,14 +261,14 @@ export function mountSystemHud(
 
   const topBarEl = document.createElement('div');
   topBarEl.className = 'hud-econ-bar';
+  const lobbyHostEl = document.createElement('div');
   const mainBodyEl = document.createElement('div');
   mainBodyEl.className = 'hud-main-body';
   const harvesterInspectorEl = document.createElement('div');
   harvesterInspectorEl.className = 'hud-harvester-inspector';
   container.innerHTML = '';
-  container.append(topBarEl, harvesterInspectorEl, mainBodyEl);
+  container.append(topBarEl, lobbyHostEl, harvesterInspectorEl, mainBodyEl);
 
-  // Mount Top Economy Bar DOM once and patch numeric text/classes in-place so buttons never pulse or drop clicks
   topBarEl.innerHTML = `
     <div class="econ-metrics">
       <div class="econ-pill ore">
@@ -276,8 +287,16 @@ export function mountSystemHud(
         <span class="econ-label">HARVESTERS</span>
         <strong id="econ-harvesters-val">0</strong>
       </div>
+      <div class="econ-pill" id="hud-match-status-pill" title="Active Match Contenders & Victory Telemetry">
+        <span class="econ-label">MATCH</span>
+        <strong id="hud-match-status-val">4 Contenders</strong>
+      </div>
     </div>
     <div class="econ-actions">
+      <button class="hud-btn" data-action="toggle-lobby" title="Configure Match Mode, Human/AI Slots & Victory Conditions">
+        <span>Match Lobby</span>
+        <span class="hud-badge" id="hud-lobby-preset-badge">Standard Tactical</span>
+      </button>
       <button class="hud-btn" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
         Mining: Local System
       </button>
@@ -294,6 +313,11 @@ export function mountSystemHud(
   const econCrystalEl = topBarEl.querySelector<HTMLElement>('#econ-crystal-val');
   const econSupplyEl = topBarEl.querySelector<HTMLElement>('#econ-supply-val');
   const econHarvestersEl = topBarEl.querySelector<HTMLElement>('#econ-harvesters-val');
+  const matchStatusValEl = topBarEl.querySelector<HTMLElement>('#hud-match-status-val');
+  const lobbyPresetBadgeEl = topBarEl.querySelector<HTMLElement>('#hud-lobby-preset-badge');
+  const lobbyToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
+    '[data-action="toggle-lobby"]',
+  );
   const hubMiningBtnEl = topBarEl.querySelector<HTMLButtonElement>(
     '[data-action="toggle-hub-mining"]',
   );
@@ -304,7 +328,36 @@ export function mountSystemHud(
     topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
   );
 
+  const lobbyController = new LobbyController({
+    hostContainer: lobbyHostEl,
+    sceneManager,
+    onMatchLaunched: (setup) => {
+      syncSimRefs();
+      selectedSlotIndex = 2;
+      crossSystemMiningEnabled = false;
+      const presetCfg = MATCH_PRESETS[setup.presetId];
+      const aiCount = Object.values(setup.slots).filter(
+        (s) => s.kind === 'ai',
+      ).length;
+      const emptyCount = Object.values(setup.slots).filter(
+        (s) => s.kind === 'empty',
+      ).length;
+      statusBannerMessage = `Launched ${presetCfg.displayName} (${FACTION_PALETTES[setup.localPlayerId].label}, ${aiCount} AI, ${emptyCount} Empty Sector${emptyCount === 1 ? '' : 's'}).`;
+      renderEconomyBar();
+      renderHarvesterInspector();
+      renderMainPanel();
+    },
+    onOpenStateChange: () => {
+      renderEconomyBar();
+    },
+  });
+
+  lobbyToggleBtnEl?.addEventListener('click', () => {
+    lobbyController.toggleLobby();
+  });
+
   hubMiningBtnEl?.addEventListener('click', () => {
+    syncSimRefs();
     crossSystemMiningEnabled = !crossSystemMiningEnabled;
     sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
     renderEconomyBar();
@@ -326,15 +379,47 @@ export function mountSystemHud(
   let lastRenderedMusicMuted: boolean | null = null;
 
   function renderEconomyBar(): void {
+    syncSimRefs();
     const pState = sim.getPlayerState(playerId);
     const playerHarvesters = sim
       .getAllHarvesters()
       .filter((h) => h.ownerId === playerId);
+    const outcome = sim.getMatchOutcome();
+    const presetCfg = MATCH_PRESETS[sim.presetId];
+    const survivingCount =
+      outcome.activeContenderIds.length - outcome.defeatedPlayerIds.length;
 
     if (econOreEl) econOreEl.textContent = `${pState.ore}`;
     if (econCrystalEl) econCrystalEl.textContent = `${pState.crystal}`;
     if (econSupplyEl) econSupplyEl.textContent = `${pState.supplyUsed} / ${pState.supplyCap}`;
     if (econHarvestersEl) econHarvestersEl.textContent = `${playerHarvesters.length}`;
+    if (lobbyPresetBadgeEl) {
+      lobbyPresetBadgeEl.textContent = presetCfg.displayName;
+    }
+    if (lobbyToggleBtnEl) {
+      lobbyToggleBtnEl.classList.toggle('active', lobbyController.isLobbyOpen());
+    }
+    if (matchStatusValEl) {
+      if (outcome.status === 'victory') {
+        matchStatusValEl.textContent = 'VICTORY';
+        matchStatusValEl.style.color = '#22c55e';
+      } else if (outcome.status === 'defeat') {
+        matchStatusValEl.textContent = 'DEFEAT';
+        matchStatusValEl.style.color = '#ef4444';
+      } else if (
+        outcome.kingOfTheHill.enabled &&
+        outcome.kingOfTheHill.controllerId &&
+        outcome.kingOfTheHill.remainingSeconds !== null
+      ) {
+        matchStatusValEl.textContent = `KOTH ${formatMatchClockSeconds(outcome.kingOfTheHill.remainingSeconds)}`;
+        matchStatusValEl.style.color = outcome.kingOfTheHill.isContested
+          ? '#f87171'
+          : '#fcd34d';
+      } else {
+        matchStatusValEl.textContent = `${survivingCount}/${outcome.activeContenderIds.length} C&C`;
+        matchStatusValEl.style.color = '#7dd3fc';
+      }
+    }
     if (hubMiningBtnEl) {
       hubMiningBtnEl.classList.toggle('active', crossSystemMiningEnabled);
       hubMiningBtnEl.textContent = crossSystemMiningEnabled
@@ -358,11 +443,13 @@ export function mountSystemHud(
       const spd = Number(btn.dataset.speed ?? '1');
       btn.classList.toggle('active', simAdapter.simSpeedMultiplier === spd);
     }
+    lobbyController.syncTelemetry();
   }
 
   let lastInspectedHarvesterId: string | null = null;
 
   function patchHarvesterInspectorLive(): void {
+    syncSimRefs();
     const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
     const selectedHarvester = selectedHarvesterId
       ? sim.getHarvesterById(selectedHarvesterId)
@@ -446,6 +533,7 @@ export function mountSystemHud(
   }
 
   function renderHarvesterInspector(): void {
+    syncSimRefs();
     const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
     const selectedHarvester = selectedHarvesterId
       ? sim.getHarvesterById(selectedHarvesterId)
@@ -520,6 +608,7 @@ export function mountSystemHud(
   let lastMainPanelSignature = '';
 
   function getCurrentMainPanelSignature(): string {
+    syncSimRefs();
     return computeMainPanelSignature(sim, {
       activeSystemId: sceneManager.getActiveSystem().id,
       selectedPlanetId: sceneManager.getSelectedPlanetId(),
@@ -535,6 +624,7 @@ export function mountSystemHud(
   }
 
   function renderMainPanel(): void {
+    syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
     const paletteInfo = NEBULA_PALETTES[activeSystem.nebulaPalette];
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
@@ -1728,6 +1818,7 @@ export function mountSystemHud(
   renderMainPanel();
 
   function patchMainPanelLiveTelemetry(): void {
+    syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
     const selectedPlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
 
