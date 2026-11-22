@@ -316,9 +316,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 5. **Pre-Match Lobby & AI Opponents (`feature/lobby-and-ai`)**: Build the pre-match mode selector (Blitz Skirmish, Standard Tactical, Grand Conquest) with configurable Human/AI slots and `GameCommand`-driven AI bots for full 4-player local matches.
 6. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**: Add an in-game encyclopaedia documenting every ship, orbital platform, deep-space installation, how-to-play mechanics, and victory goals, complete with an interactive 3D preview viewport (orbit, zoom, and pan) rendering live models from `ShipModelLibrary` and `StationModelLibrary` alongside live data-driven stats from `src/shared/config/`.
 
-### Faction & Player Ownership Visual Differentiation
-* **Planned Art & UI Feature**: Update orbital platforms, deep-space structures, and combat fleets so ownership is immediately obvious at a glance (currently all 4 players share identical gunmetal/ochre hull trims and blue selection cues). Introduce distinct per-player faction accent colors, emissive trims, and ownership indicators so friendly vs. hostile ships and bases are unmistakable in combat.
-
 ### Sensor-Range Fog of War & Last-Known-Intel Snapshots
 * **Planned Feature**: Implement full sensor-range Fog of War (for Standard Tactical & Grand Conquest modes):
   * Unexplored space only reveals base planet locations (no live hostile fleets, structures, or resource depletion state outside friendly sensor radii).

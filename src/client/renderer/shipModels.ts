@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { ShipClassId } from '../../shared/config/index.ts';
+import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
+import { FACTION_PALETTES } from './factionColors.ts';
 import { createProceduralHullTextures } from './proceduralHullTextures.ts';
 
 export type CombatShipClassId = Exclude<ShipClassId, 'harvester'>;
@@ -11,6 +13,8 @@ export interface ShipModelBuildOptions {
   readonly staged?: boolean;
   /** Optional uniform scale override (defaults to canonical 1.0 ship scale). */
   readonly scale?: number;
+  /** Optional owning player slot for per-faction hull accent and engine tinting. */
+  readonly ownerId?: PlayerSlotId;
 }
 
 /**
@@ -107,6 +111,13 @@ export class ShipModelLibrary {
   });
 
   private readonly geometries: THREE.BufferGeometry[] = [];
+  private readonly factionMaterials = new Map<
+    PlayerSlotId,
+    {
+      readonly accentMat: THREE.MeshStandardMaterial;
+      readonly engineMat: THREE.MeshBasicMaterial;
+    }
+  >();
 
   // Light Fighter "Stinger" reusable geometries (canonical ~1.22u length x 1.04u wingspan)
   private readonly stingerMidHullGeom = this.registerGeom(
@@ -494,7 +505,43 @@ export class ShipModelLibrary {
     this.intakeCyanMat.dispose();
     this.engineCoreMat.dispose();
     this.buildingWireframeMat.dispose();
+    for (const pair of this.factionMaterials.values()) {
+      pair.accentMat.dispose();
+      pair.engineMat.dispose();
+    }
+    this.factionMaterials.clear();
     this.hullTextures.dispose();
+  }
+
+  private getFactionMaterials(ownerId: PlayerSlotId): {
+    readonly accentMat: THREE.MeshStandardMaterial;
+    readonly engineMat: THREE.MeshBasicMaterial;
+  } {
+    let pair = this.factionMaterials.get(ownerId);
+    if (!pair) {
+      const palette = FACTION_PALETTES[ownerId];
+      pair = {
+        accentMat: new THREE.MeshStandardMaterial({
+          name: `hull_faction_accent_${ownerId}`,
+          color: palette.accentHex,
+          map: this.hullTextures.weatheredOchre.map,
+          bumpMap: this.hullTextures.weatheredOchre.bumpMap,
+          bumpScale: 0.06,
+          roughnessMap: this.hullTextures.weatheredOchre.roughnessMap,
+          metalness: 0.55,
+          roughness: 0.62,
+        }),
+        engineMat: new THREE.MeshBasicMaterial({
+          color: new THREE.Color(
+            palette.engineColor[0],
+            palette.engineColor[1],
+            palette.engineColor[2],
+          ),
+        }),
+      };
+      this.factionMaterials.set(ownerId, pair);
+    }
+    return pair;
   }
 
   /**
@@ -504,18 +551,39 @@ export class ShipModelLibrary {
     shipClassId: CombatShipClassId,
     options: ShipModelBuildOptions = {},
   ): THREE.Group {
+    let root: THREE.Group;
     switch (shipClassId) {
       case 'fighter':
-        return this.buildStingerFighterMesh(options);
+        root = this.buildStingerFighterMesh(options);
+        break;
       case 'destroyer':
-        return this.buildHavocDestroyerMesh(options);
+        root = this.buildHavocDestroyerMesh(options);
+        break;
       case 'cruiser':
-        return this.buildCruiserMesh(options);
+        root = this.buildCruiserMesh(options);
+        break;
       case 'carrier':
-        return this.buildVanguardCarrierMesh(options);
+        root = this.buildVanguardCarrierMesh(options);
+        break;
       case 'dreadnought':
-        return this.buildImperatorDreadnoughtMesh(options);
+        root = this.buildImperatorDreadnoughtMesh(options);
+        break;
     }
+
+    if (options.ownerId && options.ownerId !== 'player_1' && !options.wireframe) {
+      const { accentMat, engineMat } = this.getFactionMaterials(options.ownerId);
+      root.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) {
+          return;
+        }
+        if (obj.material === this.accentOchreMat) {
+          obj.material = accentMat;
+        } else if (obj.material === this.engineCoreMat) {
+          obj.material = engineMat;
+        }
+      });
+    }
+    return root;
   }
 
   /**

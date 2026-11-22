@@ -17,6 +17,7 @@ import {
   StationModelLibrary,
   type DockyardBayOrderInfo,
 } from './stationModels.ts';
+import { FACTION_PALETTES } from './factionColors.ts';
 
 export interface OrbitalSlotPoint {
   readonly slotIndex: number;
@@ -257,11 +258,14 @@ export function createLivingPlanetGroup(
     latestPlanetState = planetState;
     isHabitedUniform.value = planetState.ownerId !== null ? 1.0 : 0.0;
     if (planetState.ownerId !== null) {
-      trackMaterial.color.setHex(0x38bdf8);
+      trackMaterial.color.setHex(FACTION_PALETTES[planetState.ownerId].tacticalHex);
     }
 
     const sig = planetState.structures
-      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}:${s.occupiedSlots.join(',')}`)
+      .map(
+        (s) =>
+          `${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}:${s.occupiedSlots.join(',')}`,
+      )
       .join('|');
     if (sig === lastSignature) {
       return;
@@ -299,6 +303,7 @@ export function createLivingPlanetGroup(
         struct.structureId,
         struct.isComplete,
         orbitalRingRadius,
+        struct.ownerId,
       );
       stationGroup.position.set(
         Math.cos(angle) * orbitalRingRadius,

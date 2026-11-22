@@ -1058,6 +1058,73 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
       if (obj.name === 'fighter_rebuild_bar' && obj.visible) visibleRebuildBars += 1;
     });
     expect(visibleRebuildBars).toBe(0);
+
+    // Faction visual differentiation: player_1 (Cyan/Ochre) vs player_2 (Crimson) ships & stations
+    fleetRenderer.syncShips(
+      [
+        {
+          ...baseShip,
+          id: 'ship_p1',
+          ownerId: 'player_1',
+          shipClassId: 'cruiser',
+          shields: 450,
+          maxShields: 450,
+          hull: 750,
+          maxHull: 750,
+        },
+        {
+          ...baseShip,
+          id: 'ship_p2',
+          ownerId: 'player_2',
+          shipClassId: 'cruiser',
+          shields: 450,
+          maxShields: 450,
+          hull: 750,
+          maxHull: 750,
+        },
+      ],
+      null,
+      null,
+      0,
+    );
+    const ringColors = new Set<number>();
+    const pipColors = new Set<number>();
+    let crimsonAccentCount = 0;
+    fleetRenderer.rootGroup.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      if (obj.name === 'faction_ownership_ring' && obj.material instanceof THREE.MeshBasicMaterial) {
+        ringColors.add(obj.material.color.getHex());
+      }
+      if (obj.name === 'faction_owner_pip' && obj.material instanceof THREE.MeshBasicMaterial) {
+        pipColors.add(obj.material.color.getHex());
+      }
+      if (
+        obj.material instanceof THREE.MeshStandardMaterial &&
+        obj.material.name === 'hull_faction_accent_player_2'
+      ) {
+        crimsonAccentCount += 1;
+      }
+    });
+    expect(ringColors.has(0x38bdf8)).toBe(true);
+    expect(ringColors.has(0xef4444)).toBe(true);
+    expect(pipColors.has(0x38bdf8)).toBe(true);
+    expect(pipColors.has(0xef4444)).toBe(true);
+    expect(crimsonAccentCount).toBeGreaterThan(0);
+
+    const stations = new StationModelLibrary();
+    const enemyHub = stations.buildStationMesh('logistics_hub', true, undefined, 'player_2');
+    let enemyStationAccentCount = 0;
+    enemyHub.traverse((obj) => {
+      if (
+        obj instanceof THREE.Mesh &&
+        obj.material instanceof THREE.MeshStandardMaterial &&
+        obj.material.name === 'station_faction_accent_player_2'
+      ) {
+        enemyStationAccentCount += 1;
+      }
+    });
+    expect(enemyStationAccentCount).toBeGreaterThan(0);
+    stations.dispose();
     fleetRenderer.dispose();
   });
 });

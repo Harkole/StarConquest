@@ -3,10 +3,12 @@ import {
   SHIP_CLASSES,
   type CombatShipClassId,
 } from '../../shared/config/index.ts';
+import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
 import type {
   CombatShipUnitState,
   DockyardWaypoint,
 } from '../../shared/sim/gameSimulation.ts';
+import { FACTION_PALETTES } from './factionColors.ts';
 import { ShipModelLibrary } from './shipModels.ts';
 
 interface CombatShipRenderEntry {
@@ -100,6 +102,8 @@ export class CombatFleetRenderer {
     side: THREE.DoubleSide,
     depthTest: false,
   });
+  private readonly factionRingMaterials = new Map<PlayerSlotId, THREE.MeshBasicMaterial>();
+  private readonly factionPipMaterials = new Map<PlayerSlotId, THREE.MeshBasicMaterial>();
 
   private readonly unitBarPlaneGeom = new THREE.PlaneGeometry(1, 1);
 
@@ -303,7 +307,42 @@ export class CombatFleetRenderer {
     this.hullBarMat.dispose();
     this.shieldBarMat.dispose();
     this.rebuildBarMat.dispose();
+    for (const mat of this.factionRingMaterials.values()) {
+      mat.dispose();
+    }
+    this.factionRingMaterials.clear();
+    for (const mat of this.factionPipMaterials.values()) {
+      mat.dispose();
+    }
+    this.factionPipMaterials.clear();
     this.shipModels.dispose();
+  }
+
+  private getFactionRingMat(ownerId: PlayerSlotId): THREE.MeshBasicMaterial {
+    let mat = this.factionRingMaterials.get(ownerId);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        color: FACTION_PALETTES[ownerId].tacticalHex,
+        transparent: true,
+        opacity: 0.42,
+        side: THREE.DoubleSide,
+      });
+      this.factionRingMaterials.set(ownerId, mat);
+    }
+    return mat;
+  }
+
+  private getFactionPipMat(ownerId: PlayerSlotId): THREE.MeshBasicMaterial {
+    let mat = this.factionPipMaterials.get(ownerId);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        color: FACTION_PALETTES[ownerId].tacticalHex,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      });
+      this.factionPipMaterials.set(ownerId, mat);
+    }
+    return mat;
   }
 
   private clearOverlayGroup(): void {
@@ -318,10 +357,26 @@ export class CombatFleetRenderer {
 
   private createShipEntry(ship: CombatShipUnitState): CombatShipRenderEntry {
     const group = new THREE.Group();
-    const model = this.shipModels.buildShipMesh(ship.shipClassId);
+    const model = this.shipModels.buildShipMesh(ship.shipClassId, {
+      ownerId: ship.ownerId,
+    });
     group.add(model);
 
     const hitRadius = HIT_RADIUS_BY_CLASS[ship.shipClassId];
+    const factionRingGeom = new THREE.RingGeometry(
+      hitRadius * 0.68,
+      hitRadius * 0.8,
+      24,
+    ).rotateX(-Math.PI / 2);
+    this.geometries.push(factionRingGeom);
+    const factionRing = new THREE.Mesh(
+      factionRingGeom,
+      this.getFactionRingMat(ship.ownerId),
+    );
+    factionRing.name = 'faction_ownership_ring';
+    factionRing.position.set(0, -0.46, 0);
+    group.add(factionRing);
+
     const ringGeom = new THREE.RingGeometry(hitRadius * 0.85, hitRadius * 1.02, 28).rotateX(
       -Math.PI / 2,
     );
@@ -351,6 +406,17 @@ export class CombatFleetRenderer {
     bgMesh.position.set(0, hasShieldBar ? 0.22 : 0, -0.02);
     bgMesh.renderOrder = 20;
     healthBarGroup.add(bgMesh);
+
+    // Faction ownership color pip anchored to the left edge of the overhead bar
+    const pipMesh = new THREE.Mesh(
+      this.unitBarPlaneGeom,
+      this.getFactionPipMat(ship.ownerId),
+    );
+    pipMesh.name = 'faction_owner_pip';
+    pipMesh.scale.set(0.38, bgHeight, 1);
+    pipMesh.position.set(-barLayout.width * 0.5 - 0.38, hasShieldBar ? 0.22 : 0, 0);
+    pipMesh.renderOrder = 21;
+    healthBarGroup.add(pipMesh);
 
     const hullFillMesh = new THREE.Mesh(this.unitBarPlaneGeom, this.hullBarMat);
     hullFillMesh.name = 'hull_health_bar';

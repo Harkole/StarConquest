@@ -651,7 +651,7 @@ export class SystemSceneManager {
       this.activeSystem.id,
     );
     const sig = deepSpaceStructs
-      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}`)
+      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}`)
       .join('|');
 
     if (sig !== this.lastDeepSpaceSignature) {
@@ -663,6 +663,8 @@ export class SystemSceneManager {
         const stationGroup = this.deepSpaceModels.buildStationMesh(
           ds.structureId,
           ds.isComplete,
+          undefined,
+          ds.ownerId,
         );
         stationGroup.position.set(ds.position.x, 0, ds.position.z);
 
