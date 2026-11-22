@@ -3194,15 +3194,68 @@ export class GameSimulation {
     });
   }
 
+  private hasHostileWithinRange(
+    ownerId: PlayerSlotId,
+    systemId: string,
+    origin: Vector2D,
+    range: number,
+  ): boolean {
+    for (const s of this.combatShips) {
+      if (
+        s.ownerId !== ownerId &&
+        s.currentSystemId === systemId &&
+        s.hull > 0 &&
+        Math.hypot(s.position.x - origin.x, s.position.z - origin.z) <= range
+      ) {
+        return true;
+      }
+    }
+    for (const h of this.harvesters) {
+      if (
+        h.ownerId !== ownerId &&
+        h.currentSystemId === systemId &&
+        h.hull > 0 &&
+        Math.hypot(h.position.x - origin.x, h.position.z - origin.z) <= range
+      ) {
+        return true;
+      }
+    }
+    for (const ds of this.deepSpaceStructures) {
+      if (
+        ds.ownerId !== ownerId &&
+        ds.systemId === systemId &&
+        ds.hull > 0 &&
+        Math.hypot(ds.position.x - origin.x, ds.position.z - origin.z) <= range
+      ) {
+        return true;
+      }
+    }
+    for (const planetState of this.planets.values()) {
+      if (planetState.planet.systemId !== systemId) continue;
+      for (const s of planetState.structures) {
+        if (s.ownerId !== ownerId && s.hull > 0) {
+          const pos = this.getStructureWorldPosition(planetState, s);
+          if (Math.hypot(pos.x - origin.x, pos.z - origin.z) <= range) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   /**
-   * Auto-launches and replenishes organic Fighter Squadrons from completed Fleet Carriers
-   * (`fighterSquadronCapacity = 4`) and completed Atlas Logistics Hubs (`4` wings),
+   * Scrambles organic Fighter Squadrons from completed Fleet Carriers (`fighterSquadronCapacity = 4`)
+   * and completed Atlas Logistics Hubs (`4` wings) ONLY when hostiles are within engagement range,
+   * recalls and docks them back into the hangar once clear (preventing transit formation jitter),
    * and enforces the Carrier/Hub tether rule when a host is destroyed.
    */
   private updateCarrierAndHubFighters(deltaSeconds: number): void {
     const replenishTime = SHIP_CLASSES.fighter.buildTimeSeconds;
+    const carrierScrambleRange = 340;
+    const hubScrambleRange = 280;
 
-    // 1. Carrier organic Fighter wings
+    // 1. Carrier organic Fighter wings (scramble only when hostiles are in range & stance != passive)
     for (const ship of this.combatShips) {
       if (ship.shipClassId !== 'carrier') {
         continue;
@@ -3211,7 +3264,16 @@ export class GameSimulation {
       const activeWings = this.combatShips.filter(
         (f) => f.shipClassId === 'fighter' && f.tetherHostId === ship.id,
       ).length;
-      if (activeWings < cap) {
+      const hostileNearby =
+        ship.stance !== 'passive' &&
+        this.hasHostileWithinRange(
+          ship.ownerId,
+          ship.currentSystemId,
+          ship.position,
+          carrierScrambleRange,
+        );
+
+      if (hostileNearby && activeWings < cap) {
         ship.fighterReplenishCooldownSeconds -= deltaSeconds;
         if (ship.fighterReplenishCooldownSeconds <= 0) {
           ship.fighterReplenishCooldownSeconds = replenishTime;
@@ -3220,15 +3282,18 @@ export class GameSimulation {
             ship.currentSystemId,
             { x: ship.position.x + 8, z: ship.position.z + 8 },
             'fighter',
-            ship.stance,
+            'aggressive',
             ship.id,
             null,
           );
         }
+      } else if (!hostileNearby) {
+        // Keep hangar ready to scramble immediately on next contact
+        ship.fighterReplenishCooldownSeconds = 0;
       }
     }
 
-    // 2. Logistics Hub organic Fighter wings
+    // 2. Logistics Hub organic Fighter wings (scramble only when hostiles enter defense radius)
     for (const ds of this.deepSpaceStructures) {
       if (ds.structureId !== 'logistics_hub' || !ds.isComplete) {
         continue;
@@ -3236,7 +3301,14 @@ export class GameSimulation {
       const activeWings = this.combatShips.filter(
         (f) => f.shipClassId === 'fighter' && f.tetherHostId === ds.id,
       ).length;
-      if (activeWings < LOGISTICS_HUB_FIGHTER_CAPACITY) {
+      const hostileNearby = this.hasHostileWithinRange(
+        ds.ownerId,
+        ds.systemId,
+        ds.position,
+        hubScrambleRange,
+      );
+
+      if (hostileNearby && activeWings < LOGISTICS_HUB_FIGHTER_CAPACITY) {
         ds.fighterReplenishCooldownSeconds =
           (ds.fighterReplenishCooldownSeconds ?? 0) - deltaSeconds;
         if (ds.fighterReplenishCooldownSeconds <= 0) {
@@ -3251,11 +3323,13 @@ export class GameSimulation {
             null,
           );
         }
+      } else if (!hostileNearby) {
+        ds.fighterReplenishCooldownSeconds = 0;
       }
     }
 
-    // 3. Tether escort & stranded Fighter cleanup
-    const strandedFighterIds: string[] = [];
+    // 3. Tether recall/docking when clear & stranded Fighter cleanup on host loss
+    const fightersToRemove: string[] = [];
     for (const fighter of this.combatShips) {
       if (fighter.shipClassId !== 'fighter' || !fighter.tetherHostId) {
         continue;
@@ -3264,12 +3338,30 @@ export class GameSimulation {
         (s) => s.id === fighter.tetherHostId && s.shipClassId === 'carrier',
       );
       if (hostCarrier) {
-        fighter.stance = hostCarrier.stance;
+        const hostileNearby =
+          hostCarrier.stance !== 'passive' &&
+          this.hasHostileWithinRange(
+            hostCarrier.ownerId,
+            hostCarrier.currentSystemId,
+            hostCarrier.position,
+            carrierScrambleRange,
+          );
+        fighter.stance = hostileNearby ? 'aggressive' : 'passive';
         fighter.targetSystemId = hostCarrier.currentSystemId;
         fighter.targetPosition = {
           x: hostCarrier.position.x,
           z: hostCarrier.position.z,
         };
+        if (!hostileNearby) {
+          const distToCarrier = Math.hypot(
+            fighter.position.x - hostCarrier.position.x,
+            fighter.position.z - hostCarrier.position.z,
+          );
+          if (distToCarrier <= 20) {
+            // Dock cleanly back into the Carrier's hangar bay
+            fightersToRemove.push(fighter.id);
+          }
+        }
         continue;
       }
       const hostHub = this.deepSpaceStructures.find(
@@ -3279,8 +3371,24 @@ export class GameSimulation {
           ds.isComplete,
       );
       if (hostHub) {
+        const hostileNearby = this.hasHostileWithinRange(
+          hostHub.ownerId,
+          hostHub.systemId,
+          hostHub.position,
+          hubScrambleRange,
+        );
+        fighter.stance = hostileNearby ? 'aggressive' : 'passive';
         fighter.targetSystemId = hostHub.systemId;
         fighter.targetPosition = { x: hostHub.position.x, z: hostHub.position.z };
+        if (!hostileNearby) {
+          const distToHub = Math.hypot(
+            fighter.position.x - hostHub.position.x,
+            fighter.position.z - hostHub.position.z,
+          );
+          if (distToHub <= 24) {
+            fightersToRemove.push(fighter.id);
+          }
+        }
         continue;
       }
 
@@ -3307,10 +3415,10 @@ export class GameSimulation {
         continue;
       }
       // No fighter support left in system -> stranded Fighter squadron lost
-      strandedFighterIds.push(fighter.id);
+      fightersToRemove.push(fighter.id);
     }
 
-    for (const fId of strandedFighterIds) {
+    for (const fId of fightersToRemove) {
       this.destroyCombatShip(fId);
     }
   }

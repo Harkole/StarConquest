@@ -1274,7 +1274,8 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(remainingP2Fighters).toHaveLength(0);
     expect(remainingP1Cruisers).toHaveLength(2);
 
-    // 4. Carrier auto-launches tethered Fighters (up to 4); destroying the Carrier strands & removes them
+    // 4. Carrier keeps Fighters docked when clear (no transit jitter), scrambles up to 4 on enemy contact,
+    //    and destroying the Carrier strands & removes them
     const carrierSim = new GameSimulation('blitz_skirmish');
     const carrier = carrierSim.spawnCombatShipDirect(
       'player_1',
@@ -1283,6 +1284,23 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
       'carrier',
       'hold_the_line',
     );
+    // No enemies nearby -> Fighters stay docked in the Carrier hangar
+    carrierSim.stepTick(10.0);
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id),
+    ).toHaveLength(0);
+
+    // Hostile Dreadnought enters scramble range (passive so it stays alive while wings scramble)
+    const hostileTarget = carrierSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 620, z: 400 },
+      'dreadnought',
+      'passive',
+    );
+    hostileTarget.hull = 10000;
     for (let t = 0; t < 30; t++) {
       carrierSim.stepTick(1.0);
     }
