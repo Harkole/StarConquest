@@ -44,6 +44,50 @@ const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label:
   { id: 'passive', label: 'Passive' },
 ];
 
+export type HudSectionId =
+  | 'galaxy'
+  | 'fleet'
+  | 'battle_sim'
+  | 'planets_wormholes'
+  | 'deep_space'
+  | 'orbital_ring';
+
+export type HudCollapsedState = Record<HudSectionId, boolean>;
+
+const HUD_SECTION_IDS: readonly HudSectionId[] = [
+  'galaxy',
+  'fleet',
+  'battle_sim',
+  'planets_wormholes',
+  'deep_space',
+  'orbital_ring',
+];
+
+export function createDefaultHudCollapsedState(): HudCollapsedState {
+  return {
+    galaxy: false,
+    fleet: false,
+    battle_sim: true,
+    planets_wormholes: false,
+    deep_space: false,
+    orbital_ring: false,
+  };
+}
+
+export function toggleHudSection(
+  state: HudCollapsedState,
+  sectionId: HudSectionId,
+): HudCollapsedState {
+  return {
+    ...state,
+    [sectionId]: !state[sectionId],
+  };
+}
+
+export function isHudSectionId(value: string | undefined): value is HudSectionId {
+  return value !== undefined && (HUD_SECTION_IDS as readonly string[]).includes(value);
+}
+
 export interface MainPanelSignatureParams {
   readonly activeSystemId: string;
   readonly selectedPlanetId: string;
@@ -186,8 +230,9 @@ export function mountSystemHud(
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
   let selectedFleetStance: FleetStance = 'aggressive';
-  let isFleetPanelCollapsed = false;
-  let isBattleSimCollapsed = true;
+  let collapsedSections = createDefaultHudCollapsedState();
+  let lastWormholeClick: { readonly id: string; readonly atMs: number } | null = null;
+  let lastWormholeTransitAtMs = 0;
   const battleSimFriendly: Record<CombatShipClassId, number> = {
     fighter: 0,
     destroyer: 3,
@@ -545,7 +590,7 @@ export function mountSystemHud(
         const destSys = galaxy.systems.find((s) => s.id === wh.destinationSystemId);
         const destName = destSys?.name ?? wh.destinationSystemId;
         const isOpen = wh.isOpen();
-        return `<button class="hud-btn ${isOpen ? 'active' : ''}" data-wormhole-id="${wh.wormholeId}">
+        return `<button class="hud-btn ${isOpen ? 'active' : ''}" data-wormhole-id="${wh.wormholeId}" title="Click to focus • Double-click to transit camera • Right-click with Fleet selected to transit fleet">
           Gateway → ${destName}
           <span class="hud-badge">${isOpen ? 'OPEN VORTEX' : 'DORMANT'}</span>
         </button>`;
@@ -882,6 +927,32 @@ export function mountSystemHud(
       `;
     }
 
+    function renderSectionHeader(
+      sectionId: HudSectionId,
+      labelHtml: string,
+      options?: {
+        readonly extraActionsHtml?: string;
+        readonly legacyAction?: string;
+        readonly titleLabel?: string;
+      },
+    ): string {
+      const isCollapsed = collapsedSections[sectionId];
+      const titleName = options?.titleLabel ?? 'section';
+      const legacyAttr = options?.legacyAction
+        ? ` data-action="${options.legacyAction}"`
+        : '';
+      const toggleBtn = `<button class="hud-btn" data-toggle-section="${sectionId}"${legacyAttr} title="${isCollapsed ? `Expand ${titleName}` : `Collapse ${titleName}`}">
+        ${isCollapsed ? 'Expand ▼' : 'Collapse ▲'}
+      </button>`;
+      const rightHtml = options?.extraActionsHtml
+        ? `<div class="hud-btn-row">${options.extraActionsHtml}${toggleBtn}</div>`
+        : toggleBtn;
+      return `<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isCollapsed ? '0' : '6px'};">
+        <div class="hud-label" style="margin-bottom: 0;">${labelHtml}</div>
+        ${rightHtml}
+      </div>`;
+    }
+
     mainBodyEl.innerHTML = `
       <div class="hud-header">
         <div>
@@ -892,21 +963,18 @@ export function mountSystemHud(
       </div>
 
       <div class="hud-section">
-        <div class="hud-label">5-System Hub & Spoke Galaxy</div>
-        <div class="hud-btn-row">${systemButtonsHtml}</div>
+        ${renderSectionHeader('galaxy', '5-System Hub & Spoke Galaxy', { titleLabel: 'Galaxy navigation' })}
+        ${collapsedSections.galaxy ? '' : `<div class="hud-btn-row">${systemButtonsHtml}</div>`}
       </div>
 
       <div class="hud-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isFleetPanelCollapsed ? '0' : '6px'};">
-          <div class="hud-label" style="margin-bottom: 0;">
-            Fleet Command (${playerFleets.length}) — Click Any Ship or Tab to Focus Fleet
-          </div>
-          <button class="hud-btn" data-action="toggle-fleet-panel" title="${isFleetPanelCollapsed ? 'Expand Fleet Command panel' : 'Collapse Fleet Command panel'}">
-            ${isFleetPanelCollapsed ? 'Expand ▼' : 'Collapse ▲'}
-          </button>
-        </div>
+        ${renderSectionHeader(
+          'fleet',
+          `Fleet Command (${playerFleets.length}) — Click Any Ship or Tab to Focus Fleet`,
+          { legacyAction: 'toggle-fleet-panel', titleLabel: 'Fleet Command panel' },
+        )}
         ${
-          isFleetPanelCollapsed
+          collapsedSections.fleet
             ? ''
             : `<div class="hud-btn-row">
                 <button class="hud-btn ${isCreateFleetPending ? 'active' : ''}" data-action="create-fleet">
@@ -920,23 +988,20 @@ export function mountSystemHud(
       </div>
 
       <div class="hud-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isBattleSimCollapsed ? '0' : '6px'};">
-          <div class="hud-label" style="margin-bottom: 0;">
-            Fleet Battle Simulator — Isolated Void Arena${activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID ? ' (ACTIVE)' : ''}
-          </div>
-          <div class="hud-btn-row">
-            ${
+        ${renderSectionHeader(
+          'battle_sim',
+          `Fleet Battle Simulator — Isolated Void Arena${activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID ? ' (ACTIVE)' : ''}`,
+          {
+            legacyAction: 'toggle-battle-sim',
+            titleLabel: 'Fleet Battle Simulator',
+            extraActionsHtml:
               activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
                 ? `<button class="hud-btn active" data-action="exit-battle-sim">Return to Match</button>`
-                : ''
-            }
-            <button class="hud-btn" data-action="toggle-battle-sim" title="${isBattleSimCollapsed ? 'Expand Fleet Battle Simulator' : 'Collapse Fleet Battle Simulator'}">
-              ${isBattleSimCollapsed ? 'Expand ▼' : 'Collapse ▲'}
-            </button>
-          </div>
-        </div>
+                : undefined,
+          },
+        )}
         ${
-          isBattleSimCollapsed
+          collapsedSections.battle_sim
             ? ''
             : (() => {
                 const simClasses: readonly { readonly id: CombatShipClassId; readonly short: string }[] = [
@@ -1040,34 +1105,57 @@ export function mountSystemHud(
         activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
           ? ''
           : `<div class="hud-section">
-        <div class="hud-label">Planets & Wormholes in ${activeSystem.name}</div>
-        <div class="hud-planet-row">${planetButtonsHtml}</div>
-        <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>
+        ${renderSectionHeader(
+          'planets_wormholes',
+          `Planets & Wormholes in ${activeSystem.name}`,
+          { titleLabel: 'Planets & Wormholes panel' },
+        )}
+        ${
+          collapsedSections.planets_wormholes
+            ? ''
+            : `<div class="hud-planet-row">${planetButtonsHtml}</div>
+        <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>`
+        }
       </div>
 
       <div class="hud-section">
-        <div class="hud-label">
-          Deep-Space Installations — Free-Floating Logistics Hub ("Atlas") & Defence Towers
-        </div>
-        <div class="hud-btn-row">
+        ${renderSectionHeader(
+          'deep_space',
+          'Deep-Space Installations — Free-Floating Logistics Hub ("Atlas") & Defence Towers',
+          { titleLabel: 'Deep-Space Installations panel' },
+        )}
+        ${
+          collapsedSections.deep_space
+            ? ''
+            : `<div class="hud-btn-row">
           ${deepSpaceBuildButtonsHtml}
           ${pendingDeepSpace ? `<button class="hud-btn" data-action="cancel-deepspace">Cancel Placement (Esc)</button>` : ''}
         </div>
-        ${deepSpaceInstancesHtml}
+        ${deepSpaceInstancesHtml}`
+        }
       </div>
 
       <div class="hud-section">
-        <div class="hud-label">
-          Orbital Ring Builder — <strong>${selectedPlanetState.planet.name}</strong> (${totalSlots} Slots)
-        </div>
-        <div class="slot-ring-grid">${slotButtonsHtml}</div>
-        <div class="build-options-grid">${slotActionsHtml}</div>
-        ${statusBannerMessage ? `<div class="hud-status-msg">${statusBannerMessage}</div>` : ''}
+        ${renderSectionHeader(
+          'orbital_ring',
+          `Orbital Ring Builder — <strong>${selectedPlanetState.planet.name}</strong> (${totalSlots} Slots)`,
+          { titleLabel: 'Orbital Ring Builder panel' },
+        )}
+        ${
+          collapsedSections.orbital_ring
+            ? ''
+            : `<div class="slot-ring-grid">${slotButtonsHtml}</div>
+        <div class="build-options-grid">${slotActionsHtml}</div>`
+        }
       </div>`
       }
 
+      ${statusBannerMessage ? `<div class="hud-status-msg">${statusBannerMessage}</div>` : ''}
+
       <div class="hud-controls-hint">
         <span><strong>Click Harvester/Planet:</strong> Inspect & Follow</span>
+        <span><strong>Double-Click Wormhole:</strong> Transit Camera</span>
+        <span><strong>Right-Click Wormhole (Fleet):</strong> Transit Fleet</span>
         <span><strong>Left-Drag / WASD:</strong> Pan (Breaks Follow)</span>
         <span><strong>Right-Drag:</strong> Orbit</span>
         <span><strong>Scroll:</strong> Zoom</span>
@@ -1103,16 +1191,58 @@ export function mountSystemHud(
         });
       });
 
+    const triggerWormholeTransit = (wormholeId: string): void => {
+      const now = Date.now();
+      if (now - lastWormholeTransitAtMs < 300) {
+        return;
+      }
+      lastWormholeTransitAtMs = now;
+      lastWormholeClick = null;
+      statusBannerMessage = '';
+      if (sceneManager.transitCameraThroughWormhole(wormholeId)) {
+        selectedSlotIndex = 0;
+        renderHarvesterInspector();
+        renderMainPanel();
+      }
+    };
+
     mainBodyEl
       .querySelectorAll<HTMLButtonElement>('[data-wormhole-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
           const wormholeId = btn.dataset.wormholeId;
-          if (wormholeId) {
-            sceneManager.focusWormhole(wormholeId);
-            renderHarvesterInspector();
+          if (!wormholeId) {
+            return;
+          }
+          const now = Date.now();
+          if (
+            lastWormholeClick &&
+            lastWormholeClick.id === wormholeId &&
+            now - lastWormholeClick.atMs <= 450
+          ) {
+            triggerWormholeTransit(wormholeId);
+            return;
+          }
+          lastWormholeClick = { id: wormholeId, atMs: now };
+          sceneManager.focusWormhole(wormholeId);
+          renderHarvesterInspector();
+          if (getCurrentMainPanelSignature() !== lastMainPanelSignature) {
             renderMainPanel();
           }
+        });
+        btn.addEventListener('dblclick', () => {
+          const wormholeId = btn.dataset.wormholeId;
+          if (wormholeId) {
+            triggerWormholeTransit(wormholeId);
+          }
+        });
+        btn.addEventListener('contextmenu', (e) => {
+          const wormholeId = btn.dataset.wormholeId;
+          if (!wormholeId || !sceneManager.getSelectedFleetId()) {
+            return;
+          }
+          e.preventDefault();
+          sceneManager.orderSelectedFleetThroughWormhole(wormholeId);
         });
       });
 
@@ -1258,17 +1388,16 @@ export function mountSystemHud(
       });
 
     mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="toggle-fleet-panel"]')
-      ?.addEventListener('click', () => {
-        isFleetPanelCollapsed = !isFleetPanelCollapsed;
-        renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="toggle-battle-sim"]')
-      ?.addEventListener('click', () => {
-        isBattleSimCollapsed = !isBattleSimCollapsed;
-        renderMainPanel();
+      .querySelectorAll<HTMLButtonElement>('[data-toggle-section]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const sectionId = btn.dataset.toggleSection;
+          if (!isHudSectionId(sectionId)) {
+            return;
+          }
+          collapsedSections = toggleHudSection(collapsedSections, sectionId);
+          renderMainPanel();
+        });
       });
 
     mainBodyEl
@@ -1306,7 +1435,7 @@ export function mountSystemHud(
         );
         sceneManager.loadSystem(res.systemId);
         sceneManager.focusWorldPoint(res.center.x, res.center.z, 280);
-        isBattleSimCollapsed = false;
+        collapsedSections = { ...collapsedSections, battle_sim: false };
         statusBannerMessage = `Void Battle Simulator launched: ${res.friendlySpawned} Friendly vs ${res.hostileSpawned} Hostile ships!`;
         renderMainPanel();
       });

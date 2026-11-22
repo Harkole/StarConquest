@@ -24,6 +24,7 @@ import {
 } from './planetFactory.ts';
 import {
   createStarSystemEnvironment,
+  getWormholePickRadius,
   type SpaceEnvironmentHandle,
   type WormholeInstanceHandle,
 } from './spaceEnvironmentFactory.ts';
@@ -434,6 +435,7 @@ export class SystemSceneManager {
         return {
           wormhole: wh,
           localPosition: isOutgoing ? wh.fromPosition : wh.toPosition,
+          exitPosition: isOutgoing ? wh.toPosition : wh.fromPosition,
           destinationSystemId: isOutgoing ? wh.toSystemId : wh.fromSystemId,
         };
       });
@@ -544,6 +546,84 @@ export class SystemSceneManager {
       92,
     );
     this.notifySelectionChanged();
+  }
+
+  public transitCameraThroughWormhole(wormholeId: string): boolean {
+    const wh = this.environmentHandle?.wormholes.find(
+      (item) => item.wormholeId === wormholeId,
+    );
+    if (!wh) {
+      return false;
+    }
+    const { destinationSystemId, exitPosition } = wh;
+    this.loadSystem(destinationSystemId);
+    const hasExitWormhole = this.environmentHandle?.wormholes.some(
+      (item) => item.wormholeId === wormholeId,
+    );
+    if (hasExitWormhole) {
+      this.focusWormhole(wormholeId);
+    } else {
+      this.focusWorldPoint(exitPosition.x, exitPosition.z, 92);
+    }
+    return true;
+  }
+
+  public orderSelectedFleetThroughWormhole(wormholeId: string): boolean {
+    if (!this.selectedFleetId) {
+      return false;
+    }
+    const wh = this.environmentHandle?.wormholes.find(
+      (item) => item.wormholeId === wormholeId,
+    );
+    if (!wh) {
+      return false;
+    }
+    const exitPos = {
+      x: Math.round(wh.exitPosition.x),
+      z: Math.round(wh.exitPosition.z),
+    };
+    const res = this.simAdapter.submitPlayerCommand({
+      type: 'ORDER_FLEET_MOVE',
+      playerId: this.simAdapter.localPlayerId,
+      fleetId: this.selectedFleetId,
+      targetSystemId: wh.destinationSystemId,
+      targetPosition: exitPos,
+    });
+    const fleet = this.simAdapter.simulation.getFleetById(this.selectedFleetId);
+    const destSystem = this.galaxy.systems.find(
+      (s) => s.id === wh.destinationSystemId,
+    );
+    this.notifyPlacementResult(
+      res.ok
+        ? `${fleet?.name ?? 'Fleet'} transiting wormhole to ${destSystem?.name ?? wh.destinationSystemId} (${exitPos.x}, ${exitPos.z}).`
+        : `Cannot transit fleet through wormhole: ${res.reason}`,
+      res.ok,
+    );
+    return res.ok;
+  }
+
+  private pickWormhole(raycaster: THREE.Raycaster): WormholeInstanceHandle | null {
+    const wormholes = this.environmentHandle?.wormholes;
+    if (!wormholes || wormholes.length === 0) {
+      return null;
+    }
+    const planeHit = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(this.orbitalPlane, planeHit)) {
+      return null;
+    }
+    let closest: WormholeInstanceHandle | null = null;
+    let closestDist = Infinity;
+    for (const wh of wormholes) {
+      const dist = Math.hypot(
+        planeHit.x - wh.position.x,
+        planeHit.z - wh.position.z,
+      );
+      if (dist <= getWormholePickRadius(wh.getOpenProgress()) && dist < closestDist) {
+        closest = wh;
+        closestDist = dist;
+      }
+    }
+    return closest;
   }
 
   public focusSystemOverview(): void {
@@ -767,6 +847,11 @@ export class SystemSceneManager {
             new THREE.Vector2(ndcX, ndcY),
             this.cameraController.camera,
           );
+          const pickedWh = this.pickWormhole(this.raycaster);
+          if (pickedWh) {
+            this.orderSelectedFleetThroughWormhole(pickedWh.wormholeId);
+            return;
+          }
           if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
             const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
             const res = this.simAdapter.submitPlayerCommand({
@@ -974,6 +1059,30 @@ export class SystemSceneManager {
           this.focusPlanet(pHandle.planet.id);
           return;
         }
+      }
+
+      // 4. Check if user clicked a Wormhole in 3D space
+      const pickedWh = this.pickWormhole(this.raycaster);
+      if (pickedWh) {
+        this.focusWormhole(pickedWh.wormholeId);
+        return;
+      }
+    });
+
+    canvasElement.addEventListener('dblclick', (e) => {
+      if (this.pendingFleetOrder || this.pendingDeepSpaceBuildType) {
+        return;
+      }
+      const rect = canvasElement.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      this.raycaster.setFromCamera(
+        new THREE.Vector2(ndcX, ndcY),
+        this.cameraController.camera,
+      );
+      const pickedWh = this.pickWormhole(this.raycaster);
+      if (pickedWh) {
+        this.transitCameraThroughWormhole(pickedWh.wormholeId);
       }
     });
   }

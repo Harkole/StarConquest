@@ -138,6 +138,7 @@ describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
         {
           wormhole: wh,
           localPosition: wh.fromPosition,
+          exitPosition: wh.toPosition,
           destinationSystemId: wh.toSystemId,
         },
       ]);
