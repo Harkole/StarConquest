@@ -329,6 +329,10 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * **Fleet Focus Centroid Drift**: Clicking Fleet Focus (or a fleet tab) should focus on the single ship (when 1 ship) or the **majority cluster** of ships in the fleet rather than averaging into empty space between the main fleet and newly built reinforcements still en route from a distant dockyard.
 * **Ship-to-Ship Collision & Overlap During Flight**: Ships within a fleet currently merge and clip into each other during flight and formation holding. Add inter-ship separation/clearance steering in `src/shared/sim/gameSimulation.ts` so every hull class maintains physical clearance from neighboring ships.
 
+### Carrier Standoff Behavior & Per-Squadron Fighter Rebuild Bars
+* **Standoff Positioning**: Fleet Carriers should **not** close into direct weapons range when attacking; they should hold back at safe standoff range (`~260–320u`) launching Fighter squadrons, using their onboard Point Defence grid strictly as self-defense against hostiles that close in on the Carrier itself.
+* **Per-Squadron Rebuild Progress Bars**: Display a progress bar per missing Fighter squadron (up to 4 bars simultaneously if all 4 squadrons are lost and being actively rebuilt) showing time remaining until each destroyed squadron finishes rebuilding and launches.
+
 ### In-Game Codex / Wiki & Interactive 3D Model Viewer
 * **Planned Feature (`feature/ingame-codex-wiki`)**: Build an in-game wiki/codex overlay accessible from the tactical HUD and pre-match lobby with:
   * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
