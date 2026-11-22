@@ -25,10 +25,22 @@ import {
   WORMHOLE_VERTEX_SHADER,
 } from '../shaders/wormholeShader.ts';
 
+export const WORMHOLE_DORMANT_PICK_RADIUS = 32;
+export const WORMHOLE_OPEN_PICK_RADIUS = 65;
+
+export function getWormholePickRadius(openProgress: number): number {
+  const clamped = Math.max(0, Math.min(1, openProgress));
+  return (
+    WORMHOLE_DORMANT_PICK_RADIUS +
+    (WORMHOLE_OPEN_PICK_RADIUS - WORMHOLE_DORMANT_PICK_RADIUS) * clamped
+  );
+}
+
 export interface WormholeInstanceHandle {
   readonly wormholeId: string;
   readonly destinationSystemId: string;
   readonly position: { readonly x: number; readonly z: number };
+  readonly exitPosition: { readonly x: number; readonly z: number };
   isOpen(): boolean;
   getOpenProgress(): number;
   setManualOpen(open: boolean): void;
@@ -56,6 +68,7 @@ export function createStarSystemEnvironment(
   wormholesInSystem: readonly {
     readonly wormhole: WormholeLink;
     readonly localPosition: { readonly x: number; readonly z: number };
+    readonly exitPosition: { readonly x: number; readonly z: number };
     readonly destinationSystemId: string;
   }[],
 ): SpaceEnvironmentHandle {
@@ -321,6 +334,7 @@ export function createStarSystemEnvironment(
         wormholeId: item.wormhole.id,
         destinationSystemId: item.destinationSystemId,
         position: item.localPosition,
+        exitPosition: item.exitPosition,
         isOpen(): boolean {
           return state.targetOpen;
         },
