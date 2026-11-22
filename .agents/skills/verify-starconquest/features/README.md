@@ -40,3 +40,4 @@ Each feature file begins with an H1 title and one-paragraph summary, followed by
 - [Deep-Space Installations](./deep-space-installations.md) covers live ghost preview validation, Atlas Logistics Hub placement, spacing rules, and Defence Tower placement inside hub radius.
 - [Galaxy Navigation & Economy](./galaxy-navigation-and-economy.md) covers 5-system switching, planet/wormhole/overview camera focus, simulation speed controls, Central Hub mining toggle, and Harvester inspection.
 - [Ambient Audio Controls](./ambient-audio-controls.md) covers shuffled MP3 loading, autoplay unlock on first gesture, and speaker mute/unmute state transitions.
+- [Combat & VFX](./combat-and-vfx.md) covers 5-class RPS combat, stances, Carrier/Hub organic Fighter wings, active turret tracking, HDR weapon/shield/explosion VFX, and dynamic `"combat"` music switching.
