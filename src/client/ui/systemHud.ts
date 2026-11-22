@@ -3,6 +3,7 @@ import {
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
+  type CombatShipClassId,
   type DeepSpaceStructureId,
   type OrbitalStructureId,
 } from '../../shared/config/index.ts';
@@ -179,6 +180,21 @@ export function mountSystemHud(
   let crossSystemMiningEnabled = false;
   let selectedFleetStance: FleetStance = 'aggressive';
   let isFleetPanelCollapsed = false;
+  let isBattleSimCollapsed = true;
+  const battleSimFriendly: Record<CombatShipClassId, number> = {
+    fighter: 0,
+    destroyer: 3,
+    cruiser: 2,
+    carrier: 1,
+    dreadnought: 0,
+  };
+  const battleSimHostile: Record<CombatShipClassId, number> = {
+    fighter: 0,
+    destroyer: 2,
+    cruiser: 2,
+    carrier: 0,
+    dreadnought: 1,
+  };
 
   const topBarEl = document.createElement('div');
   topBarEl.className = 'hud-econ-bar';
@@ -894,6 +910,56 @@ export function mountSystemHud(
       </div>
 
       <div class="hud-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isBattleSimCollapsed ? '0' : '6px'};">
+          <div class="hud-label" style="margin-bottom: 0;">
+            Fleet Battle Simulator — Pick Both Fleets & Watch RPS Combat Live
+          </div>
+          <button class="hud-btn" data-action="toggle-battle-sim" title="${isBattleSimCollapsed ? 'Expand Fleet Battle Simulator' : 'Collapse Fleet Battle Simulator'}">
+            ${isBattleSimCollapsed ? 'Expand ▼' : 'Collapse ▲'}
+          </button>
+        </div>
+        ${
+          isBattleSimCollapsed
+            ? ''
+            : (() => {
+                const simClasses: readonly { readonly id: CombatShipClassId; readonly short: string }[] = [
+                  { id: 'fighter', short: 'Fighter' },
+                  { id: 'destroyer', short: 'Destroyer' },
+                  { id: 'cruiser', short: 'Cruiser' },
+                  { id: 'carrier', short: 'Carrier' },
+                  { id: 'dreadnought', short: 'Dreadnought' },
+                ];
+                const renderRow = (side: 'friendly' | 'hostile', counts: Record<CombatShipClassId, number>) =>
+                  simClasses
+                    .map(
+                      (c) => `<div style="display: inline-flex; align-items: center; gap: 3px; margin-right: 8px;">
+                        <span class="econ-label">${c.short}: <strong>${counts[c.id]}</strong></span>
+                        <button class="hud-btn" data-sim-dec="${c.id}" data-sim-side="${side}" ${counts[c.id] <= 0 ? 'disabled' : ''}>−</button>
+                        <button class="hud-btn" data-sim-inc="${c.id}" data-sim-side="${side}">+</button>
+                      </div>`,
+                    )
+                    .join('');
+                return `
+                  <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
+                    <div class="hud-btn-row">
+                      <span class="econ-label" style="margin-right: 4px; color: #38bdf8;">FRIENDLY FLEET:</span>
+                      ${renderRow('friendly', battleSimFriendly)}
+                    </div>
+                    <div class="hud-btn-row" style="margin-top: 6px;">
+                      <span class="econ-label" style="margin-right: 4px; color: #f87171;">HOSTILE FLEET:</span>
+                      ${renderRow('hostile', battleSimHostile)}
+                    </div>
+                    <div class="hud-btn-row" style="margin-top: 8px;">
+                      <button class="hud-btn active" data-action="launch-battle-sim">Launch Battle in ${activeSystem.name}</button>
+                      <button class="hud-btn" data-action="clear-battle-sim">Clear Sim Ships</button>
+                    </div>
+                  </div>
+                `;
+              })()
+        }
+      </div>
+
+      <div class="hud-section">
         <div class="hud-label">Planets & Wormholes in ${activeSystem.name}</div>
         <div class="hud-planet-row">${planetButtonsHtml}</div>
         <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>
@@ -1114,6 +1180,60 @@ export function mountSystemHud(
       .querySelector<HTMLButtonElement>('[data-action="toggle-fleet-panel"]')
       ?.addEventListener('click', () => {
         isFleetPanelCollapsed = !isFleetPanelCollapsed;
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="toggle-battle-sim"]')
+      ?.addEventListener('click', () => {
+        isBattleSimCollapsed = !isBattleSimCollapsed;
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-sim-inc]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cls = btn.dataset.simInc as CombatShipClassId | undefined;
+          const side = btn.dataset.simSide;
+          if (!cls || !side) return;
+          const map = side === 'friendly' ? battleSimFriendly : battleSimHostile;
+          map[cls] = Math.min(20, map[cls] + 1);
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-sim-dec]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cls = btn.dataset.simDec as CombatShipClassId | undefined;
+          const side = btn.dataset.simSide;
+          if (!cls || !side) return;
+          const map = side === 'friendly' ? battleSimFriendly : battleSimHostile;
+          map[cls] = Math.max(0, map[cls] - 1);
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="launch-battle-sim"]')
+      ?.addEventListener('click', () => {
+        const res = sim.launchFleetBattleSimulator(
+          activeSystem.id,
+          battleSimFriendly,
+          battleSimHostile,
+        );
+        sceneManager.focusWorldPoint(res.center.x, res.center.z, 260);
+        statusBannerMessage = `Fleet Battle Simulator launched: ${res.friendlySpawned} Friendly vs ${res.hostileSpawned} Hostile ships!`;
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="clear-battle-sim"]')
+      ?.addEventListener('click', () => {
+        const removed = sim.clearBattleSimulatorShips();
+        statusBannerMessage = `Cleared ${removed} Battle Simulator ship${removed === 1 ? '' : 's'}.`;
         renderMainPanel();
       });
 

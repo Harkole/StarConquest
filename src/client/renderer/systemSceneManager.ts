@@ -523,6 +523,13 @@ export class SystemSceneManager {
     this.notifySelectionChanged();
   }
 
+  public focusWorldPoint(x: number, z: number, distance = 260): void {
+    this.selectedHarvesterId = null;
+    this.cameraController.clearPin();
+    this.cameraController.focusOn(x, z, distance);
+    this.notifySelectionChanged();
+  }
+
   public update(elapsedSeconds: number, deltaSeconds: number): void {
     this.simAdapter.update(deltaSeconds);
     const simElapsed = this.simAdapter.simulation.elapsedSeconds;

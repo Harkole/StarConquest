@@ -1315,5 +1315,18 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(defeatSim.isPlayerDefeated('player_2')).toBe(false);
     defeatSim.stepTick(3.5);
     expect(defeatSim.isPlayerDefeated('player_2')).toBe(true);
+
+    // 6. Fleet Battle Simulator spawns customizable Friendly vs Hostile sides and clears cleanly
+    const simArena = new GameSimulation('standard_tactical');
+    const launch = simArena.launchFleetBattleSimulator(
+      'system_starter_1',
+      { destroyer: 2, cruiser: 1 },
+      { dreadnought: 1 },
+    );
+    expect(launch.friendlySpawned).toBe(3);
+    expect(launch.hostileSpawned).toBe(1);
+    expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(4);
+    expect(simArena.clearBattleSimulatorShips()).toBe(4);
+    expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(0);
   });
 });

@@ -440,6 +440,107 @@ export class GameSimulation {
     return ship;
   }
 
+  /**
+   * Fleet Battle Simulator: clears any prior simulator ships, spawns customizable Friendly (player_1)
+   * and Hostile (player_2) fleets facing each other in clear space in `systemId`, and returns the
+   * arena center coordinate for camera framing.
+   */
+  public launchFleetBattleSimulator(
+    systemId: string,
+    friendlyCounts: Partial<Record<CombatShipClassId, number>>,
+    hostileCounts: Partial<Record<CombatShipClassId, number>>,
+  ): {
+    readonly center: Vector2D;
+    readonly friendlySpawned: number;
+    readonly hostileSpawned: number;
+  } {
+    this.clearBattleSimulatorShips();
+
+    const center: Vector2D = { x: 480, z: -340 };
+    const classesInOrder: readonly CombatShipClassId[] = [
+      'fighter',
+      'destroyer',
+      'cruiser',
+      'carrier',
+      'dreadnought',
+    ];
+
+    const spawnSide = (
+      ownerId: PlayerSlotId,
+      counts: Partial<Record<CombatShipClassId, number>>,
+      sideSign: -1 | 1,
+    ): number => {
+      let total = 0;
+      const baseX = center.x + sideSign * 140;
+      let colIdx = 0;
+
+      for (const cls of classesInOrder) {
+        const rawCount = counts[cls] ?? 0;
+        const count = Math.max(0, Math.min(20, Math.floor(rawCount)));
+        if (count === 0) {
+          continue;
+        }
+        const spacingZ =
+          cls === 'dreadnought'
+            ? 34
+            : cls === 'carrier'
+              ? 28
+              : cls === 'cruiser'
+                ? 24
+                : cls === 'destroyer'
+                  ? 18
+                  : 12;
+        const colX = baseX + sideSign * colIdx * 28;
+        colIdx += 1;
+
+        for (let i = 0; i < count; i++) {
+          const offsetZ = (i - (count - 1) * 0.5) * spacingZ;
+          const ship = this.spawnCombatShipDirect(
+            ownerId,
+            systemId,
+            { x: colX, z: center.z + offsetZ },
+            cls,
+            'aggressive',
+            null,
+            null,
+          );
+          (ship as { homeDockyardId: string }).homeDockyardId = 'battle_simulator';
+          ship.headingRadians = sideSign < 0 ? Math.PI / 2 : -Math.PI / 2;
+          total += 1;
+        }
+      }
+      return total;
+    };
+
+    const friendlySpawned = spawnSide('player_1', friendlyCounts, -1);
+    const hostileSpawned = spawnSide('player_2', hostileCounts, 1);
+    return { center, friendlySpawned, hostileSpawned };
+  }
+
+  /** Removes all ships spawned by the Fleet Battle Simulator (including any Carrier-launched wings). */
+  public clearBattleSimulatorShips(): number {
+    const simShipIds = new Set(
+      this.combatShips
+        .filter((s) => s.homeDockyardId === 'battle_simulator')
+        .map((s) => s.id),
+    );
+    const toRemove = this.combatShips
+      .filter(
+        (s) =>
+          s.homeDockyardId === 'battle_simulator' ||
+          (s.tetherHostId !== null && simShipIds.has(s.tetherHostId)),
+      )
+      .map((s) => s.id);
+
+    for (const id of toRemove) {
+      const idx = this.combatShips.findIndex((s) => s.id === id);
+      if (idx !== -1) {
+        this.combatShips.splice(idx, 1);
+      }
+    }
+    return toRemove.length;
+  }
+
   public getPlanetState(planetId: string): PlanetRuntimeState {
     const p = this.planets.get(planetId);
     if (!p) {
