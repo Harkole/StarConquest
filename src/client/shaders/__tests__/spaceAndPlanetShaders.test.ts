@@ -36,12 +36,23 @@ import {
 describe('Space & Planet Shaders and Orbital Ring Geometry', () => {
   it('defines distinct procedural FBM nebula palettes for all 5 galaxy systems', () => {
     const galaxy = createFiveSystemGalaxy();
+    const usedPalettes = new Set<string>();
     for (const system of galaxy.systems) {
       const palette = NEBULA_PALETTES[system.nebulaPalette];
       expect(palette).toBeDefined();
       expect(palette.primaryNebula).toHaveLength(3);
       expect(palette.secondaryNebula).toHaveLength(3);
+      usedPalettes.add(system.nebulaPalette);
     }
+    expect(usedPalettes.size).toBe(5);
+    // Starter System 1 is purple (high R & B, low G) while Starter System 4 is vivid emerald (high G, low R & B)
+    const s1 = NEBULA_PALETTES[galaxy.systems[0]!.nebulaPalette];
+    const s4 = NEBULA_PALETTES[galaxy.systems[3]!.nebulaPalette];
+    expect(s1.primaryNebula[0]).toBeGreaterThan(0.45);
+    expect(s1.primaryNebula[2]).toBeGreaterThan(0.7);
+    expect(s1.primaryNebula[1]).toBeLessThan(0.2);
+    expect(s4.primaryNebula[1]).toBeGreaterThan(0.55);
+    expect(s4.primaryNebula[0]).toBeLessThan(0.15);
     expect(NEBULA_SKYBOX_FRAGMENT_SHADER).toContain('fbm');
     expect(WORMHOLE_FRAGMENT_SHADER).toContain('uTime');
   });
