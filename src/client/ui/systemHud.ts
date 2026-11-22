@@ -14,6 +14,7 @@ import type {
 } from '../../shared/protocol/commands.ts';
 import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
 import {
+  BATTLE_SIMULATOR_SYSTEM_ID,
   type GameSimulation,
   type HarvesterActivityState,
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
@@ -121,6 +122,11 @@ export function computeMainPanelSignature(
     })
     .join(';');
 
+  const simStats = sim.getBattleSimulatorStats();
+  const battleSimSig = simStats
+    ? `${simStats.status}:${simStats.friendly.survivingShips}/${simStats.friendly.startedShips}:${simStats.hostile.survivingShips}/${simStats.hostile.startedShips}`
+    : 'none';
+
   return [
     params.activeSystemId,
     params.selectedPlanetId,
@@ -135,6 +141,7 @@ export function computeMainPanelSignature(
     deepSpaceSig,
     wormholeSig,
     fleetSig,
+    battleSimSig,
   ].join('|');
 }
 
@@ -912,11 +919,18 @@ export function mountSystemHud(
       <div class="hud-section">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: ${isBattleSimCollapsed ? '0' : '6px'};">
           <div class="hud-label" style="margin-bottom: 0;">
-            Fleet Battle Simulator — Pick Both Fleets & Watch RPS Combat Live
+            Fleet Battle Simulator — Isolated Void Arena${activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID ? ' (ACTIVE)' : ''}
           </div>
-          <button class="hud-btn" data-action="toggle-battle-sim" title="${isBattleSimCollapsed ? 'Expand Fleet Battle Simulator' : 'Collapse Fleet Battle Simulator'}">
-            ${isBattleSimCollapsed ? 'Expand ▼' : 'Collapse ▲'}
-          </button>
+          <div class="hud-btn-row">
+            ${
+              activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
+                ? `<button class="hud-btn active" data-action="exit-battle-sim">Return to Match</button>`
+                : ''
+            }
+            <button class="hud-btn" data-action="toggle-battle-sim" title="${isBattleSimCollapsed ? 'Expand Fleet Battle Simulator' : 'Collapse Fleet Battle Simulator'}">
+              ${isBattleSimCollapsed ? 'Expand ▼' : 'Collapse ▲'}
+            </button>
+          </div>
         </div>
         ${
           isBattleSimCollapsed
@@ -939,6 +953,65 @@ export function mountSystemHud(
                       </div>`,
                     )
                     .join('');
+                const stats = sim.getBattleSimulatorStats();
+                let statsHtml = '';
+                if (stats && stats.status !== 'idle') {
+                  const duration = (
+                    (stats.finishedAtSeconds ?? sim.elapsedSeconds) - stats.startedAtSeconds
+                  ).toFixed(1);
+                  const fRate =
+                    stats.friendly.startedShips > 0
+                      ? Math.round(
+                          (stats.friendly.survivingShips / stats.friendly.startedShips) * 100,
+                        )
+                      : 0;
+                  const hRate =
+                    stats.hostile.startedShips > 0
+                      ? Math.round(
+                          (stats.hostile.survivingShips / stats.hostile.startedShips) * 100,
+                        )
+                      : 0;
+                  const fTotalDmg = Math.round(
+                    stats.friendly.shieldDamageDealt + stats.friendly.hullDamageDealt,
+                  );
+                  const hTotalDmg = Math.round(
+                    stats.hostile.shieldDamageDealt + stats.hostile.hullDamageDealt,
+                  );
+                  const outcomeLabel =
+                    stats.status === 'running'
+                      ? 'BATTLE IN PROGRESS'
+                      : stats.status === 'friendly_victory'
+                        ? 'FRIENDLY VICTORY'
+                        : stats.status === 'hostile_victory'
+                          ? 'HOSTILE VICTORY'
+                          : stats.status === 'draw'
+                            ? 'MUTUAL DESTRUCTION (DRAW)'
+                            : 'SIMULATION CLEARED';
+                  statsHtml = `
+                    <div class="slot-detail-box" style="flex-direction: column; align-items: stretch; margin-top: 8px; border-color: rgba(56, 189, 248, 0.55);">
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>${outcomeLabel} • Duration: ${duration}s</strong>
+                        ${
+                          stats.status !== 'running'
+                            ? `<button class="hud-btn" data-action="dismiss-battle-stats">Dismiss</button>`
+                            : ''
+                        }
+                      </div>
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; font-size: 12px;">
+                        <div>
+                          <div style="color: #38bdf8; font-weight: 600;">Friendly Fleet</div>
+                          <div>Survival: <strong>${stats.friendly.survivingShips}/${stats.friendly.startedShips} (${fRate}%)</strong> • Kills: <strong>${stats.friendly.shipsDestroyed}</strong></div>
+                          <div>Damage Dealt: <strong>${fTotalDmg}</strong> (${Math.round(stats.friendly.shieldDamageDealt)} Shield / ${Math.round(stats.friendly.hullDamageDealt)} Hull)</div>
+                        </div>
+                        <div>
+                          <div style="color: #f87171; font-weight: 600;">Hostile Fleet</div>
+                          <div>Survival: <strong>${stats.hostile.survivingShips}/${stats.hostile.startedShips} (${hRate}%)</strong> • Kills: <strong>${stats.hostile.shipsDestroyed}</strong></div>
+                          <div>Damage Dealt: <strong>${hTotalDmg}</strong> (${Math.round(stats.hostile.shieldDamageDealt)} Shield / ${Math.round(stats.hostile.hullDamageDealt)} Hull)</div>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }
                 return `
                   <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
                     <div class="hud-btn-row">
@@ -950,16 +1023,20 @@ export function mountSystemHud(
                       ${renderRow('hostile', battleSimHostile)}
                     </div>
                     <div class="hud-btn-row" style="margin-top: 8px;">
-                      <button class="hud-btn active" data-action="launch-battle-sim">Launch Battle in ${activeSystem.name}</button>
-                      <button class="hud-btn" data-action="clear-battle-sim">Clear Sim Ships</button>
+                      <button class="hud-btn active" data-action="launch-battle-sim">Launch Battle in Void Arena</button>
+                      <button class="hud-btn" data-action="clear-battle-sim">End & Clear Sim</button>
                     </div>
                   </div>
+                  ${statsHtml}
                 `;
               })()
         }
       </div>
 
-      <div class="hud-section">
+      ${
+        activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
+          ? ''
+          : `<div class="hud-section">
         <div class="hud-label">Planets & Wormholes in ${activeSystem.name}</div>
         <div class="hud-planet-row">${planetButtonsHtml}</div>
         <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>
@@ -983,7 +1060,8 @@ export function mountSystemHud(
         <div class="slot-ring-grid">${slotButtonsHtml}</div>
         <div class="build-options-grid">${slotActionsHtml}</div>
         ${statusBannerMessage ? `<div class="hud-status-msg">${statusBannerMessage}</div>` : ''}
-      </div>
+      </div>`
+      }
 
       <div class="hud-controls-hint">
         <span><strong>Click Harvester/Planet:</strong> Inspect & Follow</span>
@@ -1220,12 +1298,13 @@ export function mountSystemHud(
       .querySelector<HTMLButtonElement>('[data-action="launch-battle-sim"]')
       ?.addEventListener('click', () => {
         const res = sim.launchFleetBattleSimulator(
-          activeSystem.id,
           battleSimFriendly,
           battleSimHostile,
         );
-        sceneManager.focusWorldPoint(res.center.x, res.center.z, 260);
-        statusBannerMessage = `Fleet Battle Simulator launched: ${res.friendlySpawned} Friendly vs ${res.hostileSpawned} Hostile ships!`;
+        sceneManager.loadSystem(res.systemId);
+        sceneManager.focusWorldPoint(res.center.x, res.center.z, 280);
+        isBattleSimCollapsed = false;
+        statusBannerMessage = `Void Battle Simulator launched: ${res.friendlySpawned} Friendly vs ${res.hostileSpawned} Hostile ships!`;
         renderMainPanel();
       });
 
@@ -1233,7 +1312,21 @@ export function mountSystemHud(
       .querySelector<HTMLButtonElement>('[data-action="clear-battle-sim"]')
       ?.addEventListener('click', () => {
         const removed = sim.clearBattleSimulatorShips();
-        statusBannerMessage = `Cleared ${removed} Battle Simulator ship${removed === 1 ? '' : 's'}.`;
+        statusBannerMessage = `Ended Battle Simulator and cleared ${removed} ship${removed === 1 ? '' : 's'}.`;
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="exit-battle-sim"]')
+      ?.addEventListener('click', () => {
+        sceneManager.loadSystem(sceneManager.getLastMatchSystemId());
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="dismiss-battle-stats"]')
+      ?.addEventListener('click', () => {
+        sim.dismissBattleSimulatorStats();
         renderMainPanel();
       });
 

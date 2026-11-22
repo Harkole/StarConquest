@@ -1336,18 +1336,32 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     }
     expect(defeatSim.isPlayerDefeated('player_2')).toBe(true);
 
-    // 6. Fleet Battle Simulator spawns customizable Friendly vs Hostile sides and clears cleanly
+    // 6. Fleet Battle Simulator runs in isolated void system (`system_battle_void`) and tracks damage & survival stats
     const simArena = new GameSimulation('standard_tactical');
     const launch = simArena.launchFleetBattleSimulator(
-      'system_starter_1',
-      { destroyer: 2, cruiser: 1 },
-      { dreadnought: 1 },
+      { cruiser: 2 },
+      { destroyer: 1 },
     );
-    expect(launch.friendlySpawned).toBe(3);
+    expect(launch.systemId).toBe('system_battle_void');
+    expect(launch.friendlySpawned).toBe(2);
     expect(launch.hostileSpawned).toBe(1);
-    expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(4);
-    expect(simArena.clearBattleSimulatorShips()).toBe(4);
     expect(simArena.getCombatShipsInSystem('system_starter_1')).toHaveLength(0);
+    expect(simArena.getCombatShipsInSystem('system_battle_void')).toHaveLength(3);
+
+    for (let t = 0; t < 40; t++) {
+      simArena.stepTick(0.5);
+      if (simArena.getBattleSimulatorStats()?.status !== 'running') {
+        break;
+      }
+    }
+    const finalStats = simArena.getBattleSimulatorStats();
+    expect(finalStats?.status).toBe('friendly_victory');
+    expect(finalStats?.friendly.survivingShips).toBeGreaterThan(0);
+    expect(finalStats?.hostile.survivingShips).toBe(0);
+    expect(finalStats?.friendly.hullDamageDealt).toBeGreaterThan(0);
+    expect(finalStats?.friendly.shipsDestroyed).toBe(1);
+    expect(simArena.clearBattleSimulatorShips()).toBeGreaterThan(0);
+    expect(simArena.getCombatShipsInSystem('system_battle_void')).toHaveLength(0);
 
     // 7. Combat movement & LOS: Dreadnoughts turn bow-on for Spinal Siege vs Capitals/Structures,
     //    broadside for Heavy Turrets vs Cruisers/Destroyers, Fighters orbit closely, and LOS blocks friendly hulls

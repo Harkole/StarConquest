@@ -9,7 +9,10 @@ import type {
   PlanetNode,
   StarSystemNode,
 } from '../../shared/sim/galaxy.ts';
-import type { DockyardWaypoint } from '../../shared/sim/gameSimulation.ts';
+import {
+  BATTLE_SIMULATOR_SYSTEM_ID,
+  type DockyardWaypoint,
+} from '../../shared/sim/gameSimulation.ts';
 import type { LocalSimAdapter } from '../net/localSimAdapter.ts';
 import { CombatFleetRenderer } from './combatFleetRenderer.ts';
 import { CombatVfxRenderer } from './combatVfxRenderer.ts';
@@ -26,6 +29,16 @@ import {
 } from './spaceEnvironmentFactory.ts';
 import { StationModelLibrary } from './stationModels.ts';
 
+const BATTLE_VOID_SYSTEM: StarSystemNode = {
+  id: BATTLE_SIMULATOR_SYSTEM_ID,
+  name: 'Battle Simulator Void',
+  isCentralHub: false,
+  starterOwnerSlot: null,
+  resourceSkew: 'balanced_rich',
+  nebulaPalette: 'crimson_rift',
+  planets: [],
+};
+
 export class SystemSceneManager {
   private readonly scene: THREE.Scene;
   private readonly galaxy: GalaxyTopology;
@@ -33,6 +46,7 @@ export class SystemSceneManager {
   public readonly simAdapter: LocalSimAdapter;
 
   private activeSystem: StarSystemNode;
+  private lastMatchSystemId = 'system_starter_1';
   private selectedPlanetId: string;
   private selectedHarvesterId: string | null = null;
   private selectedCombatShipId: string | null = null;
@@ -371,6 +385,14 @@ export class SystemSceneManager {
     return this.activeSystem;
   }
 
+  public getLastMatchSystemId(): string {
+    return this.lastMatchSystemId;
+  }
+
+  public isInBattleSimulatorVoid(): boolean {
+    return this.activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID;
+  }
+
   public getActivePlanets(): readonly PlanetNode[] {
     return this.activeSystem.planets;
   }
@@ -388,9 +410,15 @@ export class SystemSceneManager {
   }
 
   public loadSystem(systemId: string): StarSystemNode {
-    const targetSystem = this.galaxy.systems.find((s) => s.id === systemId);
+    const targetSystem =
+      systemId === BATTLE_SIMULATOR_SYSTEM_ID
+        ? BATTLE_VOID_SYSTEM
+        : this.galaxy.systems.find((s) => s.id === systemId);
     if (!targetSystem) {
       throw new Error(`Unknown star system id: ${systemId}`);
+    }
+    if (systemId !== BATTLE_SIMULATOR_SYSTEM_ID) {
+      this.lastMatchSystemId = systemId;
     }
 
     this.clearCurrentSystem();

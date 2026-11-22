@@ -116,6 +116,31 @@ export function getMinDeepSpaceStructureSpacing(
 export const SHIELD_REGEN_OUT_OF_COMBAT_DELAY_SECONDS = 6.0;
 export const LOGISTICS_HUB_REPAIR_PER_SECOND = 8.0;
 export const LOGISTICS_HUB_FIGHTER_CAPACITY = 4;
+export const BATTLE_SIMULATOR_SYSTEM_ID = 'system_battle_void';
+
+export type BattleSimulatorStatus =
+  | 'idle'
+  | 'running'
+  | 'friendly_victory'
+  | 'hostile_victory'
+  | 'draw'
+  | 'cleared';
+
+export interface BattleSimulatorSideStats {
+  readonly startedShips: number;
+  survivingShips: number;
+  shieldDamageDealt: number;
+  hullDamageDealt: number;
+  shipsDestroyed: number;
+}
+
+export interface BattleSimulatorStats {
+  status: BattleSimulatorStatus;
+  readonly startedAtSeconds: number;
+  finishedAtSeconds: number | null;
+  readonly friendly: BattleSimulatorSideStats;
+  readonly hostile: BattleSimulatorSideStats;
+}
 
 export interface CombatVisualEvent {
   readonly id: number;
@@ -347,6 +372,7 @@ export class GameSimulation {
   private readonly pendingCombatEvents: CombatVisualEvent[] = [];
   private readonly lastCombatActivityByPlayer = new Map<PlayerSlotId, number>();
   private readonly defeatedPlayers = new Set<PlayerSlotId>();
+  private battleSimulatorStats: BattleSimulatorStats | null = null;
   private readonly combatRng = { seed: 0x57a2c01d };
   private nextCombatEventId = 1;
   private nextEntityCounter = 1;
@@ -445,23 +471,33 @@ export class GameSimulation {
     return ship;
   }
 
+  public getBattleSimulatorStats(): BattleSimulatorStats | null {
+    return this.battleSimulatorStats;
+  }
+
+  public dismissBattleSimulatorStats(): void {
+    if (this.battleSimulatorStats && this.battleSimulatorStats.status !== 'running') {
+      this.battleSimulatorStats = null;
+    }
+  }
+
   /**
-   * Fleet Battle Simulator: clears any prior simulator ships, spawns customizable Friendly (player_1)
-   * and Hostile (player_2) fleets facing each other in clear space in `systemId`, and returns the
-   * arena center coordinate for camera framing.
+   * Fleet Battle Simulator: clears any prior simulator ships and spawns customizable Friendly
+   * (player_1) and Hostile (player_2) fleets inside the isolated void system (`system_battle_void`)
+   * with zero planets, structures, or match entities.
    */
   public launchFleetBattleSimulator(
-    systemId: string,
     friendlyCounts: Partial<Record<CombatShipClassId, number>>,
     hostileCounts: Partial<Record<CombatShipClassId, number>>,
   ): {
+    readonly systemId: string;
     readonly center: Vector2D;
     readonly friendlySpawned: number;
     readonly hostileSpawned: number;
   } {
-    this.clearBattleSimulatorShips();
+    this.removeBattleSimulatorEntities();
 
-    const center: Vector2D = { x: 480, z: -340 };
+    const center: Vector2D = { x: 0, z: 0 };
     const classesInOrder: readonly CombatShipClassId[] = [
       'fighter',
       'destroyer',
@@ -502,7 +538,7 @@ export class GameSimulation {
           const offsetZ = (i - (count - 1) * 0.5) * spacingZ;
           const ship = this.spawnCombatShipDirect(
             ownerId,
-            systemId,
+            BATTLE_SIMULATOR_SYSTEM_ID,
             { x: colX, z: center.z + offsetZ },
             cls,
             'aggressive',
@@ -519,22 +555,51 @@ export class GameSimulation {
 
     const friendlySpawned = spawnSide('player_1', friendlyCounts, -1);
     const hostileSpawned = spawnSide('player_2', hostileCounts, 1);
-    return { center, friendlySpawned, hostileSpawned };
+
+    this.battleSimulatorStats = {
+      status: friendlySpawned > 0 && hostileSpawned > 0 ? 'running' : 'idle',
+      startedAtSeconds: this.elapsedSeconds,
+      finishedAtSeconds: null,
+      friendly: {
+        startedShips: friendlySpawned,
+        survivingShips: friendlySpawned,
+        shieldDamageDealt: 0,
+        hullDamageDealt: 0,
+        shipsDestroyed: 0,
+      },
+      hostile: {
+        startedShips: hostileSpawned,
+        survivingShips: hostileSpawned,
+        shieldDamageDealt: 0,
+        hullDamageDealt: 0,
+        shipsDestroyed: 0,
+      },
+    };
+
+    return {
+      systemId: BATTLE_SIMULATOR_SYSTEM_ID,
+      center,
+      friendlySpawned,
+      hostileSpawned,
+    };
   }
 
-  /** Removes all ships spawned by the Fleet Battle Simulator (including any Carrier-launched wings). */
+  /**
+   * Ends an active Fleet Battle Simulator run, preserves final damage/survival statistics
+   * for the summary screen, and clears all simulator ships from the void arena.
+   */
   public clearBattleSimulatorShips(): number {
-    const simShipIds = new Set(
-      this.combatShips
-        .filter((s) => s.homeDockyardId === 'battle_simulator')
-        .map((s) => s.id),
-    );
+    if (this.battleSimulatorStats && this.battleSimulatorStats.status === 'running') {
+      this.refreshBattleSimulatorSurvivalCounts();
+      this.battleSimulatorStats.status = 'cleared';
+      this.battleSimulatorStats.finishedAtSeconds = this.elapsedSeconds;
+    }
+    return this.removeBattleSimulatorEntities();
+  }
+
+  private removeBattleSimulatorEntities(): number {
     const toRemove = this.combatShips
-      .filter(
-        (s) =>
-          s.homeDockyardId === 'battle_simulator' ||
-          (s.tetherHostId !== null && simShipIds.has(s.tetherHostId)),
-      )
+      .filter((s) => s.currentSystemId === BATTLE_SIMULATOR_SYSTEM_ID)
       .map((s) => s.id);
 
     for (const id of toRemove) {
@@ -544,6 +609,25 @@ export class GameSimulation {
       }
     }
     return toRemove.length;
+  }
+
+  private refreshBattleSimulatorSurvivalCounts(): void {
+    const stats = this.battleSimulatorStats;
+    if (!stats) {
+      return;
+    }
+    stats.friendly.survivingShips = this.combatShips.filter(
+      (s) =>
+        s.currentSystemId === BATTLE_SIMULATOR_SYSTEM_ID &&
+        s.ownerId === 'player_1' &&
+        s.tetherHostId === null,
+    ).length;
+    stats.hostile.survivingShips = this.combatShips.filter(
+      (s) =>
+        s.currentSystemId === BATTLE_SIMULATOR_SYSTEM_ID &&
+        s.ownerId === 'player_2' &&
+        s.tetherHostId === null,
+    ).length;
   }
 
   public getPlanetState(planetId: string): PlanetRuntimeState {
@@ -3572,12 +3656,26 @@ export class GameSimulation {
           visualRadius: radius,
           getShields: () => ship.shields,
           getHull: () => ship.hull,
-          applyDamage: (alpha, sMult, hMult, luck, _attackerOwner, attackerPos) => {
+          applyDamage: (alpha, sMult, hMult, luck, attackerOwner, attackerPos) => {
             const res = applyWeaponDamage(ship.shields, ship.hull, alpha, sMult, hMult, luck);
             ship.shields = res.nextShields;
             ship.hull = res.nextHull;
             ship.lastDamageTakenAtSeconds = this.elapsedSeconds;
             this.lastCombatActivityByPlayer.set(ship.ownerId, this.elapsedSeconds);
+            if (
+              systemId === BATTLE_SIMULATOR_SYSTEM_ID &&
+              this.battleSimulatorStats?.status === 'running'
+            ) {
+              const sideStats =
+                attackerOwner === 'player_1'
+                  ? this.battleSimulatorStats.friendly
+                  : this.battleSimulatorStats.hostile;
+              sideStats.shieldDamageDealt += res.shieldDamageDealt;
+              sideStats.hullDamageDealt += res.hullDamageDealt;
+              if (res.destroyed && ship.tetherHostId === null) {
+                sideStats.shipsDestroyed += 1;
+              }
+            }
             if (res.shieldDamageDealt > 0) {
               this.emitCombatEvent({
                 type: 'shield_impact',
@@ -4130,6 +4228,22 @@ export class GameSimulation {
         if (outOfCombat && s.shields < cfg.maxShields) {
           s.shields = Math.min(cfg.maxShields, s.shields + cfg.shieldRegenPerSecond * deltaSeconds);
         }
+      }
+    }
+
+    // 5. Update Fleet Battle Simulator completion & survival stats
+    if (this.battleSimulatorStats && this.battleSimulatorStats.status === 'running') {
+      this.refreshBattleSimulatorSurvivalCounts();
+      const fAlive = this.battleSimulatorStats.friendly.survivingShips;
+      const hAlive = this.battleSimulatorStats.hostile.survivingShips;
+      if (fAlive === 0 || hAlive === 0) {
+        this.battleSimulatorStats.status =
+          fAlive === 0 && hAlive === 0
+            ? 'draw'
+            : fAlive > 0
+              ? 'friendly_victory'
+              : 'hostile_victory';
+        this.battleSimulatorStats.finishedAtSeconds = this.elapsedSeconds;
       }
     }
   }
