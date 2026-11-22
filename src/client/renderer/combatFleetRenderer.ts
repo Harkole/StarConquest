@@ -10,6 +10,7 @@ import type {
 } from '../../shared/sim/gameSimulation.ts';
 import { FACTION_PALETTES } from './factionColors.ts';
 import { ShipModelLibrary } from './shipModels.ts';
+import { extractTurretPivots } from './turretPivots.ts';
 
 interface CombatShipRenderEntry {
   readonly group: THREE.Group;
@@ -448,9 +449,7 @@ export class CombatFleetRenderer {
 
     group.add(healthBarGroup);
 
-    const turretPivots = Array.isArray(model.userData.turretPivots)
-      ? (model.userData.turretPivots as THREE.Object3D[])
-      : [];
+    const turretPivots = extractTurretPivots(model.userData.turretPivots);
     return {
       group,
       selectionRing,
