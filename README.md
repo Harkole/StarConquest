@@ -308,6 +308,9 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ## 12. Feature Roadmap, Future Work & Known Bug Fixes
 
+### Known Bugs
+* **Carrier Fighters Do Not Redock After Combat (`fix/carrier-fighter-redock`)**: Launched Fighter squadrons currently remain deployed after combat ends instead of returning to and redocking inside their host **Fleet Carrier** hangar bays once no hostiles remain in range.
+
 ### Planned Feature Execution Order
 1. ~~**HUD & Wormhole UX Quick-Win (`fix/hud-harvester-and-wormhole-ux`)**~~ *(Completed)*: Moved assigned Harvesters out of the top HUD bar into each selected C&C / Refinery panel beside its `Auto` / `Ore` / `Crystal` Mining Focus controls, and made HUD wormhole clicks focus the camera only without triggering a false opening animation.
 2. ~~**5 Combat Ship 3D Models Art Pass (`feature/combat-ship-models`)**~~ *(Completed)*: Built all 5 combat ship models (**Stinger Light Fighter**, **Havoc Destroyer**, **Cruiser**, **Vanguard Fleet Carrier**, and **Imperator Dreadnought**) in `src/client/renderer/shipModels.ts` and `docs/artstyle.md`, and replaced every placeholder proxy hull in the Atlas Logistics Hub bays, Titan Orbital Dockyard slipways/alcoves, and Minerva Tech Module holo-tables.
