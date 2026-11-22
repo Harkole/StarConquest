@@ -35,16 +35,16 @@ Every music track is registered in `MUSIC_TRACKS` inside [ambientMusicPlayer.ts]
 
 ## 3. Dynamic Ambient ↔ Combat Music Switching
 
-Dynamic switching between `ambient`-flagged and `combat`-flagged tracks is active (`AmbientMusicPlayer.setCategory`), with smooth crossfading tracked as the next audio polish item:
+Dynamic switching between `ambient`-flagged and `combat`-flagged tracks is active (`AmbientMusicPlayer.setCategory` + `AmbientMusicPlayer.update(deltaSeconds)`):
 
 1. **Combat Entry Trigger**:
    * Enter **Combat Music Mode** when any friendly ship or structure takes weapon fire or engages an enemy target.
-   * **Planned Polish**: Crossfade smoothly over `1.5s–2.0s` (fade out ambient, fade in combat) instead of an instant cut so entering combat feels dramatic rather than jarring.
+   * Crossfade smoothly over `1.8s` (fading out ambient while fading in *Iron Horizon*) so entering combat feels dramatic rather than jarring.
 2. **Combat Exit Hysteresis (Anti-Flicker Cooldown)**:
    * Remain in **Combat Music Mode** until `14 seconds` have elapsed with zero active combat events involving the local player, preventing rapid switching during skirmishes.
-   * **Planned Polish**: Fade out combat music smoothly over `3.0s` back into the `ambient` rotation so combat end is never abrupt.
+   * Fade out combat music smoothly over `3.0s` back into the `ambient` rotation so combat end is never abrupt.
 3. **Mute Override**:
-   * Muting always stops all active music immediately (both `ambient` and `combat`), resetting playhead to `0`; unmuting restarts whichever category matches the current tactical state from the beginning.
+   * Muting always stops all active and fading channels immediately (both `ambient` and `combat`), resetting playhead to `0`; unmuting restarts whichever category matches the current tactical state from the beginning.
 
 ---
 

@@ -89,6 +89,7 @@ function bootstrapClient(): void {
     ) {
       musicPlayer.setCategory('ambient');
     }
+    musicPlayer.update(deltaSeconds);
 
     composer.render();
   }
