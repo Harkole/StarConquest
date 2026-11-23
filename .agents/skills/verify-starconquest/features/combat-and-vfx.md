@@ -30,5 +30,5 @@ Preconditions:
 
 ## Gotchas
 
-- Before Step 5 (AI Opponents), live match hostile entities reside in `system_starter_2`, `system_starter_3`, and `system_starter_4`; use the Fleet Battle Simulator for immediate fleet-vs-fleet combat testing without building up an economy.
+- Live match AI opponents reside in `system_starter_2`, `system_starter_3`, and `system_starter_4` (or `system_starter_2` only in `tutorial` mode); use the Fleet Battle Simulator for immediate fleet-vs-fleet combat testing without building up an economy.
 - No static always-on shield bubbles appear on idle ships or structures by design; localized Shield impact patches flash only during active shield hits.
