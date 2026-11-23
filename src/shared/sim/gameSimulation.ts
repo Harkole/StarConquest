@@ -4718,6 +4718,15 @@ export class GameSimulation {
 
       for (const cand of hostiles) {
         if (cand.getHull() <= 0) continue;
+        if (
+          !this.isPositionVisibleToPlayer(
+            ship.ownerId,
+            ship.currentSystemId,
+            cand.position,
+          )
+        ) {
+          continue;
+        }
         const dist = Math.hypot(
           cand.position.x - ship.position.x,
           cand.position.z - ship.position.z,

@@ -130,4 +130,17 @@ describe('StarConquest Blueprint & Balance Config Invariants', () => {
     expect(MATCH_PRESETS.standard_tactical.fogOfWarMode).toBe('sensor_range');
     expect(MATCH_PRESETS.grand_conquest.centralSuperEarthKingOfTheHillSeconds).toBeGreaterThan(0);
   });
+
+  it('sets every combat ship sensorRange to max weapon range + 25%', () => {
+    for (const ship of Object.values(SHIP_CLASSES)) {
+      if (ship.weapons.length === 0) {
+        continue;
+      }
+      const maxWeaponRange = ship.weapons.reduce(
+        (max, weapon) => Math.max(max, weapon.range),
+        0,
+      );
+      expect(ship.sensorRange).toBeCloseTo(maxWeaponRange * 1.25, 5);
+    }
+  });
 });

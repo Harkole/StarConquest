@@ -273,6 +273,9 @@ export class PlayerIntelRegistry {
     fogMode: FogOfWarMode,
     memory: PlayerIntelMemory,
   ): SystemSensorCoverage {
+    if (systemId === 'system_battle_void') {
+      return { kind: 'full_system' };
+    }
     const circles = this.collectSensorCircles(sim, viewerId, systemId);
     const hasFriendlyPresence =
       circles.length > 0 ||

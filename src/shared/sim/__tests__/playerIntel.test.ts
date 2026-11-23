@@ -262,4 +262,38 @@ describe('PlayerIntelRegistry & Fog of War', () => {
     sim.stepTick(0.1);
     expect(fleet.attackTargetId).toBeNull();
   });
+
+  it('does not engage hostiles outside all friendly sensor rings in sensor_range mode', () => {
+    const sim = new GameSimulation('standard_tactical');
+
+    const aggressiveShip = sim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 0, z: 0 },
+      'destroyer',
+    );
+    aggressiveShip.stance = 'aggressive';
+
+    const hiddenHostile = sim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 900, z: 0 },
+      'destroyer',
+    );
+
+    sim.stepTick(0.1);
+    expect(aggressiveShip.inCombat).toBe(false);
+    expect(aggressiveShip.currentTargetId).toBeNull();
+
+    sim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 850, z: 0 },
+      'fighter',
+    );
+
+    sim.stepTick(0.1);
+    expect(aggressiveShip.inCombat).toBe(true);
+    expect(aggressiveShip.currentTargetId).toBe(hiddenHostile.id);
+  });
 });
