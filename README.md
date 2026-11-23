@@ -178,17 +178,23 @@ flowchart LR
 
 ## 7. Match Modes, Pre-Match Lobby & AI Opponents
 
-Through the in-game **Match Lobby** drawer (`src/client/ui/lobbyController.ts`, opened via `[data-action="toggle-lobby"]` in the top HUD bar), players can configure and launch a match across three presets defined in `src/shared/config/presets.ts`, assign any of the 4 player slots to **Human**, **AI Bot** (`Cadet`, `Standard`, or `Admiral` profiles in `src/shared/config/aiProfiles.ts`), or **Empty Sector** (whose starter system and wormhole remain open with an unclaimed 10-slot Large Homeworld colonizable via a 1-slot `Planetary Outpost`), and track live victory telemetry:
+Through the in-game **Match Lobby** drawer (`src/client/ui/lobbyController.ts`, opened via `[data-action="toggle-lobby"]` in the top HUD bar), or directly via the top HUD **Tutorial** quick-launch button (`[data-action="start-tutorial"]`), players can configure and launch a match across four presets defined in `src/shared/config/presets.ts`, assign any of the 4 player slots to **Human**, **AI Bot** (`Cadet`, `Standard`, or `Admiral` profiles in `src/shared/config/aiProfiles.ts`), or **Empty Sector** (whose starter system and wormhole remain open with an unclaimed 10-slot Large Homeworld colonizable via a 1-slot `Planetary Outpost`), and track live victory telemetry:
 
-1. **Blitz Skirmish (15–30 Minutes)**
+1. **Guided Tutorial (10–15 Minutes)**
+   * **Setup**: 1 Human (`player_1`) vs. 1 `Cadet` AI (`player_2`) with 2 Empty Sectors (`player_3`, `player_4`).
+   * **Economy**: Accelerated starter resources (`900` Ore / `450` Crystal), `1.5x` harvesting rate, `1.0x` asteroid reserves, and expanded concurrent Harvester docking (`2` C&C / `3` Refinery).
+   * **Visibility**: Open System Visibility (`open_occupied_systems`).
+   * **Interactive Coach (`src/client/ui/tutorialController.ts` & `src/shared/sim/tutorialSteps.ts`)**: Walks new commanders through 7 interactive steps with live HUD target highlighting (`Build an Orbital Refinery`, `Build an Orbital Dockyard`, `Create a Fleet & Queue Destroyers`, `Unlock & Queue Cruisers`, `Assemble Your Battle Fleet`, `Cross the Wormhole`, and `Destroy the Cadet AI Base`).
+   * **Victory Condition**: **Last Command & Control Standing**.
+2. **Blitz Skirmish (15–30 Minutes)**
    * **Economy**: Higher starting resources (`800` Ore / `400` Crystal), `1.6x` accelerated harvesting and platform unload rate, and expanded concurrent Harvester docking (`2` C&C / `4` Refinery).
    * **Visibility**: Open System Visibility *(planned — full vision in systems where you own a unit or structure; only unvisited systems are hidden)*.
    * **Victory Condition**: **Last Command & Control Standing**.
-2. **Standard Tactical (20–40 Minutes)**
+3. **Standard Tactical (20–40 Minutes)**
    * **Economy**: Standard starting resources (`500` Ore / `250` Crystal), `1.0x` harvesting rate, `1.25x` asteroid reserves, and standard docking (`1` C&C / `2` Refinery).
    * **Visibility**: **Sensor-Range Fog of War** *(planned — visibility limited to the radar radius of friendly units, orbital structures, and Logistics Hubs)*.
    * **Victory Condition**: **Last Command & Control Standing**.
-3. **Grand Conquest (45+ Minutes)**
+4. **Grand Conquest (45+ Minutes)**
    * **Economy**: Full strategic economy with `2.0x` asteroid reserves (`500` Ore / `250` Crystal start, `1.0x` harvest rate).
    * **Visibility**: **Sensor-Range Fog of War** *(planned)*.
    * **Victory Conditions**:

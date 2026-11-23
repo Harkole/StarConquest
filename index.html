@@ -462,6 +462,72 @@
         background: rgba(239, 68, 68, 0.18);
         color: #fca5a5;
       }
+      .hud-tutorial-coach {
+        position: fixed;
+        top: 64px;
+        right: 16px;
+        width: 320px;
+        max-width: calc(100vw - 32px);
+        z-index: 30;
+        pointer-events: auto;
+        background: rgba(10, 17, 34, 0.94);
+        border: 1px solid rgba(56, 189, 248, 0.65);
+        border-radius: 8px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(8px);
+      }
+      .tutorial-coach-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .tutorial-coach-badge {
+        background: rgba(14, 165, 233, 0.22);
+        color: #7dd3fc;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+      .tutorial-coach-progress {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #38bdf8;
+      }
+      .tutorial-coach-title {
+        font-size: 0.84rem;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+      .tutorial-coach-instruction {
+        font-size: 0.74rem;
+        line-height: 1.4;
+        color: #e2e8f0;
+      }
+      .tutorial-coach-hint {
+        font-size: 0.7rem;
+        line-height: 1.35;
+        color: #94a3b8;
+        border-left: 2px solid rgba(56, 189, 248, 0.5);
+        padding-left: 7px;
+      }
+      .tutorial-highlight {
+        outline: 2px solid #38bdf8 !important;
+        outline-offset: 2px;
+        animation: tutorialPulse 1.5s ease-in-out infinite;
+      }
+      @keyframes tutorialPulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55);
+        }
+        50% {
+          box-shadow: 0 0 12px 3px rgba(56, 189, 248, 0.85);
+        }
+      }
     </style>
   </head>
   <body>

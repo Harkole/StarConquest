@@ -29,6 +29,8 @@ import {
   LobbyController,
   formatMatchClockSeconds,
 } from './lobbyController.ts';
+import { TutorialController } from './tutorialController.ts';
+import type { TutorialUiContext } from '../../shared/sim/tutorialSteps.ts';
 
 const BUILDABLE_STRUCTURE_IDS: readonly OrbitalStructureId[] = [
   'planetary_outpost',
@@ -262,12 +264,19 @@ export function mountSystemHud(
   const topBarEl = document.createElement('div');
   topBarEl.className = 'hud-econ-bar';
   const lobbyHostEl = document.createElement('div');
+  const tutorialHostEl = document.createElement('div');
   const mainBodyEl = document.createElement('div');
   mainBodyEl.className = 'hud-main-body';
   const harvesterInspectorEl = document.createElement('div');
   harvesterInspectorEl.className = 'hud-harvester-inspector';
   container.innerHTML = '';
-  container.append(topBarEl, lobbyHostEl, harvesterInspectorEl, mainBodyEl);
+  container.append(
+    topBarEl,
+    lobbyHostEl,
+    tutorialHostEl,
+    harvesterInspectorEl,
+    mainBodyEl,
+  );
 
   topBarEl.innerHTML = `
     <div class="econ-metrics">
@@ -293,6 +302,9 @@ export function mountSystemHud(
       </div>
     </div>
     <div class="econ-actions">
+      <button class="hud-btn" data-action="start-tutorial" title="Launch Guided Tutorial vs. Cadet AI">
+        Tutorial
+      </button>
       <button class="hud-btn" data-action="toggle-lobby" title="Configure Match Mode, Human/AI Slots & Victory Conditions">
         <span>Match Lobby</span>
         <span class="hud-badge" id="hud-lobby-preset-badge">Standard Tactical</span>
@@ -315,6 +327,9 @@ export function mountSystemHud(
   const econHarvestersEl = topBarEl.querySelector<HTMLElement>('#econ-harvesters-val');
   const matchStatusValEl = topBarEl.querySelector<HTMLElement>('#hud-match-status-val');
   const lobbyPresetBadgeEl = topBarEl.querySelector<HTMLElement>('#hud-lobby-preset-badge');
+  const startTutorialBtnEl = topBarEl.querySelector<HTMLButtonElement>(
+    '[data-action="start-tutorial"]',
+  );
   const lobbyToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
     '[data-action="toggle-lobby"]',
   );
@@ -327,6 +342,8 @@ export function mountSystemHud(
   const speedBtnEls = Array.from(
     topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
   );
+
+  let tutorialController: TutorialController;
 
   const lobbyController = new LobbyController({
     hostContainer: lobbyHostEl,
@@ -343,6 +360,7 @@ export function mountSystemHud(
         (s) => s.kind === 'empty',
       ).length;
       statusBannerMessage = `Launched ${presetCfg.displayName} (${FACTION_PALETTES[setup.localPlayerId].label}, ${aiCount} AI, ${emptyCount} Empty Sector${emptyCount === 1 ? '' : 's'}).`;
+      tutorialController.resetForMatch(setup.presetId);
       renderEconomyBar();
       renderHarvesterInspector();
       renderMainPanel();
@@ -350,6 +368,19 @@ export function mountSystemHud(
     onOpenStateChange: () => {
       renderEconomyBar();
     },
+  });
+
+  tutorialController = new TutorialController({
+    hostContainer: tutorialHostEl,
+    hudRoot: container,
+    initialPresetId: sim.presetId,
+    onOpenLobby: () => {
+      lobbyController.openLobby();
+    },
+  });
+
+  startTutorialBtnEl?.addEventListener('click', () => {
+    lobbyController.launchTutorialMatch();
   });
 
   lobbyToggleBtnEl?.addEventListener('click', () => {
@@ -603,6 +634,52 @@ export function mountSystemHud(
       });
 
     patchHarvesterInspectorLive();
+  }
+
+  function buildTutorialUiContext(): TutorialUiContext {
+    syncSimRefs();
+    let homeSystemId = 'system_starter_1';
+    let homePlanetId = 'system_starter_1_homeworld';
+    for (const system of sim.galaxy.systems) {
+      for (const planet of sim.getPlanetsInSystem(system.id)) {
+        if (
+          planet.structures.some(
+            (s) =>
+              s.ownerId === playerId &&
+              s.structureId === 'command_and_control',
+          )
+        ) {
+          homeSystemId = system.id;
+          homePlanetId = planet.planet.id;
+          break;
+        }
+      }
+    }
+
+    const selectedPlanetId = sceneManager.getSelectedPlanetId();
+    const selectedPlanetState = sim.getPlanetState(selectedPlanetId);
+    const selectedSlotOccupied = selectedPlanetState.structures.some((s) =>
+      s.occupiedSlots.includes(selectedSlotIndex),
+    );
+
+    const homePlanetState = sim.getPlanetState(homePlanetId);
+    let firstEmptySlotIndex: number | null = null;
+    for (let idx = 0; idx < homePlanetState.planet.orbitalSlots; idx += 1) {
+      if (!homePlanetState.structures.some((s) => s.occupiedSlots.includes(idx))) {
+        firstEmptySlotIndex = idx;
+        break;
+      }
+    }
+
+    return {
+      homePlanetId,
+      homeSystemId,
+      selectedPlanetId,
+      selectedSlotOccupied,
+      firstEmptySlotIndex,
+      isOrbitalRingCollapsed: collapsedSections.orbital_ring,
+      isFleetPanelOpen: !collapsedSections.fleet,
+    };
   }
 
   let lastMainPanelSignature = '';
@@ -1800,6 +1877,12 @@ export function mountSystemHud(
       ?.addEventListener('click', () => {
         sceneManager.focusSystemOverview();
       });
+
+    tutorialController.applyCurrentHighlight(
+      sim,
+      playerId,
+      buildTutorialUiContext(),
+    );
   }
 
   sceneManager.onSelectionChange(() => {
@@ -1816,6 +1899,7 @@ export function mountSystemHud(
   renderEconomyBar();
   renderHarvesterInspector();
   renderMainPanel();
+  tutorialController.sync(sim, playerId, buildTutorialUiContext());
 
   function patchMainPanelLiveTelemetry(): void {
     syncSimRefs();
@@ -1942,5 +2026,6 @@ export function mountSystemHud(
     } else {
       patchMainPanelLiveTelemetry();
     }
+    tutorialController.sync(sim, playerId, buildTutorialUiContext());
   }, 250);
 }
