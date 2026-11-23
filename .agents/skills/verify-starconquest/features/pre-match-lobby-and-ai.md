@@ -1,11 +1,12 @@
 # Pre-Match Lobby & AI Opponents
 
-Players can open the Pre-Match Lobby drawer from the top economy bar to select among Blitz Skirmish, Standard Tactical, and Grand Conquest match presets, configure all four player slots across Human, AI difficulty profiles (Cadet, Standard, Admiral), or Empty colonizable sectors, launch a reset match without reloading the page, and monitor live Last C&C Standing and Grand Conquest King of the Hill victory telemetry.
+Players can open the Pre-Match Lobby drawer from the top economy bar to select among Guided Tutorial, Blitz Skirmish, Standard Tactical, and Grand Conquest match presets, configure all four player slots across Human, AI difficulty profiles (Cadet, Standard, Admiral), or Empty colonizable sectors, launch a reset match without reloading the page (or start the 7-step Guided Tutorial directly), and monitor live Last C&C Standing and Grand Conquest King of the Hill victory telemetry.
 
 ## Sub-features
 
 - `lobby-drawer-toggle`: Clicking `[data-action="toggle-lobby"]` opens and closes `[data-hud-panel="lobby-drawer"]`, and `[data-action="close-lobby"]` resumes the active match without resetting.
-- `preset-and-slot-config`: Clicking `[data-lobby-preset="blitz_skirmish"|"standard_tactical"|"grand_conquest"]`, `[data-lobby-slot="player_1..4"][data-lobby-role="human"|"ai"|"empty"]`, and `[data-lobby-slot="player_1..4"][data-lobby-difficulty="cadet"|"standard"|"admiral"]` updates the draft match configuration.
+- `preset-and-slot-config`: Clicking `[data-lobby-preset="tutorial"|"blitz_skirmish"|"standard_tactical"|"grand_conquest"]`, `[data-lobby-slot="player_1..4"][data-lobby-role="human"|"ai"|"empty"]`, and `[data-lobby-slot="player_1..4"][data-lobby-difficulty="cadet"|"standard"|"admiral"]` updates the draft match configuration (`tutorial` defaults to 1 Human + 1 `cadet` AI + 2 Empty sectors).
+- `guided-tutorial-coach`: Clicking `[data-action="start-tutorial"]` in the top HUD bar or `[data-action="launch-tutorial"]` in the lobby launches `tutorial` and displays `[data-hud-panel="tutorial-tracker"]` anchored to the top-right outside `#hud-overlay` with 7 auto-advancing steps, `.tutorial-highlight` target pulses, `[data-action="tutorial-skip"]`, and `[data-action="tutorial-dismiss"]`.
 - `match-launch-reset`: Clicking `[data-action="launch-match"]` resets the authoritative simulation and 3D scene to the draft preset and slot configuration, updates `#hud-lobby-preset-badge` and `#hud-match-status-val`, and leaves empty-slot starter homeworlds unclaimed and colonizable.
 - `koth-and-outcome-telemetry`: Launching `grand_conquest` displays `[data-hud-panel="koth-telemetry-banner"]` with the Nexus Super-Earth holder and `10:00` countdown timer, and winning or losing displays `[data-hud-panel="match-outcome-banner"]` with `[data-action="open-lobby-from-outcome"]` and `[data-action="dismiss-outcome-banner"]`.
 
@@ -20,7 +21,7 @@ Preconditions: Fresh reload of `http://127.0.0.1:5179/` passing Doctor checks (`
 
 1. **Open the Pre-Match Lobby drawer**:
    - Action: Click `[data-action="toggle-lobby"]`.
-   - Observable result: `[data-hud-panel="lobby-drawer"]` becomes visible (`display: flex`), showing 3 preset cards (`blitz_skirmish`, `standard_tactical`, `grand_conquest`) and 4 player slot rows (`player_1..4`).
+   - Observable result: `[data-hud-panel="lobby-drawer"]` becomes visible (`display: flex`), showing 4 preset cards (`tutorial`, `blitz_skirmish`, `standard_tactical`, `grand_conquest`), `[data-action="launch-tutorial"]`, and 4 player slot rows (`player_1..4`).
 2. **Select Grand Conquest, Admiral AI, and an Empty Sector**:
    - Action: Click `[data-lobby-preset="grand_conquest"]`, click `[data-lobby-slot="player_2"][data-lobby-difficulty="admiral"]`, and click `[data-lobby-slot="player_4"][data-lobby-role="empty"]`.
    - Observable result: `[data-lobby-preset="grand_conquest"]` has class `selected`, `player_2` difficulty `Admiral` has class `active`, and `player_4` role `Empty` has class `active`.
