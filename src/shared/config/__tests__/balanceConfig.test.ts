@@ -5,6 +5,8 @@ import {
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
+  getDefaultSlotsForPreset,
+  normalizeMatchSetupConfig,
 } from '../index.ts';
 import { createFiveSystemGalaxy } from '../../sim/galaxy.ts';
 
@@ -105,7 +107,25 @@ describe('StarConquest Blueprint & Balance Config Invariants', () => {
     }
   });
 
-  it('defines all three lobby match presets', () => {
+  it('defines all four match presets including tutorial with 1 human, 1 cadet AI, and 2 empty slots', () => {
+    expect(MATCH_PRESETS.tutorial.id).toBe('tutorial');
+    expect(MATCH_PRESETS.tutorial.displayName).toBe('Guided Tutorial');
+    expect(MATCH_PRESETS.tutorial.startingOre).toBe(900);
+    expect(MATCH_PRESETS.tutorial.startingCrystal).toBe(450);
+    expect(MATCH_PRESETS.tutorial.harvestRateMultiplier).toBe(1.5);
+    expect(MATCH_PRESETS.tutorial.fogOfWarMode).toBe('open_occupied_systems');
+
+    const tutorialSlots = getDefaultSlotsForPreset('tutorial');
+    expect(tutorialSlots.player_1).toEqual({ kind: 'human' });
+    expect(tutorialSlots.player_2).toEqual({ kind: 'ai', difficulty: 'cadet' });
+    expect(tutorialSlots.player_3).toEqual({ kind: 'empty' });
+    expect(tutorialSlots.player_4).toEqual({ kind: 'empty' });
+
+    expect(normalizeMatchSetupConfig('tutorial').slots).toEqual(tutorialSlots);
+    expect(normalizeMatchSetupConfig({ presetId: 'tutorial' }).slots).toEqual(
+      tutorialSlots,
+    );
+
     expect(MATCH_PRESETS.blitz_skirmish.fogOfWarMode).toBe('open_occupied_systems');
     expect(MATCH_PRESETS.standard_tactical.fogOfWarMode).toBe('sensor_range');
     expect(MATCH_PRESETS.grand_conquest.centralSuperEarthKingOfTheHillSeconds).toBeGreaterThan(0);

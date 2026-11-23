@@ -306,5 +306,63 @@ describe('LocalSimAdapter & LobbyController', () => {
       expect(outcomeBanner.style.display).toBe('none');
     });
   });
+
+  it('supports the tutorial preset card and quick-launch via launchTutorialMatch()', () => {
+    withFakeDocument(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      let launchedConfig: MatchSetupConfig | null = null;
+
+      const sceneManager: LobbySceneManagerContract = {
+        simAdapter: adapter,
+        resetMatch(
+          presetOrSetup: MatchPresetId | MatchSetupInput,
+        ): MatchSetupConfig {
+          return adapter.resetMatch(presetOrSetup);
+        },
+      };
+
+      const hostContainer = new FakeHtmlElement();
+      const lobby = new LobbyController({
+        hostContainer: hostContainer as unknown as HTMLElement,
+        sceneManager,
+        onMatchLaunched: (setup) => {
+          launchedConfig = setup;
+        },
+      });
+
+      lobby.openLobby();
+      const rootEl = hostContainer.children[0]!;
+      const drawerEl = rootEl.querySelector('[data-hud-panel="lobby-drawer"]')!;
+
+      const tutorialPresetBtn = drawerEl
+        .querySelectorAll('[data-lobby-preset]')
+        .find((b) => b.dataset.lobbyPreset === 'tutorial')!;
+      expect(tutorialPresetBtn).toBeDefined();
+      tutorialPresetBtn.click();
+
+      expect(lobby.getDraftSetup()).toEqual({
+        presetId: 'tutorial',
+        localPlayerId: 'player_1',
+        slots: {
+          player_1: { kind: 'human' },
+          player_2: { kind: 'ai', difficulty: 'cadet' },
+          player_3: { kind: 'empty' },
+          player_4: { kind: 'empty' },
+        },
+      });
+
+      const launchTutorialBtn = drawerEl.querySelector(
+        '[data-action="launch-tutorial"]',
+      )!;
+      expect(launchTutorialBtn).toBeDefined();
+      launchTutorialBtn.click();
+
+      expect(lobby.isLobbyOpen()).toBe(false);
+      expect(launchedConfig).not.toBeNull();
+      expect(launchedConfig!.presetId).toBe('tutorial');
+      expect(adapter.simulation.presetId).toBe('tutorial');
+      expect(adapter.getAIBots().map((b) => b.difficulty)).toEqual(['cadet']);
+    });
+  });
 });
 

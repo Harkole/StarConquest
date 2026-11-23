@@ -1,6 +1,10 @@
 import type { PlayerSlotId } from '../protocol/commands.ts';
 
-export type MatchPresetId = 'blitz_skirmish' | 'standard_tactical' | 'grand_conquest';
+export type MatchPresetId =
+  | 'tutorial'
+  | 'blitz_skirmish'
+  | 'standard_tactical'
+  | 'grand_conquest';
 
 export type FogOfWarMode = 'open_occupied_systems' | 'sensor_range';
 
@@ -49,6 +53,20 @@ export interface MatchPresetConfig {
 }
 
 export const MATCH_PRESETS: Readonly<Record<MatchPresetId, MatchPresetConfig>> = {
+  tutorial: {
+    id: 'tutorial',
+    displayName: 'Guided Tutorial',
+    targetDurationLabel: '10–15 Minutes',
+    startingOre: 900,
+    startingCrystal: 450,
+    harvestRateMultiplier: 1.5,
+    asteroidReserveMultiplier: 1.0,
+    cncMaxConcurrentDocks: 2,
+    refineryMaxConcurrentDocks: 3,
+    fogOfWarMode: 'open_occupied_systems',
+    lastCommandAndControlStandingWins: true,
+    centralSuperEarthKingOfTheHillSeconds: null,
+  },
   blitz_skirmish: {
     id: 'blitz_skirmish',
     displayName: 'Blitz Skirmish',
@@ -104,14 +122,31 @@ function isValidAIDifficultyId(value: unknown): value is AIDifficultyId {
   );
 }
 
+export function getDefaultSlotsForPreset(
+  presetId: MatchPresetId,
+): PlayerSlotConfigMap {
+  if (presetId === 'tutorial') {
+    return {
+      player_1: { kind: 'human' },
+      player_2: { kind: 'ai', difficulty: 'cadet' },
+      player_3: { kind: 'empty' },
+      player_4: { kind: 'empty' },
+    };
+  }
+  return {
+    player_1: { kind: 'human' },
+    player_2: { kind: 'ai', difficulty: 'standard' },
+    player_3: { kind: 'ai', difficulty: 'standard' },
+    player_4: { kind: 'ai', difficulty: 'standard' },
+  };
+}
+
 function normalizeSlotConfig(
-  slotId: PlayerSlotId,
+  fallback: PlayerSlotConfig,
   raw: PlayerSlotConfig | undefined,
 ): PlayerSlotConfig {
   if (!raw) {
-    return slotId === 'player_1'
-      ? { kind: 'human' }
-      : { kind: 'ai', difficulty: 'standard' };
+    return fallback;
   }
   switch (raw.kind) {
     case 'human':
@@ -136,25 +171,35 @@ export function normalizeMatchSetupConfig(
     return {
       presetId,
       localPlayerId: 'player_1',
-      slots: {
-        player_1: { kind: 'human' },
-        player_2: { kind: 'ai', difficulty: 'standard' },
-        player_3: { kind: 'ai', difficulty: 'standard' },
-        player_4: { kind: 'ai', difficulty: 'standard' },
-      },
+      slots: getDefaultSlotsForPreset(presetId),
     };
   }
 
   const presetId = isValidPresetId(input.presetId)
     ? input.presetId
     : 'standard_tactical';
+  const defaultSlots = getDefaultSlotsForPreset(presetId);
 
-  const mutableSlots: Record<PlayerSlotId, PlayerSlotConfig> = {
-    player_1: normalizeSlotConfig('player_1', input.slots?.player_1),
-    player_2: normalizeSlotConfig('player_2', input.slots?.player_2),
-    player_3: normalizeSlotConfig('player_3', input.slots?.player_3),
-    player_4: normalizeSlotConfig('player_4', input.slots?.player_4),
-  };
+  const mutableSlots: Record<PlayerSlotId, PlayerSlotConfig> = input.slots
+    ? {
+        player_1: normalizeSlotConfig(
+          defaultSlots.player_1,
+          input.slots.player_1,
+        ),
+        player_2: normalizeSlotConfig(
+          defaultSlots.player_2,
+          input.slots.player_2,
+        ),
+        player_3: normalizeSlotConfig(
+          defaultSlots.player_3,
+          input.slots.player_3,
+        ),
+        player_4: normalizeSlotConfig(
+          defaultSlots.player_4,
+          input.slots.player_4,
+        ),
+      }
+    : { ...defaultSlots };
 
   const hasActiveSlot = PLAYER_SLOT_IDS.some(
     (id) => mutableSlots[id].kind !== 'empty',

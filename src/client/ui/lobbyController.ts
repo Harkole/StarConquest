@@ -3,6 +3,7 @@ import {
   AI_DIFFICULTY_PROFILES,
   MATCH_PRESETS,
   PLAYER_SLOT_IDS,
+  getDefaultSlotsForPreset,
   normalizeMatchSetupConfig,
   type AIDifficultyId,
   type MatchPresetId,
@@ -19,6 +20,7 @@ import type {
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 
 const MATCH_PRESET_IDS: readonly MatchPresetId[] = [
+  'tutorial',
   'blitz_skirmish',
   'standard_tactical',
   'grand_conquest',
@@ -169,10 +171,18 @@ export class LobbyController {
   }
 
   public setDraftPreset(presetId: MatchPresetId): void {
-    this.draftSetup = normalizeMatchSetupConfig({
-      ...this.draftSetup,
-      presetId,
-    });
+    this.draftSetup = normalizeMatchSetupConfig(
+      presetId === 'tutorial'
+        ? {
+            presetId,
+            localPlayerId: 'player_1',
+            slots: getDefaultSlotsForPreset('tutorial'),
+          }
+        : {
+            ...this.draftSetup,
+            presetId,
+          },
+    );
     this.renderDrawer();
   }
 
@@ -238,6 +248,17 @@ export class LobbyController {
 
   public launchDraftMatch(): MatchSetupConfig {
     const launched = this.sceneManager.resetMatch(this.draftSetup);
+    this.draftSetup = launched;
+    this.outcomeBannerDismissed = false;
+    this.lastOutcomeSig = '';
+    this.closeLobby();
+    this.syncTelemetry();
+    this.onMatchLaunched?.(launched);
+    return launched;
+  }
+
+  public launchTutorialMatch(): MatchSetupConfig {
+    const launched = this.sceneManager.resetMatch('tutorial');
     this.draftSetup = launched;
     this.outcomeBannerDismissed = false;
     this.lastOutcomeSig = '';
@@ -515,9 +536,14 @@ export class LobbyController {
             Configure Match Mode, Faction Slots & AI Difficulty
           </div>
         </div>
-        <button type="button" class="hud-btn" data-action="close-lobby">
-          Resume Current Match
-        </button>
+        <div class="hud-btn-row">
+          <button type="button" class="hud-btn active" data-action="launch-tutorial">
+            Start Guided Tutorial
+          </button>
+          <button type="button" class="hud-btn" data-action="close-lobby">
+            Resume Current Match
+          </button>
+        </div>
       </div>
 
       <div>
@@ -588,6 +614,12 @@ export class LobbyController {
             this.setDraftSlotDifficulty(slotId, diff);
           }
         });
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="launch-tutorial"]')
+      ?.addEventListener('click', () => {
+        this.launchTutorialMatch();
       });
 
     this.drawerEl
