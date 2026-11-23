@@ -273,10 +273,10 @@ export function mountSystemHud(
   container.append(
     topBarEl,
     lobbyHostEl,
-    tutorialHostEl,
     harvesterInspectorEl,
     mainBodyEl,
   );
+  (container.parentElement ?? container).append(tutorialHostEl);
 
   topBarEl.innerHTML = `
     <div class="econ-metrics">
