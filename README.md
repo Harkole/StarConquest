@@ -170,8 +170,8 @@ flowchart LR
   * While cruising across a system or transiting a wormhole, ships in a fleet **match the speed of the slowest hull** so the formation arrives together. Once entering combat range, ships **break formation to individual hull speeds** so fast Destroyers can flank while heavy capitals hold the line.
 * **Fleet Orders & Three Engagement Stances**:
   * Players direct selected fleets with right-click **Move**, right-click **Attack** (`ORDER_FLEET_ATTACK` on hostile combat ships, orbital platforms, deep-space structures, and Harvesters), **Patrol Routes** (multi-waypoint loops, including across wormholes), and **Flee** retreat orders, paired with three clear **Fleet Stances**:
-    1. **Aggressive**: Chases any visible hostile ships anywhere in the **current star system** (respecting Fog of War; never chasing unprompted through wormholes), then returns to its last ordered position / rally point once hostiles are cleared.
-    2. **Hold the Line**: Holds its current position and engages any hostile that enters weapons range without moving to pursue.
+    1. **Aggressive**: Chases and engages any **visible** hostile ships anywhere in the **current star system** (ships will not engage hostiles outside friendly sensor rings in `sensor_range` Fog of War, and never chase unprompted through wormholes), then returns to its last ordered position / rally point once hostiles are cleared.
+    2. **Hold the Line**: Holds its current position and engages any **visible** hostile that enters weapons range without moving to pursue.
     3. **Passive**: Neither moves to engage nor fires at hostiles.
 
 ---
@@ -278,14 +278,16 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ### Ship Class Baseline Stats (`src/shared/config/ships.ts`)
 
-| Ship Class | Cost (Ore / Crystal) | Build Time | Supply | Shields (Regen/s) | Hull | Speed | Evasion | Special Rules |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Fighter Squadron** | 60 / 15 | 7s | 1 | 0 *(Hull Only)* | 110 | 95 | 0.85 | Requires Carrier/Hub; `2.5x` Shield Damage; `±25%` dogfight luck variance |
-| **Destroyer** | 140 / 40 | 12s | 2 | 0 *(Hull Only)* | 420 | 68 | 0.55 | Medium guns (`1.35x` Hull mult) + light Flak PD |
-| **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
-| **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
-| **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.14` tracking, forward arc) + Dorsal/Broadside Heavy Turrets (`115` alpha, `0.34` tracking) |
-| **Resource Harvester** | 100 / 20 | 9s | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine), max queue `5` |
+| Ship Class | Cost (Ore / Crystal) | Build Time | Supply | Shields (Regen/s) | Hull | Speed | Evasion | Sensor Range | Special Rules |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Fighter Squadron** | 60 / 15 | 7s | 1 | 0 *(Hull Only)* | 110 | 95 | 0.85 | 100 | Requires Carrier/Hub; `2.5x` Shield Damage; `±25%` dogfight luck variance |
+| **Destroyer** | 140 / 40 | 12s | 2 | 0 *(Hull Only)* | 420 | 68 | 0.55 | 162.5 | Medium guns (`1.35x` Hull mult) + light Flak PD |
+| **Cruiser** | 260 / 140 | 20s | 4 | 450 (`8/s`) | 750 | 44 | 0.30 | 206.25 | Requires 1 Tech Module; Rapid PD (`0.96` tracking) + Dual Heavy Turrets |
+| **Fleet Carrier** | 380 / 320 | 30s | 6 | 700 (`10/s`) | 1,100 | 28 | 0.15 | 137.5 | Requires 2 Tech Modules; supports 4 Fighter Squadrons anywhere |
+| **Dreadnought** | 550 / 480 | 38s | 8 | 1,400 (`14/s`) | 2,400 | 18 | 0.05 | 300 | Requires 2 Tech Modules; Spinal Siege Batteries (`280` alpha, `0.14` tracking, forward arc) + Dorsal/Broadside Heavy Turrets (`115` alpha, `0.34` tracking) |
+| **Resource Harvester** | 100 / 20 | 9s | 0 | 0 *(Hull Only)* | 300 | 41.3 / 27.6 | 0.20 | 140 | 1 spawned free with C&C and each Refinery; `40` cargo (`12.5s` mine), max queue `5` |
+
+*All combat ship `sensorRange` values are derived as `maxWeaponRange * 1.25` (`+25%`), and ships only engage hostiles inside at least one friendly sensor ring.*
 
 ### Deep-Space Structures (`src/shared/config/structures.ts`)
 
@@ -326,6 +328,7 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
    * Unexplored space only reveals base planet locations (hiding live hostile fleets, structures, and resource depletion outside friendly sensor radii).
    * When friendly sensors leave an area, observed orbital and deep-space structures remain visible as ghosted/dimmed **last-known snapshots** (`applyGhostIntelMaterial`, HUD `LAST KNOWN INTEL` badges) until a friendly unit re-enters sensor range to refresh them.
    * Client right-click targeting on hostile ships and structures submits `ORDER_FLEET_ATTACK` (`src/shared/protocol/commands.ts`).
+   * Combat ship `sensorRange` equals `maxWeaponRange * 1.25` (`+25%`), and ships will not engage hostiles outside friendly sensor visibility.
 2. **Player-Hosted P2P Online Multiplayer (`feature/p2p-multiplayer`)**
    * Define serializable `StateSnapshot` packets in `src/shared/protocol/` (respecting per-player Fog of War visibility).
    * Implement `WebRTCPeerAdapter` (`src/client/net/`) for authoritative host + up to 3 peer players over WebRTC DataChannels using room codes.

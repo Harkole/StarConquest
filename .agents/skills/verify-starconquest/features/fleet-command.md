@@ -8,7 +8,7 @@ Fleet Command lets a player create a fleet with a 3D rally point, configure desi
 - `fleet-template-build` increments desired hull counts (`destroyer`, `cruiser`, `carrier`, `dreadnought`) and triggers parallel dual-bay Dockyard construction smallest-first.
 - `fleet-rally-formup` flies every newly spawned ship to the green rally point (not an intermediate sibling position).
 - `fleet-stance-resupply` toggles `Aggressive` / `Hold the Line` / `Passive` stances and `Resupply: ON ↻` / `OFF`.
-- `fleet-focus-move` jumps camera to the fleet on tab or `Focus` click, and moves the whole fleet on short right-click in 3D space.
+- `fleet-focus-move` jumps camera to the fleet on tab or `Focus` click, moves the whole fleet on short right-click in open 3D space, and issues `ORDER_FLEET_ATTACK` when right-clicking a visible hostile ship or structure.
 - `fleet-panel-collapse` collapses and expands the Fleet Command section via `Collapse ▲` / `Expand ▼`.
 
 ## How to get to it (user POV)
