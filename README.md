@@ -169,7 +169,7 @@ flowchart LR
 * **Formation Cruise & Combat Breakaway**:
   * While cruising across a system or transiting a wormhole, ships in a fleet **match the speed of the slowest hull** so the formation arrives together. Once entering combat range, ships **break formation to individual hull speeds** so fast Destroyers can flank while heavy capitals hold the line.
 * **Fleet Orders & Three Engagement Stances**:
-  * Players direct selected fleets with right-click **Move**, **Patrol Routes** (multi-waypoint loops, including across wormholes), and **Flee** retreat orders (`ORDER_FLEET_ATTACK` also exists in `src/shared/protocol/commands.ts` for future right-click Attack client wiring), paired with three clear **Fleet Stances**:
+  * Players direct selected fleets with right-click **Move**, right-click **Attack** (`ORDER_FLEET_ATTACK` on hostile combat ships, orbital platforms, deep-space structures, and Harvesters), **Patrol Routes** (multi-waypoint loops, including across wormholes), and **Flee** retreat orders, paired with three clear **Fleet Stances**:
     1. **Aggressive**: Chases any visible hostile ships anywhere in the **current star system** (respecting Fog of War; never chasing unprompted through wormholes), then returns to its last ordered position / rally point once hostiles are cleared.
     2. **Hold the Line**: Holds its current position and engages any hostile that enters weapons range without moving to pursue.
     3. **Passive**: Neither moves to engage nor fires at hostiles.
@@ -188,15 +188,15 @@ Through the in-game **Match Lobby** drawer (`src/client/ui/lobbyController.ts`, 
    * **Victory Condition**: **Last Command & Control Standing**.
 2. **Blitz Skirmish (15–30 Minutes)**
    * **Economy**: Higher starting resources (`800` Ore / `400` Crystal), `1.6x` accelerated harvesting and platform unload rate, and expanded concurrent Harvester docking (`2` C&C / `4` Refinery).
-   * **Visibility**: Open System Visibility *(planned — full vision in systems where you own a unit or structure; only unvisited systems are hidden)*.
+   * **Visibility**: **Open System Visibility** (`open_occupied_systems` — full vision in systems where you own a unit or structure; unvisited systems remain unexplored, and previously visited systems retain ghosted last-known-intel snapshots).
    * **Victory Condition**: **Last Command & Control Standing**.
 3. **Standard Tactical (20–40 Minutes)**
    * **Economy**: Standard starting resources (`500` Ore / `250` Crystal), `1.0x` harvesting rate, `1.25x` asteroid reserves, and standard docking (`1` C&C / `2` Refinery).
-   * **Visibility**: **Sensor-Range Fog of War** *(planned — visibility limited to the radar radius of friendly units, orbital structures, and Logistics Hubs)*.
+   * **Visibility**: **Sensor-Range Fog of War** (`sensor_range` — live visibility limited to the radar radius of friendly units, orbital structures, and Logistics Hubs, with ghosted last-known-intel snapshots for previously observed structures and belt reserves).
    * **Victory Condition**: **Last Command & Control Standing**.
 4. **Grand Conquest (45+ Minutes)**
    * **Economy**: Full strategic economy with `2.0x` asteroid reserves (`500` Ore / `250` Crystal start, `1.0x` harvest rate).
-   * **Visibility**: **Sensor-Range Fog of War** *(planned)*.
+   * **Visibility**: **Sensor-Range Fog of War** (`sensor_range` with ghosted last-known-intel snapshots).
    * **Victory Conditions**:
      * **Last Command & Control Standing**, OR
      * **King of the Hill** (`centralSuperEarthKingOfTheHillSeconds: 600` in `presets.ts` and `reduceMatchOutcomeTick` in `gameSimulation.ts`): Capture the Central Neutral System's **Super-Earth** with a completed orbital structure and hold it uncontested (`> 320u` from hostile combat ships) for 10 minutes (`600s`; timer pauses while contested and resets if all structures on Super-Earth are destroyed).
@@ -321,11 +321,11 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 * None currently open.
 
 ### Planned Feature Execution Order
-1. **Sensor-Range Fog of War, Last-Known-Intel Snapshots & Client Attack Orders (`feature/fog-of-war`)**
-   * Enforce `fogOfWarMode` from `src/shared/config/presets.ts` (`open_occupied_systems` in Blitz Skirmish vs. `sensor_range` in Standard Tactical and Grand Conquest).
+1. **Sensor-Range Fog of War, Last-Known-Intel Snapshots & Client Attack Orders (`feature/fog-of-war`) — Implemented**
+   * Enforces `fogOfWarMode` from `src/shared/config/presets.ts` (`open_occupied_systems` in Blitz Skirmish vs. `sensor_range` in Standard Tactical and Grand Conquest) via `PlayerIntelRegistry` / `getPlayerSystemView` (`src/shared/sim/playerIntel.ts`).
    * Unexplored space only reveals base planet locations (hiding live hostile fleets, structures, and resource depletion outside friendly sensor radii).
-   * When friendly sensors leave an area, observed structures and orbital platforms remain visible as ghosted/dimmed **last-known snapshots** until a friendly unit re-enters sensor range to refresh them.
-   * Wire client right-click targeting on hostile ships and structures to submit `ORDER_FLEET_ATTACK` (`src/shared/protocol/commands.ts`).
+   * When friendly sensors leave an area, observed orbital and deep-space structures remain visible as ghosted/dimmed **last-known snapshots** (`applyGhostIntelMaterial`, HUD `LAST KNOWN INTEL` badges) until a friendly unit re-enters sensor range to refresh them.
+   * Client right-click targeting on hostile ships and structures submits `ORDER_FLEET_ATTACK` (`src/shared/protocol/commands.ts`).
 2. **Player-Hosted P2P Online Multiplayer (`feature/p2p-multiplayer`)**
    * Define serializable `StateSnapshot` packets in `src/shared/protocol/` (respecting per-player Fog of War visibility).
    * Implement `WebRTCPeerAdapter` (`src/client/net/`) for authoritative host + up to 3 peer players over WebRTC DataChannels using room codes.

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import {
   DEEP_SPACE_STRUCTURES,
+  ORBITAL_STRUCTURES,
   PLAYER_SLOT_IDS,
+  SHIP_CLASSES,
   type DeepSpaceStructureId,
   type MatchPresetId,
   type MatchSetupConfig,
@@ -17,9 +19,11 @@ import {
   BATTLE_SIMULATOR_SYSTEM_ID,
   type DockyardWaypoint,
 } from '../../shared/sim/gameSimulation.ts';
+import type { ProjectedDeepSpaceStructure } from '../../shared/sim/playerIntel.ts';
 import type { LocalSimAdapter } from '../net/localSimAdapter.ts';
 import { CombatFleetRenderer } from './combatFleetRenderer.ts';
 import { CombatVfxRenderer } from './combatVfxRenderer.ts';
+import { applyGhostIntelMaterial } from './ghostIntelMaterial.ts';
 import { HarvesterFleetRenderer } from './harvesterFleetRenderer.ts';
 import type { OrbitalCameraController } from './orbitalCamera.ts';
 import {
@@ -466,16 +470,21 @@ export class SystemSceneManager {
       targetSystem,
       wormholesInSystem,
     );
-    this.environmentHandle.syncBeltDepletion?.(
-      this.simAdapter.simulation.getMiningBeltsInSystem(targetSystem.id),
+    const initialView = this.simAdapter.simulation.getPlayerSystemView(
+      this.simAdapter.localPlayerId,
+      targetSystem.id,
     );
+    this.environmentHandle.syncBeltDepletion?.(initialView.miningBelts);
+    this.environmentHandle.syncFogCoverage?.(initialView.coverage);
     this.scene.add(this.environmentHandle.rootGroup);
 
     const sunDir = this.environmentHandle.sunDirection;
     this.planetHandles = targetSystem.planets.map((planet) => {
       const handle = createLivingPlanetGroup(planet, sunDir);
-      const runtimeState = this.simAdapter.simulation.getPlanetState(planet.id);
-      handle.syncStructures(runtimeState);
+      const planetView = initialView.planets.find((p) => p.planet.id === planet.id);
+      handle.syncStructures(
+        planetView ?? this.simAdapter.simulation.getPlanetState(planet.id),
+      );
       this.scene.add(handle.rootGroup);
       return handle;
     });
@@ -664,31 +673,31 @@ export class SystemSceneManager {
   public update(elapsedSeconds: number, deltaSeconds: number): void {
     this.simAdapter.update(deltaSeconds);
     const simElapsed = this.simAdapter.simulation.elapsedSeconds;
+    const view = this.simAdapter.simulation.getPlayerSystemView(
+      this.simAdapter.localPlayerId,
+      this.activeSystem.id,
+    );
 
     for (const handle of this.planetHandles) {
-      const runtimeState = this.simAdapter.simulation.getPlanetState(handle.planet.id);
-      handle.syncStructures(runtimeState);
+      const planetView = view.planets.find((p) => p.planet.id === handle.planet.id);
+      handle.syncStructures(
+        planetView ?? this.simAdapter.simulation.getPlanetState(handle.planet.id),
+      );
       handle.update(elapsedSeconds, deltaSeconds, simElapsed);
     }
 
-    this.syncAndAnimateDeepSpaceStructures(elapsedSeconds);
+    this.syncAndAnimateDeepSpaceStructures(elapsedSeconds, view.deepSpaceStructures);
     if (this.pendingDeepSpaceBuildType !== null) {
       this.updatePlacementPreviewValidity();
     }
 
-    const harvestersInSystem = this.simAdapter.simulation.getHarvestersInSystem(
-      this.activeSystem.id,
-    );
     this.harvesterRenderer.syncHarvesters(
-      harvestersInSystem,
+      view.harvesters,
       this.selectedHarvesterId,
     );
 
-    const combatShipsInSystem = this.simAdapter.simulation.getCombatShipsInSystem(
-      this.activeSystem.id,
-    );
     this.combatFleetRenderer.syncShips(
-      combatShipsInSystem,
+      view.combatShips,
       this.selectedCombatShipId,
       this.selectedFleetId,
       elapsedSeconds,
@@ -730,18 +739,19 @@ export class SystemSceneManager {
       patrolRoutes,
     );
 
-    const combatEvents = this.simAdapter.simulation.consumeCombatEvents();
+    const combatEvents = this.simAdapter.simulation.consumeCombatEvents(
+      this.simAdapter.localPlayerId,
+    );
     this.combatVfxRenderer.ingestEvents(combatEvents, this.activeSystem.id);
     this.combatVfxRenderer.update(deltaSeconds);
 
     const shipPositions = [
-      ...harvestersInSystem.map((h) => h.position),
-      ...combatShipsInSystem.map((s) => s.position),
+      ...view.harvesters.map((h) => h.position),
+      ...view.combatShips.map((s) => s.position),
     ];
     if (this.environmentHandle) {
-      this.environmentHandle.syncBeltDepletion?.(
-        this.simAdapter.simulation.getMiningBeltsInSystem(this.activeSystem.id),
-      );
+      this.environmentHandle.syncBeltDepletion?.(view.miningBelts);
+      this.environmentHandle.syncFogCoverage?.(view.coverage);
       for (const wh of this.environmentHandle.wormholes) {
         wh.updateShipProximity(shipPositions);
       }
@@ -749,12 +759,15 @@ export class SystemSceneManager {
     }
   }
 
-  private syncAndAnimateDeepSpaceStructures(elapsedSeconds: number): void {
-    const deepSpaceStructs = this.simAdapter.simulation.getDeepSpaceStructuresInSystem(
-      this.activeSystem.id,
-    );
+  private syncAndAnimateDeepSpaceStructures(
+    elapsedSeconds: number,
+    deepSpaceStructs: readonly ProjectedDeepSpaceStructure[],
+  ): void {
     const sig = deepSpaceStructs
-      .map((s) => `${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}`)
+      .map((item) => {
+        const s = item.kind === 'live' ? item.structure : item;
+        return `${item.kind}:${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}`;
+      })
       .join('|');
 
     if (sig !== this.lastDeepSpaceSignature) {
@@ -762,7 +775,9 @@ export class SystemSceneManager {
       this.deepSpaceRootGroup.clear();
       this.deepSpaceGroupsById.clear();
 
-      for (const ds of deepSpaceStructs) {
+      for (const item of deepSpaceStructs) {
+        const isGhost = item.kind === 'ghost';
+        const ds = item.kind === 'live' ? item.structure : item;
         const stationGroup = this.deepSpaceModels.buildStationMesh(
           ds.structureId,
           ds.isComplete,
@@ -771,8 +786,20 @@ export class SystemSceneManager {
         );
         stationGroup.position.set(ds.position.x, 0, ds.position.z);
 
-        // Display operational 180u build-radius tether ring around completed Logistics Hubs
-        if (ds.structureId === 'logistics_hub' && ds.isComplete) {
+        if (isGhost) {
+          applyGhostIntelMaterial(stationGroup);
+        }
+
+        stationGroup.traverse((obj) => {
+          obj.userData.deepSpaceStructureId = ds.id;
+        });
+
+        if (
+          !isGhost &&
+          ds.ownerId === this.simAdapter.localPlayerId &&
+          ds.structureId === 'logistics_hub' &&
+          ds.isComplete
+        ) {
           const radiusRing = new THREE.Mesh(
             this.hubRadiusRingGeom,
             this.hubRadiusRingMat,
@@ -786,7 +813,11 @@ export class SystemSceneManager {
       }
     }
 
-    for (const ds of deepSpaceStructs) {
+    for (const item of deepSpaceStructs) {
+      if (item.kind !== 'live') {
+        continue;
+      }
+      const ds = item.structure;
       const group = this.deepSpaceGroupsById.get(ds.id);
       if (group) {
         this.deepSpaceModels.updateStationAnimation(group, elapsedSeconds, null);
@@ -803,6 +834,47 @@ export class SystemSceneManager {
         }
       }
     }
+  }
+
+  private pickDeepSpaceStructure(raycaster: THREE.Raycaster): string | null {
+    const hits = raycaster.intersectObjects(this.deepSpaceRootGroup.children, true);
+    for (const hit of hits) {
+      let current: THREE.Object3D | null = hit.object;
+      while (current) {
+        const dsId = current.userData.deepSpaceStructureId;
+        if (typeof dsId === 'string') {
+          return dsId;
+        }
+        current = current.parent;
+      }
+    }
+    return null;
+  }
+
+  private issueFleetAttackOrder(
+    targetPosition: { readonly x: number; readonly z: number },
+    targetLabel: string,
+    targetEntityId?: string,
+  ): void {
+    if (!this.selectedFleetId) {
+      return;
+    }
+    const pos = { x: Math.round(targetPosition.x), z: Math.round(targetPosition.z) };
+    const res = this.simAdapter.submitPlayerCommand({
+      type: 'ORDER_FLEET_ATTACK',
+      playerId: this.simAdapter.localPlayerId,
+      fleetId: this.selectedFleetId,
+      targetSystemId: this.activeSystem.id,
+      targetPosition: pos,
+      targetEntityId,
+    });
+    const fleet = this.simAdapter.simulation.getFleetById(this.selectedFleetId);
+    this.notifyPlacementResult(
+      res.ok
+        ? `${fleet?.name ?? 'Fleet'} attacking ${targetLabel} at (${pos.x}, ${pos.z}).`
+        : `Cannot attack target: ${res.reason}`,
+      res.ok,
+    );
   }
 
   private bindCanvasPicking(canvasElement: HTMLElement): void {
@@ -858,7 +930,6 @@ export class SystemSceneManager {
     });
 
     canvasElement.addEventListener('pointerup', (e) => {
-      // Short right-click tap (not a camera orbit drag): issue fleet-wide Move order if a fleet is selected
       if (e.button === 2) {
         const rightMoveDist = Math.hypot(e.clientX - rightDownX, e.clientY - rightDownY);
         if (rightMoveDist <= 5 && this.selectedFleetId) {
@@ -869,11 +940,91 @@ export class SystemSceneManager {
             new THREE.Vector2(ndcX, ndcY),
             this.cameraController.camera,
           );
+
+          const view = this.simAdapter.simulation.getPlayerSystemView(
+            this.simAdapter.localPlayerId,
+            this.activeSystem.id,
+          );
+
+          const pickedShipId = this.combatFleetRenderer.pickCombatShip(this.raycaster);
+          if (pickedShipId) {
+            const ship = view.combatShips.find((s) => s.id === pickedShipId);
+            if (ship && ship.ownerId !== this.simAdapter.localPlayerId) {
+              this.issueFleetAttackOrder(
+                ship.position,
+                SHIP_CLASSES[ship.shipClassId].displayName,
+                ship.id,
+              );
+              return;
+            }
+          }
+
+          const pickedDsId = this.pickDeepSpaceStructure(this.raycaster);
+          if (pickedDsId) {
+            const dsEntry = view.deepSpaceStructures.find(
+              (item) => (item.kind === 'live' ? item.structure.id : item.id) === pickedDsId,
+            );
+            if (dsEntry) {
+              const ds = dsEntry.kind === 'live' ? dsEntry.structure : dsEntry;
+              if (ds.ownerId !== this.simAdapter.localPlayerId) {
+                this.issueFleetAttackOrder(
+                  ds.position,
+                  DEEP_SPACE_STRUCTURES[ds.structureId].displayName,
+                  dsEntry.kind === 'live' ? dsEntry.structure.id : undefined,
+                );
+                return;
+              }
+            }
+          }
+
+          for (const handle of this.planetHandles) {
+            const pickedOrbital = handle.pickOrbitalStructure(this.raycaster);
+            if (pickedOrbital) {
+              const planetView = view.planets.find(
+                (p) => p.planet.id === handle.planet.id,
+              );
+              const structEntry = planetView?.structures.find(
+                (item) =>
+                  (item.kind === 'live' ? item.structure.id : item.id) ===
+                  pickedOrbital.structureId,
+              );
+              if (structEntry) {
+                const s =
+                  structEntry.kind === 'live' ? structEntry.structure : structEntry;
+                if (s.ownerId !== this.simAdapter.localPlayerId) {
+                  this.issueFleetAttackOrder(
+                    {
+                      x: pickedOrbital.worldPosition.x,
+                      z: pickedOrbital.worldPosition.z,
+                    },
+                    ORBITAL_STRUCTURES[s.structureId].displayName,
+                    structEntry.kind === 'live' ? structEntry.structure.id : undefined,
+                  );
+                  return;
+                }
+              }
+            }
+          }
+
+          const pickedHarvesterId = this.harvesterRenderer.pickHarvester(this.raycaster);
+          if (pickedHarvesterId) {
+            const harvester = view.harvesters.find((h) => h.id === pickedHarvesterId);
+            if (harvester && harvester.ownerId !== this.simAdapter.localPlayerId) {
+              this.issueFleetAttackOrder(
+                harvester.position,
+                'Harvester',
+                harvester.id,
+              );
+              return;
+            }
+          }
+
           const pickedWh = this.pickWormhole(this.raycaster);
           if (pickedWh) {
             this.orderSelectedFleetThroughWormhole(pickedWh.wormholeId);
             return;
           }
+
           if (this.raycaster.ray.intersectPlane(this.orbitalPlane, hitPoint)) {
             const pos = { x: Math.round(hitPoint.x), z: Math.round(hitPoint.z) };
             const res = this.simAdapter.submitPlayerCommand({
