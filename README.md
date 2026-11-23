@@ -309,36 +309,29 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 
 ---
 
-## 12. Feature Roadmap, Future Work & Known Bug Fixes
+## 12. Feature Roadmap & Future Work
 
 ### Known Bugs
-* **Carrier Fighters Do Not Redock After Combat (`fix/carrier-fighter-redock`)**: Launched Fighter squadrons currently remain deployed after combat ends instead of returning to and redocking inside their host **Fleet Carrier** hangar bays once no hostiles remain in range.
+* None currently open.
 
 ### Planned Feature Execution Order
-1. ~~**HUD & Wormhole UX Quick-Win (`fix/hud-harvester-and-wormhole-ux`)**~~ *(Completed)*: Moved assigned Harvesters out of the top HUD bar into each selected C&C / Refinery panel beside its `Auto` / `Ore` / `Crystal` Mining Focus controls, and made HUD wormhole clicks focus the camera only without triggering a false opening animation.
-2. ~~**5 Combat Ship 3D Models Art Pass (`feature/combat-ship-models`)**~~ *(Completed)*: Built all 5 combat ship models (**Stinger Light Fighter**, **Havoc Destroyer**, **Cruiser**, **Vanguard Fleet Carrier**, and **Imperator Dreadnought**) in `src/client/renderer/shipModels.ts` and `docs/artstyle.md`, and replaced every placeholder proxy hull in the Atlas Logistics Hub bays, Titan Orbital Dockyard slipways/alcoves, and Minerva Tech Module holo-tables.
-3. ~~**Combat Fleet Production, Navigation & Planetary Obstacle Avoidance (`feature/fleet-navigation`)**~~ *(Completed)*: Implemented the shared 2D planetary obstacle-avoidance steering and wormhole routing solver (`src/shared/sim/navigation.ts`) for both Harvesters and combat ships, Orbital Dockyard combat ship production queues with `autoRepeat`, tech/hub/supply gating, cross-system Rally Points, multi-waypoint Patrol Routes, 3D `CombatFleetRenderer` with Rally/Patrol overlays, and Orbital Dockyard HUD fleet controls.
-4. ~~**Combat RPS Simulation, Turret Tracking & Shield VFX (`feature/combat-and-vfx`, v0.6.0)**~~ *(Completed)*: Implemented pure 5-class Shield vs. Hull RPS math (`src/shared/sim/combat.ts`), Fleet Stances (`Aggressive`, `Hold the Line`, `Passive`), Fleet `Flee` retreat command, Fighter close-orbit swarming, weapon LOS checks & capital broadsiding, Dreadnought forward-only Spinal Siege vs. 360-degree Heavy Turrets, Carrier standoff (`280u`) & sequential 1-at-a-time Fighter rebuild progress bar, pairwise ship-to-ship separation, majority-cluster Fleet focus anchor, Defence Tower & Orbital Structure weapons, out-of-combat shield regen & hub hull repair, C&C defeat detection, 3D overhead blue Shield & green Hull health bars, active `turretPivots` target tracking, `CombatVfxRenderer` (HDR weapon tracers/salvos, localized solid-fill Shield impact patches, hull explosions), per-player faction colors across all ships, Harvesters, and stations (`src/client/renderer/factionColors.ts`), Starter System 1 purple vs. System 4 emerald nebula contrast, smooth ambient ↔ `"combat"` music crossfading (`1.8s` fade-in, `14s` cooldown, `3.0s` fade-out), and the isolated **Void Fleet Battle Simulator** with post-battle statistics.
-5. ~~**Pre-Match Lobby & AI Opponents (`feature/lobby-and-ai`, v0.8.0)**~~ *(Completed)*: Built the Pre-Match Lobby drawer (`src/client/ui/lobbyController.ts`) supporting all three match presets (`blitz_skirmish`, `standard_tactical`, `grand_conquest`), 4-slot configuration across `Human`, `AI Bot` (`cadet`, `standard`, `admiral`), and colonizable `Empty` starter homeworlds, authoritative Last C&C Standing and Grand Conquest 600s Central Super-Earth King of the Hill victory tracking (`reduceMatchOutcomeTick`), and the table-driven multi-domain macro AI controller (`src/shared/config/aiProfiles.ts` & `src/shared/ai/aiController.ts`).
-6. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**: Add an in-game encyclopaedia documenting every ship, orbital platform, deep-space installation, how-to-play mechanics, and victory goals, complete with an interactive 3D preview viewport (orbit, zoom, and pan) rendering live models from `ShipModelLibrary` and `StationModelLibrary` alongside live data-driven stats from `src/shared/config/`.
-
-### Sensor-Range Fog of War & Last-Known-Intel Snapshots
-* **Planned Feature**: Implement full sensor-range Fog of War (for Standard Tactical & Grand Conquest modes):
-  * Unexplored space only reveals base planet locations (no live hostile fleets, structures, or resource depletion state outside friendly sensor radii).
-  * When a friendly ship or sensor leaves an area, structures and orbital platforms remain visible under Fog of War as a **last-known snapshot** (ghosted/dimmed state of what was last observed there) rather than updating live.
-  * When a friendly unit next re-enters sensor range of that area, the snapshot refreshes immediately to reflect what is presently there (newly built or destroyed structures, updated ownership, and live hostile fleets).
-
-### In-Game Codex / Wiki & Interactive 3D Model Viewer
-* **Planned Feature (`feature/ingame-codex-wiki`)**: Build an in-game wiki/codex overlay accessible from the tactical HUD and pre-match lobby with:
-  * **Interactive 3D Preview Viewport**: Renders any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js inspection canvas supporting full **orbit, zoom, and pan** camera controls (matching the main world camera).
-  * **Live Data-Driven Unit & Structure Reference**: Automatically pulls costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/` so stats never drift out of sync with balance changes.
-  * **How to Play & Victory Goals Guide**: Clear player-facing overview of the 5-system hub-and-spoke galaxy, Ore/Crystal scarcity & Central Nexus escalation, macro fleet stances/rally/patrol controls, and mode-specific victory conditions (Last C&C Standing & Grand Conquest King of the Hill).
-
-### ~~Wormhole Interaction & Collapsible HUD Sections (`feature/wormhole-and-hud-ux`)~~ *(Completed)*
-* **Double-Click Wormhole Camera Transit**: Double-clicking a wormhole in 3D space or in the HUD switches the camera to the connected star system and focuses directly on the wormhole's exit point.
-* **Right-Click Wormhole Fleet Transit**: Right-clicking a wormhole (in 3D space or HUD) while a fleet is selected orders the fleet to transit through that wormhole and hold position at the exit point in the connected star system.
-* **Collapsible HUD Sections**: Every tactical HUD section (`galaxy`, `fleet`, `battle_sim`, `planets_wormholes`, `deep_space`, `orbital_ring`) includes a `Collapse ▲` / `Expand ▼` toggle button so players can minimize sections they are not actively using while status notifications remain visible.
-
-### Dynamic Soundtrack, Additional Tracks & Sound Design (`docs/sounds.md`)
-* **Canonical Audio Guide**: All music tracks, playback rules, and planned SFX are documented in [docs/sounds.md](./docs/sounds.md).
-* **Additional Tracks & Sound Effects**: The 4 `ambient` tracks shuffle on load and loop once every track has played once, and dynamic ambient ↔ `"combat"` music switching (*Iron Horizon* with smooth `1.8s` combat fade-in, `14s` anti-flicker cooldown, and `3.0s` fade-out back to ambient) is live. Future audio additions: more `"combat"` and `"ambient"` tracks for playlist variety, and weapon/UI/explosion SFX from `docs/sounds.md`.
+1. **Sensor-Range Fog of War, Last-Known-Intel Snapshots & Client Attack Orders (`feature/fog-of-war`)**
+   * Enforce `fogOfWarMode` from `src/shared/config/presets.ts` (`open_occupied_systems` in Blitz Skirmish vs. `sensor_range` in Standard Tactical and Grand Conquest).
+   * Unexplored space only reveals base planet locations (hiding live hostile fleets, structures, and resource depletion outside friendly sensor radii).
+   * When friendly sensors leave an area, observed structures and orbital platforms remain visible as ghosted/dimmed **last-known snapshots** until a friendly unit re-enters sensor range to refresh them.
+   * Wire client right-click targeting on hostile ships and structures to submit `ORDER_FLEET_ATTACK` (`src/shared/protocol/commands.ts`).
+2. **Player-Hosted P2P Online Multiplayer (`feature/p2p-multiplayer`)**
+   * Define serializable `StateSnapshot` packets in `src/shared/protocol/` (respecting per-player Fog of War visibility).
+   * Implement `WebRTCPeerAdapter` (`src/client/net/`) for authoritative host + up to 3 peer players over WebRTC DataChannels using room codes.
+   * Extend the Pre-Match Lobby (`src/client/ui/lobbyController.ts`) with Host / Join Room Code controls and remote human slot assignment.
+3. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**
+   * Build an in-game wiki/codex overlay accessible from the tactical HUD and Pre-Match Lobby.
+   * **Interactive 3D Preview Viewport**: Render any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js canvas with full orbit, zoom, and pan controls.
+   * **Live Data-Driven Unit & Structure Reference**: Pull costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/`.
+   * **How to Play & Victory Guide**: Document the 5-system galaxy, Ore/Crystal scarcity, Central Nexus escalation, macro fleet controls, and mode-specific victory conditions.
+4. **Combat Sound Effects & Additional Soundtrack Tracks (`feature/combat-sfx-and-audio`)**
+   * Implement Web Audio API weapon, shield impact, hull explosion, building, and UI sound effects per [docs/sounds.md](./docs/sounds.md).
+   * Add additional `"ambient"` and `"combat"` tracks for playlist variety.
+5. **Future Enhancements**
+   * **Planet Layout Randomization**: Randomize secondary Small and Medium planet positions/configurations per match while keeping starter balance fair.
+   * **Optional Dedicated Headless Host (`src/server/`)**: Wrap `src/shared/sim` and `src/shared/ai` in a lightweight Node.js WebSocket server if public matchmaking or dedicated rooms are needed later.

@@ -3248,9 +3248,17 @@ export class GameSimulation {
       }
     }
 
-    // 3. Same-system navigation (Patrol Route loop or Rally Point formation)
-    const goalPos: Vector2D =
-      ship.patrolWaypoints.length >= 2
+    // 3. Same-system navigation (Patrol Route loop, tethered Fighter hangar return, or Rally Point formation)
+    const isReturningTetheredFighter =
+      ship.shipClassId === 'fighter' &&
+      ship.tetherHostId !== null &&
+      ship.stance === 'passive';
+    const goalPos: Vector2D = isReturningTetheredFighter
+      ? {
+          x: ship.targetPosition.x,
+          z: ship.targetPosition.z,
+        }
+      : ship.patrolWaypoints.length >= 2
         ? {
           x: ship.targetPosition.x + ship.formationOffset.x * 0.45,
           z: ship.targetPosition.z + ship.formationOffset.z * 0.45,
@@ -4207,12 +4215,12 @@ export class GameSimulation {
           x: hostCarrier.position.x,
           z: hostCarrier.position.z,
         };
-        if (!hostileNearby) {
+        if (!hostileNearby && fighter.currentSystemId === hostCarrier.currentSystemId) {
           const distToCarrier = Math.hypot(
             fighter.position.x - hostCarrier.position.x,
             fighter.position.z - hostCarrier.position.z,
           );
-          if (distToCarrier <= 20) {
+          if (distToCarrier <= 24) {
             hostCarrier.readyFighterCount = Math.min(
               SHIP_CLASSES.carrier.fighterSquadronCapacity,
               hostCarrier.readyFighterCount + 1,
@@ -4238,7 +4246,7 @@ export class GameSimulation {
         fighter.stance = hostileNearby ? 'aggressive' : 'passive';
         fighter.targetSystemId = hostHub.systemId;
         fighter.targetPosition = { x: hostHub.position.x, z: hostHub.position.z };
-        if (!hostileNearby) {
+        if (!hostileNearby && fighter.currentSystemId === hostHub.systemId) {
           const distToHub = Math.hypot(
             fighter.position.x - hostHub.position.x,
             fighter.position.z - hostHub.position.z,
