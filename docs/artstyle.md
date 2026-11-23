@@ -358,7 +358,7 @@ Ship 3D lengths scale from `SHIP_CLASSES[id].maxHull` (`src/shared/config/ships.
    * Wide flat-topped forward flight deck (`carrier_flight_deck`, `~6.2u` × `~2.9u`) in Dark Charcoal (`#242a33`) tarmac framed by Gunmetal Slate (`#46505e`) deck edges, twin **Weathered Ochre (`#cd8734`)** runway border stripes, and Steel Grey centerline markings, staging **4 parked Stinger Light Fighters** right on deck.
    * Under-deck bow launch hangar mouth with glowing cyan-blue (`#38bdf8`) containment strip.
 2. **Aft Command Bridge Island & Dorsal Geodesic Radar Sphere**:
-   * Multi-tier aft flight-control island (`carrier_command_island`) with warm-amber (`#fbbf24`) panoramic windows, crowned by a prominent **Dorsal Geodesic Radar Sphere** (`290` sensor range) and tall communications mast, backed by Weathered Ochre stern deck armor.
+   * Multi-tier aft flight-control island (`carrier_command_island`) with warm-amber (`#fbbf24`) panoramic windows, crowned by a prominent **Dorsal Geodesic Radar Sphere** (`137.5` sensor range) and tall communications mast, backed by Weathered Ochre stern deck armor.
 3. **Defensive Point-Defence Grid (4 Twin-Barrel PD Turrets)**:
    * 1 forward-island dorsal, 2 broadside, and 1 aft twin-barrel Point-Defence turret (8 machined steel grey `#8492a6` barrels total, exposed via `userData.turretPivots`).
 4. **Six Vertically Stacked Outboard Engine Cluster Pods (`3` Port + `3` Starboard)**:

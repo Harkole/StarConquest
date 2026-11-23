@@ -41,7 +41,7 @@ src/
 │   ├── renderer/        # Three.js scene, orbital camera, planets, nebulae, ships, VFX
 │   ├── shaders/         # Custom GLSL vertex/fragment shaders (clouds, atmosphere, lava, wormholes)
 │   ├── audio/           # Dynamic HTMLAudioElement music player (planned Web Audio API SFX)
-│   ├── ui/              # HUD, orbital slot ring builder, fleet command panel (planned lobby)
+│   ├── ui/              # HUD, orbital slot ring builder, fleet command panel, match lobby, guided tutorial coach
 │   └── net/             # Transport adapters: LocalSimAdapter (live) & WebRTCPeerAdapter (planned)
 └── server/              # (Planned future) Headless Node.js host wrapping src/shared/sim + src/shared/ai
 ```
@@ -104,7 +104,8 @@ Do not alter these core mechanics without explicit user direction:
    * **Cruisers**: Shielded + Armored fleet backbone with strong Point Defence. Shred **Fighters** and out-brawl **Destroyers**; lose to **Dreadnoughts**.
    * **Carriers**: Shielded + Armored mobile airbase. Launch/replenish **Fighters** anywhere to counter **Dreadnoughts**; vulnerable to **Destroyer** rushes and **Cruiser** PD screens.
    * **Dreadnoughts**: Heavy Shields + Massive Hull, very slow siege capitals. Crush **Cruisers**, **Destroyers**, **Logistics Hubs/Towers**, and **Planetary Bases (C&C)**; countered by **Fighters/Carriers** and **Hull Breaker Towers** (once shields are stripped).
-6. **Three Pre-Match Lobby Modes**:
+6. **Four Pre-Match Lobby Modes**:
+   * **Guided Tutorial** (10–15m, 1 Human vs. 1 `Cadet` AI + 2 Empty sectors, 7-step interactive HUD coach, open vision in occupied systems, Last C&C Standing).
    * **Blitz Skirmish** (15–30m, fast economy, open vision in occupied systems, Last C&C Standing).
    * **Standard Tactical** (20–40m, standard economy, sensor-range Fog of War, Last C&C Standing).
    * **Grand Conquest** (45m+, full economy, sensor-range Fog of War, Last C&C Standing OR Central Super-Earth King of the Hill timer).
