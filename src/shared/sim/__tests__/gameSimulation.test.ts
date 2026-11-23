@@ -1352,6 +1352,74 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     ).toBe(4);
     expect(carrier.fighterRebuildProgressSeconds).toBe(0);
 
+    // Clear hostile -> all 4 launched Fighter squadrons must fly back and redock in the Carrier hangar
+    expect(carrierSim.destroyCombatShip(hostileTarget.id)).toBe(true);
+    for (let t = 0; t < 30; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id),
+    ).toHaveLength(0);
+    expect(carrier.readyFighterCount).toBe(4);
+
+    // Also verify all 4 surviving wings (including outer formationOffset indices) redock even when Carrier is moving
+    const movingSim = new GameSimulation('blitz_skirmish');
+    const moveCarrier = movingSim.spawnCombatShipDirect(
+      'player_1',
+      'system_central_hub',
+      { x: 400, z: 400 },
+      'carrier',
+      'aggressive',
+    );
+    const moveHostile = movingSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 680, z: 400 },
+      'dreadnought',
+      'passive',
+    );
+    moveHostile.hull = 20000;
+    for (let t = 0; t < 8; t++) {
+      movingSim.stepTick(0.5);
+    }
+    expect(
+      movingSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === moveCarrier.id),
+    ).toHaveLength(4);
+    expect(movingSim.destroyCombatShip(moveHostile.id)).toBe(true);
+    // Order Carrier to move across the system while fighters are returning
+    moveCarrier.targetPosition = { x: -400, z: -200 };
+    for (let t = 0; t < 40; t++) {
+      movingSim.stepTick(0.5);
+    }
+    expect(
+      movingSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === moveCarrier.id),
+    ).toHaveLength(0);
+    expect(moveCarrier.readyFighterCount).toBe(4);
+
+    // Re-launch when another hostile arrives, then destroy the Carrier -> next tick cleans up stranded Fighters
+    const secondHostile = carrierSim.spawnCombatShipDirect(
+      'player_2',
+      'system_central_hub',
+      { x: 700, z: 400 },
+      'dreadnought',
+      'passive',
+    );
+    for (let t = 0; t < 8; t++) {
+      carrierSim.stepTick(0.5);
+    }
+    expect(
+      carrierSim
+        .getAllCombatShips()
+        .filter((s) => s.shipClassId === 'fighter' && s.tetherHostId === carrier.id).length,
+    ).toBeGreaterThan(0);
+    expect(secondHostile.hull).toBeGreaterThan(0);
+
     // Destroy the Carrier -> next tick cleans up stranded Fighters with no Hub/Carrier left
     expect(carrierSim.destroyCombatShip(carrier.id)).toBe(true);
     carrierSim.stepTick(0.5);
