@@ -6,7 +6,7 @@ This file defines the architectural, visual, and gameplay invariants for **StarC
 
 * **[README.md](./README.md) is the canonical blueprint and single source of truth** for the entire game, and **[docs/artstyle.md](./docs/artstyle.md) is the canonical 3D art style and model construction guide** for all ships and orbital platforms.
 * **Always Reference `README.md` & `docs/artstyle.md` First**: Before designing, implementing, or modifying any game system, UI, shader, 3D model, or network layer, the agent **must** read [README.md](./README.md) (and [docs/artstyle.md](./docs/artstyle.md) when working on 3D ship or platform models) to verify alignment with the blueprint.
-* **Always Keep `README.md` Up to Date**: Whenever the user and agent agree on a new design choice, balance adjustment, build option, or architectural change, the agent **must** update [README.md](./README.md) in the same turn so it never drifts out of sync with the project.
+* **Always Keep `README.md` & All Affected `.md` Files Up to Date**: Whenever any code change, feature implementation, design choice, balance adjustment, build option, or architectural change is made, the agent **must** check and update [README.md](./README.md) and **all other affected `.md` files** (including [docs/artstyle.md](./docs/artstyle.md), [docs/sounds.md](./docs/sounds.md), and verification feature docs under [.agents/skills/verify-starconquest/features/](./.agents/skills/verify-starconquest/features/README.md)) at the same time so every source-of-truth document stays accurate and never drifts out of sync with the codebase.
 
 ---
 
