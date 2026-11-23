@@ -11,6 +11,7 @@ import {
 import type {
   FleetHullClassId,
   FleetStance,
+  PlayerSlotId,
   ResourceTargetFocus,
 } from '../../shared/protocol/commands.ts';
 import type { GalaxyTopology } from '../../shared/sim/galaxy.ts';
@@ -21,6 +22,7 @@ import {
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
   SMALLEST_FIRST_FLEET_HULLS,
 } from '../../shared/sim/gameSimulation.ts';
+import type { ProjectedOrbitalStructure } from '../../shared/sim/playerIntel.ts';
 import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
@@ -97,6 +99,7 @@ export function isHudSectionId(value: string | undefined): value is HudSectionId
 }
 
 export interface MainPanelSignatureParams {
+  readonly playerId?: PlayerSlotId;
   readonly activeSystemId: string;
   readonly selectedPlanetId: string;
   readonly selectedSlotIndex: number;
@@ -106,9 +109,23 @@ export interface MainPanelSignatureParams {
   readonly wormholeStates: readonly { readonly id: string; readonly isOpen: boolean }[];
 }
 
+function formatIntelAge(ageSeconds: number): string {
+  const s = Math.max(0, Math.round(ageSeconds));
+  if (s < 60) {
+    return `${s}s ago`;
+  }
+  const mins = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${mins}m ${rem}s ago`;
+}
+
+function getProjectedOrbitalData(item: ProjectedOrbitalStructure) {
+  return item.kind === 'live' ? item.structure : item;
+}
+
 /**
  * Computes a deterministic structural snapshot signature for the main tactical HUD panel.
- * Only structural transitions (selection, ownership, build completion, queue membership,
+ * Only structural transitions (selection, ownership, visibility, build completion, queue membership,
  * assigned Harvester membership, deep-space completion, wormhole state) change this signature.
  * Continuous progress bars, percentages, timers, dock counts, and reserves are patched in-place
  * via `textContent` so DOM buttons are never destroyed or recreated while the player clicks/hovers.
@@ -117,30 +134,42 @@ export function computeMainPanelSignature(
   sim: GameSimulation,
   params: MainPanelSignatureParams,
 ): string {
-  const planets = sim.getPlanetsInSystem(params.activeSystemId);
-  const planetSummarySig = planets
+  const viewerId = params.playerId ?? 'player_1';
+  const systemView = sim.getPlayerSystemView(viewerId, params.activeSystemId);
+  const planetSummarySig = systemView.planets
     .map((p) => {
-      const usedSlots = p.structures.reduce((acc, s) => acc + s.occupiedSlots.length, 0);
-      return `${p.planet.id}:${p.ownerId ?? 'none'}:${usedSlots}`;
+      const usedSlots = p.structures.reduce(
+        (acc, item) => acc + getProjectedOrbitalData(item).occupiedSlots.length,
+        0,
+      );
+      return `${p.planet.id}:${p.visibility}:${p.ownerId ?? 'none'}:${usedSlots}`;
     })
     .join(',');
 
-  const selectedPlanetState = sim.getPlanetState(params.selectedPlanetId);
-  const structSig = selectedPlanetState.structures
-    .map((s) => {
+  const selectedPlanetView = systemView.planets.find(
+    (p) => p.planet.id === params.selectedPlanetId,
+  );
+  const selectedStructures = selectedPlanetView?.structures ?? [];
+  const structSig = selectedStructures
+    .map((item) => {
+      if (item.kind === 'ghost') {
+        return `ghost:${item.id}:${item.isComplete ? 1 : 0}:${item.ownerId}:${item.occupiedSlots.join(',')}`;
+      }
+      const s = item.structure;
       const queueIds = s.productionQueue.map((q) => q.id).join(',');
       const rallySig = s.rallyPoint
         ? `${s.rallyPoint.systemId}:${Math.round(s.rallyPoint.position.x)},${Math.round(s.rallyPoint.position.z)}`
         : 'none';
       const patrolSig = `${s.patrolWaypoints?.length ?? 0}`;
       const fleetBuildSig = s.fleetProductionEnabled === false ? 0 : 1;
-      return `${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${s.fleetStance ?? 'default'}:${rallySig}:${patrolSig}:${fleetBuildSig}:${queueIds}`;
+      return `live:${s.id}:${s.isComplete ? 1 : 0}:${s.targetResource}:${s.fleetStance ?? 'default'}:${rallySig}:${patrolSig}:${fleetBuildSig}:${queueIds}`;
     })
     .join(';');
 
-  const selectedStruct = selectedPlanetState.structures.find((s) =>
-    s.occupiedSlots.includes(params.selectedSlotIndex),
+  const selectedItem = selectedStructures.find((item) =>
+    getProjectedOrbitalData(item).occupiedSlots.includes(params.selectedSlotIndex),
   );
+  const selectedStruct = selectedItem?.kind === 'live' ? selectedItem.structure : null;
   const assignedHarvesterSig = selectedStruct
     ? sim
         .getAllHarvesters()
@@ -156,10 +185,14 @@ export function computeMainPanelSignature(
         .join(',')
     : 'none';
 
-  const deepSpaceSig = sim
-    .getDeepSpaceStructuresInSystem(params.activeSystemId)
-    .map((ds) => `${ds.id}:${ds.isComplete ? 1 : 0}`)
+  const deepSpaceSig = systemView.deepSpaceStructures
+    .map((item) => {
+      const ds = item.kind === 'live' ? item.structure : item;
+      return `${item.kind}:${ds.id}:${ds.isComplete ? 1 : 0}`;
+    })
     .join(';');
+
+  const resourceSummarySig = systemView.resourceSummary ? 'known' : 'unknown';
 
   const wormholeSig = params.wormholeStates
     .map((wh) => `${wh.id}:${wh.isOpen ? 1 : 0}`)
@@ -180,6 +213,7 @@ export function computeMainPanelSignature(
     : 'none';
 
   return [
+    viewerId,
     params.activeSystemId,
     params.selectedPlanetId,
     params.selectedSlotIndex,
@@ -191,6 +225,7 @@ export function computeMainPanelSignature(
     assignedHarvesterSig,
     assignedCombatShipSig,
     deepSpaceSig,
+    resourceSummarySig,
     wormholeSig,
     fleetSig,
     battleSimSig,
@@ -687,6 +722,7 @@ export function mountSystemHud(
   function getCurrentMainPanelSignature(): string {
     syncSimRefs();
     return computeMainPanelSignature(sim, {
+      playerId,
       activeSystemId: sceneManager.getActiveSystem().id,
       selectedPlanetId: sceneManager.getSelectedPlanetId(),
       selectedSlotIndex,
@@ -704,9 +740,16 @@ export function mountSystemHud(
     syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
     const paletteInfo = NEBULA_PALETTES[activeSystem.nebulaPalette];
+    const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
-    const selectedPlanetState = sim.getPlanetState(selectedPlanetId);
-    const totalSlots = selectedPlanetState.planet.orbitalSlots;
+    const selectedPlanetView = systemView.planets.find(
+      (p) => p.planet.id === selectedPlanetId,
+    );
+    const selectedPlanetNode =
+      selectedPlanetView?.planet ??
+      activeSystem.planets[0] ??
+      sim.getPlanetState(selectedPlanetId).planet;
+    const totalSlots = selectedPlanetNode.orbitalSlots;
 
     if (selectedSlotIndex >= totalSlots) {
       selectedSlotIndex = 0;
@@ -717,9 +760,12 @@ export function mountSystemHud(
     const systemButtonsHtml = galaxy.systems
       .map((sys) => {
         const isActive = sys.id === activeSystem.id;
-        const badgeText = sys.isCentralHub
-          ? '12-Slot Hub • 1.6x Yield'
-          : 'Ore Heavy • Scarce Crystal';
+        const sysView = sim.getPlayerSystemView(playerId, sys.id);
+        const badgeText = !sysView.isExplored
+          ? 'Unexplored'
+          : sys.isCentralHub
+            ? '12-Slot Hub • 1.6x Yield'
+            : 'Ore Heavy • Scarce Crystal';
         return `<button class="hud-btn ${isActive ? 'active' : ''}" data-system-id="${sys.id}">
           ${sys.name}
           <span class="hud-badge">${badgeText}</span>
@@ -729,21 +775,29 @@ export function mountSystemHud(
 
     const planetButtonsHtml = activeSystem.planets
       .map((planet) => {
-        const pState = sim.getPlanetState(planet.id);
+        const pView = systemView.planets.find((p) => p.planet.id === planet.id);
         const pClass = PLANET_CLASSES[planet.planetClass];
         const isSelected =
           planet.id === selectedPlanetId &&
           sceneManager.getSelectedHarvesterId() === null;
-        const usedSlots = pState.structures.reduce(
-          (acc, s) => acc + s.occupiedSlots.length,
+        if (!pView || pView.visibility === 'unexplored') {
+          return `<button class="hud-planet-card ${isSelected ? 'selected' : ''}" data-planet-id="${planet.id}">
+            <div class="planet-card-title">${planet.name} <span class="hud-badge">UNEXPLORED</span></div>
+            <div class="planet-card-meta">${pClass.displayName} • <strong>Unexplored (?/${planet.orbitalSlots} Slots)</strong></div>
+          </button>`;
+        }
+        const usedSlots = pView.structures.reduce(
+          (acc, item) => acc + getProjectedOrbitalData(item).occupiedSlots.length,
           0,
         );
-        const ownerBadge =
-          pState.ownerId === playerId
+        const ownerLabel =
+          pView.ownerId === playerId
             ? 'OWNED'
-            : pState.ownerId === null
+            : pView.ownerId === null
               ? 'UNCLAIMED'
-              : pState.ownerId.toUpperCase();
+              : pView.ownerId.toUpperCase();
+        const ownerBadge =
+          pView.visibility === 'last_known' ? `${ownerLabel} • INTEL` : ownerLabel;
         return `<button class="hud-planet-card ${isSelected ? 'selected' : ''}" data-planet-id="${planet.id}">
           <div class="planet-card-title">${planet.name} <span class="hud-badge">${ownerBadge}</span></div>
           <div class="planet-card-meta">${pClass.displayName} • <strong>${usedSlots}/${planet.orbitalSlots} Slots</strong></div>
@@ -764,32 +818,67 @@ export function mountSystemHud(
       })
       .join('');
 
+    const isSelectedPlanetUnexplored =
+      !selectedPlanetView || selectedPlanetView.visibility === 'unexplored';
+    const selectedPlanetStructures = selectedPlanetView?.structures ?? [];
+
     const slotButtonsHtml = Array.from({ length: totalSlots }, (_, idx) => {
-      const occupyingStruct = selectedPlanetState.structures.find((s) =>
-        s.occupiedSlots.includes(idx),
-      );
       const isSelectedSlot = idx === selectedSlotIndex;
+      if (isSelectedPlanetUnexplored) {
+        return `<button class="slot-pill free ${isSelectedSlot ? 'selected' : ''}" data-slot-index="${idx}">
+          Slot ${idx + 1}: Unexplored
+        </button>`;
+      }
+      const occupyingItem = selectedPlanetStructures.find((item) =>
+        getProjectedOrbitalData(item).occupiedSlots.includes(idx),
+      );
       let label = `Slot ${idx + 1}: Empty`;
       let stateClass = 'free';
-      if (occupyingStruct) {
-        const cfg = ORBITAL_STRUCTURES[occupyingStruct.structureId];
-        const pct = occupyingStruct.isComplete
-          ? 'Ready'
-          : `${Math.floor((occupyingStruct.buildProgressSeconds / Math.max(1, occupyingStruct.totalBuildTimeSeconds)) * 100)}%`;
-        label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (<span data-slot-pct="${idx}">${pct}</span>)`;
-        stateClass = occupyingStruct.isComplete ? 'occupied' : 'building';
+      if (occupyingItem) {
+        const s = getProjectedOrbitalData(occupyingItem);
+        const cfg = ORBITAL_STRUCTURES[s.structureId];
+        if (occupyingItem.kind === 'ghost') {
+          label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (Intel)`;
+          stateClass = s.isComplete ? 'occupied' : 'building';
+        } else {
+          const pct = s.isComplete
+            ? 'Ready'
+            : `${Math.floor((s.buildProgressSeconds / Math.max(1, s.totalBuildTimeSeconds)) * 100)}%`;
+          label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (<span data-slot-pct="${idx}">${pct}</span>)`;
+          stateClass = s.isComplete ? 'occupied' : 'building';
+        }
       }
       return `<button class="slot-pill ${stateClass} ${isSelectedSlot ? 'selected' : ''}" data-slot-index="${idx}">
         ${label}
       </button>`;
     }).join('');
 
-    const selectedStruct = selectedPlanetState.structures.find((s) =>
-      s.occupiedSlots.includes(selectedSlotIndex),
+    const selectedItem = selectedPlanetStructures.find((item) =>
+      getProjectedOrbitalData(item).occupiedSlots.includes(selectedSlotIndex),
     );
     let slotActionsHtml = '';
 
-    if (selectedStruct) {
+    if (isSelectedPlanetUnexplored) {
+      slotActionsHtml = `<div class="slot-detail-box">Planet is <strong>Unexplored</strong>. Move a ship or build a sensor nearby to scan this world.</div>`;
+    } else if (selectedItem && selectedItem.kind === 'ghost') {
+      const cfg = ORBITAL_STRUCTURES[selectedItem.structureId];
+      const ageText = formatIntelAge(sim.elapsedSeconds - selectedItem.observedAtSeconds);
+      slotActionsHtml = `
+        <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <div>
+              <strong>${cfg.displayName}</strong> (${cfg.slotCost} Slot${cfg.slotCost > 1 ? 's' : ''})
+              <span class="hud-badge">LAST KNOWN INTEL (<span data-hud-field="intel-age">${ageText}</span>)</span>
+            </div>
+            <div>Owner: <strong>${selectedItem.ownerId.toUpperCase()}</strong></div>
+          </div>
+          <div style="margin-top: 6px; font-size: 12px; opacity: 0.85;">
+            Last observed: ${selectedItem.isComplete ? 'Operational' : 'Under Construction'} • Shields: ${Math.round(selectedItem.shields)} • Hull: ${Math.round(selectedItem.hull)}
+          </div>
+        </div>
+      `;
+    } else if (selectedItem && selectedItem.kind === 'live') {
+      const selectedStruct = selectedItem.structure;
       const cfg = ORBITAL_STRUCTURES[selectedStruct.structureId];
       const isDropoffPlatform =
         selectedStruct.isComplete &&
@@ -921,13 +1010,22 @@ export function mountSystemHud(
         </div>
       `;
     } else {
-      const isUnclaimed = selectedPlanetState.ownerId === null;
+      const isLastKnownPlanet = selectedPlanetView?.visibility === 'last_known';
+      const isUnclaimed = (selectedPlanetView?.ownerId ?? null) === null;
       const isOwnedByOther =
-        selectedPlanetState.ownerId !== null &&
-        selectedPlanetState.ownerId !== playerId;
+        selectedPlanetView !== undefined &&
+        selectedPlanetView.ownerId !== null &&
+        selectedPlanetView.ownerId !== playerId;
 
-      if (isOwnedByOther) {
-        slotActionsHtml = `<div class="slot-detail-box">Planet is controlled by ${selectedPlanetState.ownerId}.</div>`;
+      if (isLastKnownPlanet) {
+        const ageText =
+          selectedPlanetView?.observedAtSeconds !== null &&
+          selectedPlanetView?.observedAtSeconds !== undefined
+            ? formatIntelAge(sim.elapsedSeconds - selectedPlanetView.observedAtSeconds)
+            : 'stale';
+        slotActionsHtml = `<div class="slot-detail-box"><span class="hud-badge">LAST KNOWN INTEL (<span data-hud-field="intel-age">${ageText}</span>)</span> — Move a unit in sensor range for live orbital status.</div>`;
+      } else if (isOwnedByOther && selectedPlanetView) {
+        slotActionsHtml = `<div class="slot-detail-box">Planet is controlled by ${selectedPlanetView.ownerId}.</div>`;
       } else {
         slotActionsHtml = BUILDABLE_STRUCTURE_IDS.map((structId) => {
           const cfg = ORBITAL_STRUCTURES[structId];
@@ -956,20 +1054,25 @@ export function mountSystemHud(
       }
     }
 
-    const sysRes = sim.getSystemResourceSummary(activeSystem.id);
+    const sysRes = systemView.resourceSummary;
     const innerPct =
-      sysRes.innerBeltInitial > 0
+      sysRes && sysRes.innerBeltInitial > 0
         ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
         : 0;
-    const yieldLabel =
-      sysRes.extractionMultiplier > 1.0
+    const yieldLabel = sysRes
+      ? sysRes.extractionMultiplier > 1.0
         ? `${sysRes.extractionMultiplier}x Enriched Yield`
-        : '1.0x Standard Yield';
+        : '1.0x Standard Yield'
+      : 'Unscanned Sector';
 
     const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
-    const deepSpaceInSystem = sim.getDeepSpaceStructuresInSystem(activeSystem.id);
+    const deepSpaceInSystem = systemView.deepSpaceStructures;
     const hasCompletedFriendlyHub = deepSpaceInSystem.some(
-      (s) => s.structureId === 'logistics_hub' && s.ownerId === playerId && s.isComplete,
+      (item) =>
+        item.kind === 'live' &&
+        item.structure.structureId === 'logistics_hub' &&
+        item.structure.ownerId === playerId &&
+        item.structure.isComplete,
     );
 
     const deepSpaceBuildButtonsHtml = BUILDABLE_DEEP_SPACE_IDS.map((dsId) => {
@@ -985,8 +1088,18 @@ export function mountSystemHud(
       deepSpaceInSystem.length > 0
         ? `<div class="hud-btn-row" style="margin-top: 6px;">
             ${deepSpaceInSystem
-              .map((ds, idx) => {
+              .map((item, idx) => {
+                const ds = item.kind === 'live' ? item.structure : item;
                 const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
+                if (item.kind === 'ghost') {
+                  const ageText = formatIntelAge(
+                    sim.elapsedSeconds - item.observedAtSeconds,
+                  );
+                  return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
+                    ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
+                    <span class="hud-badge" data-deepspace-badge="${ds.id}">LAST KNOWN (${ageText})</span>
+                  </button>`;
+                }
                 const statusText = ds.isComplete
                   ? 'Operational'
                   : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
@@ -1062,7 +1175,7 @@ export function mountSystemHud(
         <div class="slot-detail-box" style="flex-direction: column; align-items: stretch; margin-top: 6px;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
             <div>
-              <strong>${selectedFleet.name}</strong> — ${fleetShips.length} ships • Right-click 3D space to Move
+              <strong>${selectedFleet.name}</strong> — ${fleetShips.length} ships • Right-click space to Move • Right-click hostile to Attack
             </div>
             <div class="hud-btn-row">
               <button class="hud-btn" data-fleet-focus="${selectedFleet.id}" title="Jump camera to ${selectedFleet.name}">
@@ -1124,7 +1237,7 @@ export function mountSystemHud(
       <div class="hud-header">
         <div>
           <h1>StarConquest — ${activeSystem.name}</h1>
-          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong data-hud-field="system-reserves-ore">${sysRes.remainingOre}/${sysRes.initialOre} Ore</strong> & <strong data-hud-field="system-reserves-crystal">${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal</strong> <span data-hud-field="system-reserves-inner">(Inner Belt: ${innerPct}%)</span></p>
+          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong data-hud-field="system-reserves-ore">${sysRes ? `${sysRes.remainingOre}/${sysRes.initialOre} Ore` : 'Unknown (Unscanned)'}</strong> ${sysRes ? '&' : ''} <strong data-hud-field="system-reserves-crystal">${sysRes ? `${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal` : ''}</strong> <span data-hud-field="system-reserves-inner">${sysRes ? `(Inner Belt: ${innerPct}%)` : ''}</span></p>
         </div>
         <button class="hud-btn overview-btn" data-action="overview">System Overview</button>
       </div>
@@ -1305,7 +1418,7 @@ export function mountSystemHud(
       <div class="hud-section">
         ${renderSectionHeader(
           'orbital_ring',
-          `Orbital Ring Builder — <strong>${selectedPlanetState.planet.name}</strong> (${totalSlots} Slots)`,
+          `Orbital Ring Builder — <strong>${selectedPlanetNode.name}</strong> (${totalSlots} Slots)`,
           { titleLabel: 'Orbital Ring Builder panel' },
         )}
         ${
@@ -1322,6 +1435,7 @@ export function mountSystemHud(
       <div class="hud-controls-hint">
         <span><strong>Click Harvester/Planet:</strong> Inspect & Follow</span>
         <span><strong>Double-Click Wormhole:</strong> Transit Camera</span>
+        <span><strong>Right-Click Space / Hostile (Fleet):</strong> Move / Attack</span>
         <span><strong>Right-Click Wormhole (Fleet):</strong> Transit Fleet</span>
         <span><strong>Left-Drag / WASD:</strong> Pan (Breaks Follow)</span>
         <span><strong>Right-Drag:</strong> Orbit</span>
@@ -1904,31 +2018,45 @@ export function mountSystemHud(
   function patchMainPanelLiveTelemetry(): void {
     syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
-    const selectedPlanetState = sim.getPlanetState(sceneManager.getSelectedPlanetId());
+    const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
+    const selectedPlanetView = systemView.planets.find(
+      (p) => p.planet.id === sceneManager.getSelectedPlanetId(),
+    );
 
     // 1. System resource reserves
-    const sysRes = sim.getSystemResourceSummary(activeSystem.id);
-    const innerPct =
-      sysRes.innerBeltInitial > 0
-        ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
-        : 0;
+    const sysRes = systemView.resourceSummary;
     const oreResEl = mainBodyEl.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-ore"]',
     );
-    if (oreResEl) oreResEl.textContent = `${sysRes.remainingOre}/${sysRes.initialOre} Ore`;
     const crystalResEl = mainBodyEl.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-crystal"]',
     );
-    if (crystalResEl) {
-      crystalResEl.textContent = `${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal`;
-    }
     const innerResEl = mainBodyEl.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-inner"]',
     );
-    if (innerResEl) innerResEl.textContent = `(Inner Belt: ${innerPct}%)`;
+    if (!sysRes) {
+      if (oreResEl) oreResEl.textContent = 'Unknown (Unscanned)';
+      if (crystalResEl) crystalResEl.textContent = '';
+      if (innerResEl) innerResEl.textContent = '';
+    } else {
+      const innerPct =
+        sysRes.innerBeltInitial > 0
+          ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
+          : 0;
+      if (oreResEl) oreResEl.textContent = `${sysRes.remainingOre}/${sysRes.initialOre} Ore`;
+      if (crystalResEl) {
+        crystalResEl.textContent = `${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal`;
+      }
+      if (innerResEl) innerResEl.textContent = `(Inner Belt: ${innerPct}%)`;
+    }
 
-    // 2. Orbital slot pill construction percentages
-    for (const s of selectedPlanetState.structures) {
+    const selectedStructures = selectedPlanetView?.structures ?? [];
+
+    for (const item of selectedStructures) {
+      if (item.kind !== 'live') {
+        continue;
+      }
+      const s = item.structure;
       const pctText = s.isComplete
         ? 'Ready'
         : `${Math.floor((s.buildProgressSeconds / Math.max(1, s.totalBuildTimeSeconds)) * 100)}%`;
@@ -1941,10 +2069,29 @@ export function mountSystemHud(
     }
 
     // 3. Selected structure status (construction countdown or live dock counts), queue timers & assigned Harvesters
-    const selectedStruct = selectedPlanetState.structures.find((s) =>
-      s.occupiedSlots.includes(selectedSlotIndex),
+    const selectedItem = selectedStructures.find((item) =>
+      getProjectedOrbitalData(item).occupiedSlots.includes(selectedSlotIndex),
     );
-    if (selectedStruct) {
+    if (selectedItem?.kind === 'ghost') {
+      const ageEl = mainBodyEl.querySelector<HTMLElement>(
+        '[data-hud-field="intel-age"]',
+      );
+      if (ageEl) {
+        ageEl.textContent = formatIntelAge(
+          sim.elapsedSeconds - selectedItem.observedAtSeconds,
+        );
+      }
+    } else if (!selectedItem && selectedPlanetView?.visibility === 'last_known') {
+      const ageEl = mainBodyEl.querySelector<HTMLElement>(
+        '[data-hud-field="intel-age"]',
+      );
+      if (ageEl && selectedPlanetView.observedAtSeconds !== null) {
+        ageEl.textContent = formatIntelAge(
+          sim.elapsedSeconds - selectedPlanetView.observedAtSeconds,
+        );
+      }
+    } else if (selectedItem?.kind === 'live') {
+      const selectedStruct = selectedItem.structure;
       const isDropoffPlatform =
         selectedStruct.isComplete &&
         selectedStruct.ownerId === playerId &&
@@ -2005,14 +2152,18 @@ export function mountSystemHud(
     }
 
     // 4. Deep-space installation construction percentages
-    for (const ds of sim.getDeepSpaceStructuresInSystem(activeSystem.id)) {
+    for (const item of systemView.deepSpaceStructures) {
+      const ds = item.kind === 'live' ? item.structure : item;
       const badgeEl = mainBodyEl.querySelector<HTMLElement>(
         `[data-deepspace-badge="${ds.id}"]`,
       );
       if (badgeEl) {
-        badgeEl.textContent = ds.isComplete
-          ? 'Operational'
-          : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
+        badgeEl.textContent =
+          item.kind === 'ghost'
+            ? `LAST KNOWN (${formatIntelAge(sim.elapsedSeconds - item.observedAtSeconds)})`
+            : ds.isComplete
+              ? 'Operational'
+              : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
       }
     }
   }

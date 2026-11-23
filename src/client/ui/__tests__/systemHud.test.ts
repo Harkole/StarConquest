@@ -259,3 +259,40 @@ describe('systemHud — collapsible sections state', () => {
     expect(isHudSectionId('unknown_section')).toBe(false);
   });
 });
+
+describe('systemHud — fog-of-war intel projection', () => {
+  it('hides unexplored system ownership/structures and tracks unexplored -> live -> last_known transitions in signature', () => {
+    const sim = new GameSimulation('standard_tactical');
+    const enemyHomeworld = sim.getPlanetState('system_starter_2_homeworld');
+    expect(enemyHomeworld.ownerId).toBe('player_2');
+    expect(enemyHomeworld.structures.length).toBeGreaterThan(0);
+
+    const enemyParams: MainPanelSignatureParams = {
+      playerId: 'player_1',
+      activeSystemId: 'system_starter_2',
+      selectedPlanetId: enemyHomeworld.planet.id,
+      selectedSlotIndex: 0,
+      selectedHarvesterId: null,
+      pendingDeepSpace: null,
+      statusBannerMessage: '',
+      wormholeStates: [{ id: 'wh_2', isOpen: false }],
+    };
+
+    const unexploredView = sim.getPlayerSystemView('player_1', 'system_starter_2');
+    expect(unexploredView.resourceSummary).toBeNull();
+    const unexploredSig = computeMainPanelSignature(sim, enemyParams);
+    expect(unexploredSig).toContain('system_starter_2_homeworld:unexplored:none:0');
+    expect(unexploredSig).toContain('|unknown|');
+    expect(unexploredSig).not.toContain('player_2');
+
+    sim.stepTick(12);
+
+    const p2Sig = computeMainPanelSignature(sim, {
+      ...enemyParams,
+      playerId: 'player_2',
+    });
+    expect(p2Sig).toContain('system_starter_2_homeworld:live:player_2:');
+    expect(p2Sig).toContain('|known|');
+    expect(p2Sig).not.toBe(unexploredSig);
+  });
+});

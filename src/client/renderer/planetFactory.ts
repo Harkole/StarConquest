@@ -5,6 +5,11 @@ import {
   ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC,
   type PlanetRuntimeState,
 } from '../../shared/sim/gameSimulation.ts';
+import type {
+  ProjectedOrbitalStructure,
+  ProjectedPlanetView,
+} from '../../shared/sim/playerIntel.ts';
+import { applyGhostIntelMaterial } from './ghostIntelMaterial.ts';
 import {
   ATMOSPHERE_FRESNEL_FRAGMENT_SHADER,
   DRIFTING_CLOUDS_FRAGMENT_SHADER,
@@ -53,7 +58,10 @@ export interface AnimatedPlanetHandle {
   readonly orbitalRingRadius: number;
   isHabited(): boolean;
   setHabited(habited: boolean): void;
-  syncStructures(planetState: PlanetRuntimeState): void;
+  syncStructures(planetState: ProjectedPlanetView | PlanetRuntimeState): void;
+  pickOrbitalStructure(
+    raycaster: THREE.Raycaster,
+  ): { readonly structureId: string; readonly worldPosition: THREE.Vector3 } | null;
   update(elapsedSeconds: number, deltaSeconds: number, simElapsedSeconds?: number): void;
   dispose(): void;
 }
@@ -251,21 +259,36 @@ export function createLivingPlanetGroup(
   disposables.push(stationModels);
 
   let lastSignature: string | null = null;
-  let latestPlanetState: PlanetRuntimeState | null = null;
+  let latestStructures: readonly ProjectedOrbitalStructure[] = [];
   const stationGroupsById = new Map<string, THREE.Group>();
 
-  function syncStructures(planetState: PlanetRuntimeState): void {
-    latestPlanetState = planetState;
+  function normalizeStructures(
+    planetState: ProjectedPlanetView | PlanetRuntimeState,
+  ): readonly ProjectedOrbitalStructure[] {
+    if ('visibility' in planetState) {
+      return planetState.structures;
+    }
+    return planetState.structures.map((structure) => ({
+      kind: 'live',
+      structure,
+    }));
+  }
+
+  function syncStructures(planetState: ProjectedPlanetView | PlanetRuntimeState): void {
+    const normalizedStructures = normalizeStructures(planetState);
+    latestStructures = normalizedStructures;
     isHabitedUniform.value = planetState.ownerId !== null ? 1.0 : 0.0;
     if (planetState.ownerId !== null) {
       trackMaterial.color.setHex(FACTION_PALETTES[planetState.ownerId].tacticalHex);
+    } else {
+      trackMaterial.color.copy(ringColor);
     }
 
-    const sig = planetState.structures
-      .map(
-        (s) =>
-          `${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}:${s.occupiedSlots.join(',')}`,
-      )
+    const sig = normalizedStructures
+      .map((item) => {
+        const s = item.kind === 'live' ? item.structure : item;
+        return `${item.kind}:${s.id}:${s.isComplete ? '1' : '0'}:${s.ownerId}:${s.occupiedSlots.join(',')}`;
+      })
       .join('|');
     if (sig === lastSignature) {
       return;
@@ -276,7 +299,9 @@ export function createLivingPlanetGroup(
     stationGroupsById.clear();
 
     const occupiedSet = new Set<number>();
-    for (const struct of planetState.structures) {
+    for (const item of normalizedStructures) {
+      const isGhost = item.kind === 'ghost';
+      const struct = item.kind === 'live' ? item.structure : item;
       for (const slotIdx of struct.occupiedSlots) {
         occupiedSet.add(slotIdx);
       }
@@ -305,6 +330,12 @@ export function createLivingPlanetGroup(
         orbitalRingRadius,
         struct.ownerId,
       );
+      if (isGhost) {
+        applyGhostIntelMaterial(stationGroup);
+      }
+      stationGroup.traverse((obj) => {
+        obj.userData.orbitalStructureId = struct.id;
+      });
       stationGroup.position.set(
         Math.cos(angle) * orbitalRingRadius,
         0,
@@ -361,6 +392,29 @@ export function createLivingPlanetGroup(
       isHabitedUniform.value = habited ? 1.0 : 0.0;
     },
     syncStructures,
+    pickOrbitalStructure(
+      raycaster: THREE.Raycaster,
+    ): { readonly structureId: string; readonly worldPosition: THREE.Vector3 } | null {
+      const hits = raycaster.intersectObjects(stationDynamicGroup.children, true);
+      for (const hit of hits) {
+        let current: THREE.Object3D | null = hit.object;
+        while (current) {
+          const sid = current.userData.orbitalStructureId;
+          if (typeof sid === 'string') {
+            const stationGroup = stationGroupsById.get(sid);
+            const worldPosition = new THREE.Vector3();
+            if (stationGroup) {
+              stationGroup.getWorldPosition(worldPosition);
+            } else {
+              worldPosition.copy(hit.point);
+            }
+            return { structureId: sid, worldPosition };
+          }
+          current = current.parent;
+        }
+      }
+      return null;
+    },
     update(
       elapsedSeconds: number,
       deltaSeconds: number,
@@ -374,35 +428,37 @@ export function createLivingPlanetGroup(
       orbitalGroup.rotation.y =
         simElapsedSeconds * ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC;
 
-      if (latestPlanetState) {
-        for (const struct of latestPlanetState.structures) {
-          const stationGroup = stationGroupsById.get(struct.id);
-          if (stationGroup) {
-            const activeOrder = struct.productionQueue[0];
-            const progressRatio = activeOrder
-              ? activeOrder.progressSeconds / Math.max(0.1, activeOrder.buildTimeSeconds)
-              : null;
-            const dockyardBayOrders: (DockyardBayOrderInfo | null)[] =
-              struct.structureId === 'orbital_dockyard'
-                ? [0, 1].map((bayIdx) => {
-                    const order = struct.productionQueue[bayIdx];
-                    if (!order || order.shipClassId === 'harvester') {
-                      return null;
-                    }
-                    return {
-                      shipClassId: order.shipClassId,
-                      progressRatio:
-                        order.progressSeconds / Math.max(0.1, order.buildTimeSeconds),
-                    };
-                  })
-                : [];
-            stationModels.updateStationAnimation(
-              stationGroup,
-              elapsedSeconds,
-              progressRatio,
-              dockyardBayOrders,
-            );
-          }
+      for (const item of latestStructures) {
+        if (item.kind !== 'live') {
+          continue;
+        }
+        const struct = item.structure;
+        const stationGroup = stationGroupsById.get(struct.id);
+        if (stationGroup) {
+          const activeOrder = struct.productionQueue[0];
+          const progressRatio = activeOrder
+            ? activeOrder.progressSeconds / Math.max(0.1, activeOrder.buildTimeSeconds)
+            : null;
+          const dockyardBayOrders: (DockyardBayOrderInfo | null)[] =
+            struct.structureId === 'orbital_dockyard'
+              ? [0, 1].map((bayIdx) => {
+                  const order = struct.productionQueue[bayIdx];
+                  if (!order || order.shipClassId === 'harvester') {
+                    return null;
+                  }
+                  return {
+                    shipClassId: order.shipClassId,
+                    progressRatio:
+                      order.progressSeconds / Math.max(0.1, order.buildTimeSeconds),
+                  };
+                })
+              : [];
+          stationModels.updateStationAnimation(
+            stationGroup,
+            elapsedSeconds,
+            progressRatio,
+            dockyardBayOrders,
+          );
         }
       }
     },

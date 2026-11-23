@@ -6,6 +6,10 @@ import {
   getSystemAsteroidLayout,
 } from '../../shared/sim/asteroidBeltLayout.ts';
 import type { StarSystemNode, WormholeLink } from '../../shared/sim/galaxy.ts';
+import type {
+  ProjectedBeltView,
+  SystemSensorCoverage,
+} from '../../shared/sim/playerIntel.ts';
 import {
   ASTEROID_ROCK_FRAGMENT_SHADER,
   ASTEROID_ROCK_VERTEX_SHADER,
@@ -48,17 +52,20 @@ export interface WormholeInstanceHandle {
   updateShipProximity(shipPositions: readonly { readonly x: number; readonly z: number }[]): void;
 }
 
+export type BeltDepletionInput =
+  | ProjectedBeltView
+  | {
+      readonly id: string;
+      readonly initialReserves: number;
+      readonly remainingReserves: number;
+    };
+
 export interface SpaceEnvironmentHandle {
   readonly rootGroup: THREE.Group;
   readonly sunDirection: THREE.Vector3;
   readonly wormholes: readonly WormholeInstanceHandle[];
-  syncBeltDepletion?(
-    miningBelts: readonly {
-      readonly id: string;
-      readonly initialReserves: number;
-      readonly remainingReserves: number;
-    }[],
-  ): void;
+  syncBeltDepletion?(miningBelts: readonly BeltDepletionInput[]): void;
+  syncFogCoverage?(coverage: SystemSensorCoverage): void;
   update(elapsedSeconds: number, deltaSeconds: number, simElapsedSeconds?: number): void;
   dispose(): void;
 }
@@ -375,27 +382,109 @@ export function createStarSystemEnvironment(
     wormholeStates.push(state);
   }
 
+  const MAX_FOG_CIRCLES = 64;
+  const fogCirclesUniform: THREE.Vector3[] = Array.from(
+    { length: MAX_FOG_CIRCLES },
+    () => new THREE.Vector3(0, 0, 0),
+  );
+  const fogCircleCountUniform = { value: 0 };
+  const fogOverlayGeom = new THREE.PlaneGeometry(7000, 7000);
+  fogOverlayGeom.rotateX(-Math.PI / 2);
+  const fogOverlayMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uCircles: { value: fogCirclesUniform },
+      uCircleCount: fogCircleCountUniform,
+    },
+    vertexShader: `
+      varying vec2 vWorldXZ;
+      void main() {
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldXZ = worldPos.xz;
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uCircles[${MAX_FOG_CIRCLES}];
+      uniform int uCircleCount;
+      varying vec2 vWorldXZ;
+
+      void main() {
+        float vis = 0.0;
+        for (int i = 0; i < ${MAX_FOG_CIRCLES}; i++) {
+          if (i >= uCircleCount) break;
+          vec3 c = uCircles[i];
+          float d = length(vWorldXZ - c.xy);
+          float inside = 1.0 - smoothstep(max(0.0, c.z - 24.0), c.z + 6.0, d);
+          vis = max(vis, inside);
+        }
+        float rim = smoothstep(0.15, 0.5, vis) * (1.0 - smoothstep(0.5, 0.85, vis));
+        vec3 fogColor = mix(vec3(0.015, 0.025, 0.055), vec3(0.18, 0.68, 0.95), rim * 0.65);
+        float fogAlpha = (1.0 - vis) * 0.52 + rim * 0.22;
+        gl_FragColor = vec4(fogColor, fogAlpha);
+      }
+    `,
+  });
+  const fogOverlayMesh = new THREE.Mesh(fogOverlayGeom, fogOverlayMat);
+  fogOverlayMesh.position.y = -1.5;
+  fogOverlayMesh.visible = false;
+  fogOverlayMesh.raycast = () => {};
+  rootGroup.add(fogOverlayMesh);
+  disposables.push(fogOverlayGeom, fogOverlayMat);
+
   return {
     rootGroup,
     sunDirection,
     wormholes: wormholeStates.map((s) => s.handle),
+    syncFogCoverage(coverage: SystemSensorCoverage): void {
+      if (coverage.kind === 'full_system') {
+        fogOverlayMesh.visible = false;
+        fogCircleCountUniform.value = 0;
+        return;
+      }
+      fogOverlayMesh.visible = true;
+      if (coverage.kind === 'unexplored') {
+        fogCircleCountUniform.value = 0;
+        return;
+      }
+      const count = Math.min(coverage.circles.length, MAX_FOG_CIRCLES);
+      fogCircleCountUniform.value = count;
+      for (let i = 0; i < count; i++) {
+        const c = coverage.circles[i];
+        if (c) {
+          fogCirclesUniform[i]?.set(c.position.x, c.position.z, c.range);
+        }
+      }
+    },
     syncBeltDepletion(miningBelts): void {
       let oreDirty = false;
       let crystalDirty = false;
 
-      for (const belt of miningBelts) {
+      for (const entry of miningBelts) {
+        const isProjected = 'belt' in entry && 'visibility' in entry;
+        const beltId = isProjected ? entry.belt.id : entry.id;
+        const initialReserves = isProjected
+          ? entry.belt.initialReserves
+          : entry.initialReserves;
+        const remainingReserves = isProjected
+          ? entry.visibility === 'unexplored'
+            ? entry.belt.initialReserves
+            : entry.observedRemainingReserves
+          : entry.remainingReserves;
+
         const ratio =
-          belt.initialReserves > 0
-            ? Math.max(0, Math.min(1, belt.remainingReserves / belt.initialReserves))
+          initialReserves > 0
+            ? Math.max(0, Math.min(1, remainingReserves / initialReserves))
             : 0;
-        const prev = lastRatioByCandidateId.get(belt.id) ?? 1.0;
+        const prev = lastRatioByCandidateId.get(beltId) ?? 1.0;
         if (Math.abs(ratio - prev) < 0.01 && !(ratio === 0 && prev > 0)) {
           continue;
         }
-        lastRatioByCandidateId.set(belt.id, ratio);
+        lastRatioByCandidateId.set(beltId, ratio);
         const scaleFactor = ratio <= 0 ? 0 : 0.35 + 0.65 * ratio;
 
-        const oreGroup = oreByCandidateId.get(belt.id);
+        const oreGroup = oreByCandidateId.get(beltId);
         if (oreGroup) {
           for (const rock of oreGroup) {
             dummy.position.set(rock.localX, rock.localY, rock.localZ);
@@ -411,7 +500,7 @@ export function createStarSystemEnvironment(
           oreDirty = true;
         }
 
-        const crystalGroup = crystalByCandidateId.get(belt.id);
+        const crystalGroup = crystalByCandidateId.get(beltId);
         if (crystalGroup) {
           for (const rock of crystalGroup) {
             dummy.position.set(rock.localX, rock.localY, rock.localZ);
