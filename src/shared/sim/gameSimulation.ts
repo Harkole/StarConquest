@@ -50,6 +50,10 @@ import {
   scoreCombatTargetPriority,
   shortestAngleDelta,
 } from './combat.ts';
+import {
+  PlayerIntelRegistry,
+  type PlayerSystemView,
+} from './playerIntel.ts';
 
 export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
 
@@ -576,6 +580,7 @@ export class GameSimulation {
   private readonly combatRng = { seed: 0x57a2c01d };
   private nextCombatEventId = 1;
   private nextEntityCounter = 1;
+  private readonly intelRegistry = new PlayerIntelRegistry();
 
   constructor(
     presetOrSetup: MatchPresetId | MatchSetupInput = 'standard_tactical',
@@ -584,6 +589,7 @@ export class GameSimulation {
     this.presetId = this.matchSetup.presetId;
     this.galaxy = createFiveSystemGalaxy();
     this.initializeSimulationState();
+    this.intelRegistry.updateTick(this);
   }
 
   public getMatchSetup(): MatchSetupConfig {
@@ -627,11 +633,32 @@ export class GameSimulation {
    * Drains and returns all pending combat visual events (weapon tracers, shield impact ripples,
    * and hull explosions) for the 3D VFX renderer to consume once per frame.
    */
-  public consumeCombatEvents(): CombatVisualEvent[] {
+  public consumeCombatEvents(viewerId?: PlayerSlotId): CombatVisualEvent[] {
     if (this.pendingCombatEvents.length === 0) {
       return [];
     }
-    return this.pendingCombatEvents.splice(0, this.pendingCombatEvents.length);
+    const events = this.pendingCombatEvents.splice(0, this.pendingCombatEvents.length);
+    if (!viewerId) {
+      return events;
+    }
+    return events.filter(
+      (ev) =>
+        ev.ownerId === viewerId ||
+        this.isPositionVisibleToPlayer(viewerId, ev.systemId, ev.fromPos) ||
+        this.isPositionVisibleToPlayer(viewerId, ev.systemId, ev.toPos),
+    );
+  }
+
+  public getPlayerSystemView(viewerId: PlayerSlotId, systemId: string): PlayerSystemView {
+    return this.intelRegistry.getPlayerSystemView(this, viewerId, systemId);
+  }
+
+  public isPositionVisibleToPlayer(
+    viewerId: PlayerSlotId,
+    systemId: string,
+    pos: Vector2D,
+  ): boolean {
+    return this.intelRegistry.isPositionVisibleToPlayer(this, viewerId, systemId, pos);
   }
 
   public peekCombatEvents(): readonly CombatVisualEvent[] {
@@ -1503,6 +1530,8 @@ export class GameSimulation {
     // 4. Auto-launch & tether Carrier / Logistics Hub Fighter wings
     this.updateCarrierAndHubFighters(deltaSeconds);
 
+    this.updateFleetAttackOrders();
+
     // 5. Resolve 5-class RPS combat, stances, Defence Towers, orbital weapons, shield regen & hub repair
     this.updateCombatAndDefences(deltaSeconds);
 
@@ -1516,6 +1545,96 @@ export class GameSimulation {
     this.refreshMatchOutcome(
       Math.max(0, deltaSeconds - superEarthBuildSecondsConsumed),
     );
+
+    this.intelRegistry.updateTick(this);
+  }
+
+  private resolveAttackTarget(
+    targetId: string,
+  ):
+    | { readonly kind: 'mobile' | 'structure'; readonly systemId: string; readonly position: Vector2D }
+    | null {
+    const combatShip = this.getCombatShipById(targetId);
+    if (combatShip && combatShip.hull > 0) {
+      return {
+        kind: 'mobile',
+        systemId: combatShip.currentSystemId,
+        position: combatShip.position,
+      };
+    }
+
+    const harvester = this.getHarvesterById(targetId);
+    if (harvester && harvester.hull > 0) {
+      return {
+        kind: 'mobile',
+        systemId: harvester.currentSystemId,
+        position: harvester.position,
+      };
+    }
+
+    const orbital = this.getStructureById(targetId);
+    if (orbital && orbital.structure.hull > 0) {
+      return {
+        kind: 'structure',
+        systemId: orbital.planetState.planet.systemId,
+        position: this.getStructureWorldPosition(orbital.planetState, orbital.structure),
+      };
+    }
+
+    const deepSpace = this.getDeepSpaceStructureById(targetId);
+    if (deepSpace && deepSpace.hull > 0) {
+      return {
+        kind: 'structure',
+        systemId: deepSpace.systemId,
+        position: deepSpace.position,
+      };
+    }
+
+    return null;
+  }
+
+  private updateFleetAttackOrders(): void {
+    const fogMode = MATCH_PRESETS[this.presetId].fogOfWarMode;
+
+    for (const fleet of this.fleets) {
+      if (fleet.orderType !== 'attack' || fleet.attackTargetId === null) {
+        continue;
+      }
+
+      const resolved = this.resolveAttackTarget(fleet.attackTargetId);
+      if (!resolved) {
+        fleet.attackTargetId = null;
+        continue;
+      }
+
+      if (
+        fogMode === 'sensor_range' &&
+        resolved.kind === 'mobile' &&
+        !this.isPositionVisibleToPlayer(fleet.ownerId, resolved.systemId, resolved.position)
+      ) {
+        fleet.attackTargetId = null;
+        continue;
+      }
+
+      fleet.orderSystemId = resolved.systemId;
+      fleet.orderPosition = { x: resolved.position.x, z: resolved.position.z };
+
+      for (const ship of this.combatShips) {
+        if (ship.fleetId !== fleet.id || ship.isFleeing) {
+          continue;
+        }
+        ship.targetSystemId = resolved.systemId;
+        ship.targetPosition = { x: resolved.position.x, z: resolved.position.z };
+        if (ship.currentSystemId !== resolved.systemId && ship.state !== 'transiting_wormhole') {
+          ship.state = 'transiting_wormhole';
+        } else if (
+          ship.currentSystemId === resolved.systemId &&
+          ship.state === 'holding_position'
+        ) {
+          ship.state = 'moving_to_rally';
+        }
+      }
+    }
   }
 
   private initializeSimulationState(): void {
@@ -4593,6 +4712,10 @@ export class GameSimulation {
       let bestDist = Infinity;
       let bestTargetHasLos = false;
 
+      const shipFleet = ship.fleetId ? this.getFleetById(ship.fleetId) : undefined;
+      const fleetAttackTargetId =
+        shipFleet?.orderType === 'attack' ? shipFleet.attackTargetId : null;
+
       for (const cand of hostiles) {
         if (cand.getHull() <= 0) continue;
         const dist = Math.hypot(
@@ -4612,13 +4735,22 @@ export class GameSimulation {
         if (!clearLos && ship.stance !== 'aggressive') {
           continue;
         }
+        const attackOrderBonus =
+          fleetAttackTargetId !== null &&
+          cand.id === fleetAttackTargetId &&
+          dist <= maxWeaponRange &&
+          clearLos
+            ? 100000
+            : 0;
         const score =
           scoreCombatTargetPriority(
             ship.shipClassId,
             cand.targetClass,
             cand.getShields() > 0,
             dist,
-          ) + (clearLos ? 35 : 0);
+          ) +
+          (clearLos ? 35 : 0) +
+          attackOrderBonus;
         if (score > bestScore) {
           bestScore = score;
           bestTarget = cand;
