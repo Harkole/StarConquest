@@ -13,10 +13,18 @@ import {
 } from '../../shared/config/index.ts';
 import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
 import type {
-  GameSimulation,
   MatchOutcomeState,
   PlayerStandingSummary,
 } from '../../shared/sim/gameSimulation.ts';
+import type { SimulationView } from '../../shared/sim/simulationView.ts';
+import { LocalSimAdapter } from '../net/localSimAdapter.ts';
+import type {
+  ClientSimAdapter,
+  MultiplayerRoomAdapter,
+  WebRTCRoomState,
+  WebRTCRoomStatus,
+} from '../net/simAdapter.ts';
+import { WebRTCPeerAdapter } from '../net/webrtcPeerAdapter.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 
 const MATCH_PRESET_IDS: readonly MatchPresetId[] = [
@@ -27,10 +35,8 @@ const MATCH_PRESET_IDS: readonly MatchPresetId[] = [
 ] as const;
 
 export interface LobbySceneManagerContract {
-  readonly simAdapter: {
-    readonly localPlayerId: PlayerSlotId;
-    readonly simulation: GameSimulation;
-  };
+  readonly simAdapter: ClientSimAdapter;
+  setSimAdapter?(adapter: ClientSimAdapter): void;
   resetMatch(
     presetOrSetup: MatchPresetId | MatchSetupInput,
   ): MatchSetupConfig;
@@ -41,6 +47,10 @@ export interface LobbyControllerOptions {
   readonly sceneManager: LobbySceneManagerContract;
   readonly onMatchLaunched?: (setup: MatchSetupConfig) => void;
   readonly onOpenStateChange?: (isOpen: boolean) => void;
+  readonly createP2PAdapter?: () => MultiplayerRoomAdapter;
+  readonly createLocalAdapter?: (
+    presetOrSetup: MatchPresetId | MatchSetupInput,
+  ) => ClientSimAdapter;
 }
 
 export function formatMatchClockSeconds(totalSeconds: number): string {
@@ -76,6 +86,10 @@ export class LobbyController {
   private readonly sceneManager: LobbySceneManagerContract;
   private readonly onMatchLaunched?: (setup: MatchSetupConfig) => void;
   private readonly onOpenStateChange?: (isOpen: boolean) => void;
+  private readonly createP2PAdapter: () => MultiplayerRoomAdapter;
+  private readonly createLocalAdapter: (
+    presetOrSetup: MatchPresetId | MatchSetupInput,
+  ) => ClientSimAdapter;
 
   private readonly rootEl: HTMLElement;
   private readonly kothBannerEl: HTMLElement;
@@ -86,11 +100,21 @@ export class LobbyController {
   private draftSetup: MatchSetupConfig;
   private outcomeBannerDismissed = false;
   private lastOutcomeSig = '';
+  private p2pAdapter: MultiplayerRoomAdapter | null = null;
+  private unsubscribeRoomState: (() => void) | null = null;
+  private lastRoomStatus: WebRTCRoomStatus = 'idle';
+  private p2pStatusMessage: string | null = null;
+  private manualTokenOutput: string | null = null;
 
   constructor(options: LobbyControllerOptions) {
     this.sceneManager = options.sceneManager;
     this.onMatchLaunched = options.onMatchLaunched;
     this.onOpenStateChange = options.onOpenStateChange;
+    this.createP2PAdapter =
+      options.createP2PAdapter ?? (() => new WebRTCPeerAdapter());
+    this.createLocalAdapter =
+      options.createLocalAdapter ??
+      ((presetOrSetup) => new LocalSimAdapter(presetOrSetup));
     this.draftSetup = normalizeMatchSetupConfig(
       this.sceneManager.simAdapter.simulation.getMatchSetup(),
     );
@@ -132,9 +156,14 @@ export class LobbyController {
   }
 
   public openLobby(): void {
-    this.draftSetup = normalizeMatchSetupConfig(
-      this.sceneManager.simAdapter.simulation.getMatchSetup(),
-    );
+    const roomState = this.p2pAdapter?.getRoomState();
+    const isHostingLobby =
+      roomState?.role === 'host' && roomState.status === 'hosting';
+    if (!isHostingLobby) {
+      this.draftSetup = normalizeMatchSetupConfig(
+        this.sceneManager.simAdapter.simulation.getMatchSetup(),
+      );
+    }
     this.isOpen = true;
     this.drawerEl.style.display = 'flex';
     this.renderDrawer();
@@ -170,7 +199,140 @@ export class LobbyController {
     }
   }
 
+  public hostOnlineRoom(roomCode?: string): string {
+    const p2p = this.ensureP2PAdapter();
+    this.p2pStatusMessage = null;
+    this.manualTokenOutput = null;
+    p2p.hostRoom({
+      presetOrSetup: this.draftSetup,
+      ...(roomCode !== undefined && roomCode.trim() !== ''
+        ? { roomCode }
+        : {}),
+    });
+    this.sceneManager.setSimAdapter?.(p2p);
+    const code = p2p.getRoomState().roomCode ?? '';
+    this.renderDrawer();
+    return code;
+  }
+
+  public async joinOnlineRoom(roomCode: string): Promise<void> {
+    const normalized = roomCode.trim().toUpperCase();
+    if (!normalized) {
+      this.p2pStatusMessage = 'Enter a valid Room Code to join.';
+      this.renderDrawer();
+      return;
+    }
+    const p2p = this.ensureP2PAdapter();
+    this.p2pStatusMessage = null;
+    this.manualTokenOutput = null;
+    this.sceneManager.setSimAdapter?.(p2p);
+    await p2p.joinRoom(normalized);
+    this.renderDrawer();
+  }
+
+  public leaveOnlineRoom(): void {
+    if (this.unsubscribeRoomState) {
+      this.unsubscribeRoomState();
+      this.unsubscribeRoomState = null;
+    }
+    if (this.p2pAdapter) {
+      this.p2pAdapter.leaveRoom();
+      this.p2pAdapter = null;
+    }
+    this.lastRoomStatus = 'idle';
+    this.p2pStatusMessage = null;
+    this.manualTokenOutput = null;
+    const localAdapter = this.createLocalAdapter(this.draftSetup);
+    this.sceneManager.setSimAdapter?.(localAdapter);
+    this.renderDrawer();
+  }
+
+  public assignPeerToSlot(peerId: string, slotId: PlayerSlotId): boolean {
+    if (!this.p2pAdapter) {
+      return false;
+    }
+    const assigned = this.p2pAdapter.assignPeerToSlot(peerId, slotId);
+    if (assigned) {
+      this.draftSetup = normalizeMatchSetupConfig({
+        ...this.draftSetup,
+        slots: {
+          ...this.draftSetup.slots,
+          [slotId]: { kind: 'human' },
+        },
+      });
+      this.renderDrawer();
+    }
+    return assigned;
+  }
+
+  public unassignPeerSlot(slotId: PlayerSlotId): void {
+    if (!this.p2pAdapter) {
+      return;
+    }
+    this.p2pAdapter.unassignSlot(slotId);
+    this.renderDrawer();
+  }
+
+  private ensureP2PAdapter(): MultiplayerRoomAdapter {
+    if (!this.p2pAdapter) {
+      this.p2pAdapter = this.createP2PAdapter();
+      this.unsubscribeRoomState = this.p2pAdapter.onRoomStateChange((state) => {
+        this.handleRoomStateChange(state);
+      });
+    }
+    return this.p2pAdapter;
+  }
+
+  private handleRoomStateChange(state: WebRTCRoomState): void {
+    const prevStatus = this.lastRoomStatus;
+    this.lastRoomStatus = state.status;
+
+    if (state.lastError) {
+      this.p2pStatusMessage = state.lastError;
+    }
+
+    if (
+      state.role === 'client' &&
+      state.status === 'in_match' &&
+      prevStatus !== 'in_match'
+    ) {
+      const launched = normalizeMatchSetupConfig(
+        this.sceneManager.simAdapter.simulation.getMatchSetup(),
+      );
+      this.draftSetup = launched;
+      this.outcomeBannerDismissed = false;
+      this.lastOutcomeSig = '';
+      this.closeLobby();
+      this.syncTelemetry();
+      this.onMatchLaunched?.(launched);
+      return;
+    }
+
+    if (this.isOpen) {
+      this.renderDrawer();
+    }
+  }
+
+  private isHostingP2PRoom(): boolean {
+    const state = this.p2pAdapter?.getRoomState();
+    return Boolean(state && state.role === 'host' && state.status !== 'idle');
+  }
+
+  private isJoinedP2PPeer(): boolean {
+    const state = this.p2pAdapter?.getRoomState();
+    return Boolean(state && state.role === 'client' && state.status !== 'idle');
+  }
+
+  private syncHostLobbySetup(): void {
+    if (this.isHostingP2PRoom()) {
+      this.p2pAdapter?.setLobbySetup(this.draftSetup);
+    }
+  }
+
   public setDraftPreset(presetId: MatchPresetId): void {
+    if (this.isJoinedP2PPeer()) {
+      return;
+    }
     this.draftSetup = normalizeMatchSetupConfig(
       presetId === 'tutorial'
         ? {
@@ -183,6 +345,7 @@ export class LobbyController {
             presetId,
           },
     );
+    this.syncHostLobbySetup();
     this.renderDrawer();
   }
 
@@ -190,6 +353,9 @@ export class LobbyController {
     slotId: PlayerSlotId,
     role: 'human' | 'ai' | 'empty',
   ): void {
+    if (this.isJoinedP2PPeer()) {
+      return;
+    }
     const currentSlot = this.draftSetup.slots[slotId];
     let nextSlot: PlayerSlotConfig;
     if (role === 'human') {
@@ -214,8 +380,12 @@ export class LobbyController {
       nextSlots[slotId] = { kind: 'human' };
     }
 
-    const nextLocalPlayerId =
-      role === 'human'
+    const keepHostLocal =
+      this.isHostingP2PRoom() &&
+      nextSlots[this.draftSetup.localPlayerId].kind === 'human';
+    const nextLocalPlayerId = keepHostLocal
+      ? this.draftSetup.localPlayerId
+      : role === 'human'
         ? slotId
         : nextSlots[this.draftSetup.localPlayerId].kind === 'human'
           ? this.draftSetup.localPlayerId
@@ -228,6 +398,7 @@ export class LobbyController {
       localPlayerId: nextLocalPlayerId,
       slots: nextSlots,
     });
+    this.syncHostLobbySetup();
     this.renderDrawer();
   }
 
@@ -235,6 +406,9 @@ export class LobbyController {
     slotId: PlayerSlotId,
     difficulty: AIDifficultyId,
   ): void {
+    if (this.isJoinedP2PPeer()) {
+      return;
+    }
     this.draftSetup = normalizeMatchSetupConfig({
       presetId: this.draftSetup.presetId,
       localPlayerId: this.draftSetup.localPlayerId,
@@ -243,11 +417,20 @@ export class LobbyController {
         [slotId]: { kind: 'ai', difficulty },
       },
     });
+    this.syncHostLobbySetup();
     this.renderDrawer();
   }
 
   public launchDraftMatch(): MatchSetupConfig {
-    const launched = this.sceneManager.resetMatch(this.draftSetup);
+    const roomState = this.p2pAdapter?.getRoomState();
+    const isHostingMatch = Boolean(
+      roomState &&
+        roomState.role === 'host' &&
+        (roomState.status === 'hosting' || roomState.status === 'in_match'),
+    );
+    const launched = isHostingMatch
+      ? this.p2pAdapter!.launchMatch()
+      : this.sceneManager.resetMatch(this.draftSetup);
     this.draftSetup = launched;
     this.outcomeBannerDismissed = false;
     this.lastOutcomeSig = '';
@@ -309,7 +492,7 @@ export class LobbyController {
   }
 
   private patchOutcomeBanner(
-    sim: GameSimulation,
+    sim: SimulationView,
     outcome: MatchOutcomeState,
   ): void {
     if (outcome.status === 'in_progress' || this.outcomeBannerDismissed) {
@@ -401,14 +584,131 @@ export class LobbyController {
     }
   }
 
+  private renderP2PPanel(roomState: WebRTCRoomState | null): string {
+    const statusText = this.p2pStatusMessage ?? roomState?.lastError ?? '';
+    const manualTokenBox = this.manualTokenOutput
+      ? `
+        <div class="lobby-p2p-row">
+          <span style="font-size: 0.7rem; color: #94a3b8;">Generated Token:</span>
+          <input type="text" class="lobby-p2p-input" data-p2p-generated-token value="${this.manualTokenOutput}" readonly />
+        </div>
+      `
+      : '';
+
+    if (!roomState || roomState.status === 'idle') {
+      return `
+        <div class="lobby-p2p-panel" data-hud-panel="lobby-p2p-panel">
+          <div class="lobby-p2p-header">
+            <span class="hud-label" style="margin: 0;">ONLINE P2P MULTIPLAYER (WEBRTC)</span>
+            <span style="font-size: 0.7rem; color: #94a3b8;">Player-Hosted • Up to 4 Commanders</span>
+          </div>
+          <div class="lobby-p2p-row">
+            <button type="button" class="hud-btn active" data-action="host-p2p-room">
+              Host Online Room
+            </button>
+            <input type="text" class="lobby-p2p-input" data-p2p-join-input placeholder="Room Code" maxlength="12" />
+            <button type="button" class="hud-btn" data-action="join-p2p-room">
+              Join Room
+            </button>
+          </div>
+          <div class="lobby-p2p-row">
+            <input type="text" class="lobby-p2p-input" data-p2p-token-input placeholder="Manual Invite Token" />
+            <button type="button" class="hud-btn" data-action="accept-manual-invite">
+              Accept Invite Token
+            </button>
+          </div>
+          ${statusText ? `<div class="lobby-p2p-status" data-p2p-status>${statusText}</div>` : ''}
+        </div>
+      `;
+    }
+
+    if (roomState.role === 'host') {
+      const connectedPeers = roomState.peers.filter((p) => p.connected).length;
+      const hostStatus =
+        statusText ||
+        (roomState.status === 'in_match'
+          ? 'Match live with connected peers.'
+          : 'Share Room Code or Invite Token, then assign remote peers to Human slots.');
+      return `
+        <div class="lobby-p2p-panel" data-hud-panel="lobby-p2p-panel">
+          <div class="lobby-p2p-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="hud-label" style="margin: 0;">ONLINE P2P HOST</span>
+              <span class="hud-badge" data-p2p-room-code style="background: rgba(14, 165, 233, 0.25); color: #7dd3fc; font-weight: 700;">${roomState.roomCode ?? ''}</span>
+              <button type="button" class="hud-btn" data-action="copy-room-code">
+                Copy
+              </button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="hud-badge">${connectedPeers} / 3 Peers</span>
+              <button type="button" class="hud-btn" data-action="leave-p2p-room">
+                Close Room
+              </button>
+            </div>
+          </div>
+          <div class="lobby-p2p-row">
+            <button type="button" class="hud-btn" data-action="create-manual-invite">
+              Create Invite Token
+            </button>
+            <input type="text" class="lobby-p2p-input" data-p2p-token-input placeholder="Paste Peer Answer Token" />
+            <button type="button" class="hud-btn" data-action="apply-manual-answer">
+              Apply Answer Token
+            </button>
+          </div>
+          ${manualTokenBox}
+          <div class="lobby-p2p-status" data-p2p-status>${hostStatus}</div>
+        </div>
+      `;
+    }
+
+    const codeLabel = roomState.roomCode ?? 'ROOM';
+    const titleText =
+      roomState.status === 'joining'
+        ? `Joining ${codeLabel}...`
+        : `Connected to Room ${codeLabel}`;
+    const peerStatus =
+      statusText ||
+      `Assigned Slot: ${FACTION_PALETTES[roomState.localPlayerId].label}. Waiting for host to launch match.`;
+
+    return `
+      <div class="lobby-p2p-panel" data-hud-panel="lobby-p2p-panel">
+        <div class="lobby-p2p-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="hud-label" style="margin: 0;">ONLINE P2P PEER</span>
+            <span class="hud-badge" data-p2p-room-code style="background: rgba(34, 197, 94, 0.2); color: #86efac;">${titleText}</span>
+          </div>
+          <button type="button" class="hud-btn" data-action="leave-p2p-room">
+            Leave Room
+          </button>
+        </div>
+        <div style="font-size: 0.7rem; color: #94a3b8;">
+          Read-only lobby view: the host controls match preset and slot assignments.
+        </div>
+        ${manualTokenBox}
+        <div class="lobby-p2p-status" data-p2p-status>${peerStatus}</div>
+      </div>
+    `;
+  }
+
   private renderDrawer(): void {
     const sim = this.sceneManager.simAdapter.simulation;
     const activeSetup = sim.getMatchSetup();
     const outcome = sim.getMatchOutcome();
+    const roomState = this.p2pAdapter?.getRoomState() ?? null;
+    const isHostingP2P = Boolean(
+      roomState && roomState.role === 'host' && roomState.status !== 'idle',
+    );
+    const isJoinedP2P = Boolean(
+      roomState && roomState.role === 'client' && roomState.status !== 'idle',
+    );
+    const activePresetId = isJoinedP2P
+      ? roomState!.presetId
+      : this.draftSetup.presetId;
+    const disabledAttr = isJoinedP2P ? 'disabled' : '';
 
     const presetCardsHtml = MATCH_PRESET_IDS.map((presetId) => {
       const preset = MATCH_PRESETS[presetId];
-      const isSelected = this.draftSetup.presetId === presetId;
+      const isSelected = activePresetId === presetId;
       const isLive = activeSetup.presetId === presetId;
       const victoryRule =
         preset.centralSuperEarthKingOfTheHillSeconds !== null
@@ -424,6 +724,7 @@ export class LobbyController {
           type="button"
           class="lobby-preset-card ${isSelected ? 'selected' : ''}"
           data-lobby-preset="${preset.id}"
+          ${disabledAttr}
         >
           <div class="planet-card-title" style="justify-content: space-between;">
             <span>${preset.displayName}</span>
@@ -443,12 +744,22 @@ export class LobbyController {
     }).join('');
 
     const slotRowsHtml = PLAYER_SLOT_IDS.map((slotId, index) => {
-      const slotCfg = this.draftSetup.slots[slotId];
+      const peerSlotInfo = isJoinedP2P
+        ? roomState?.slots.find((s) => s.slotId === slotId)
+        : undefined;
+      const slotCfg: PlayerSlotConfig = peerSlotInfo
+        ? peerSlotInfo.kind === 'ai'
+          ? { kind: 'ai', difficulty: peerSlotInfo.aiDifficulty ?? 'standard' }
+          : { kind: peerSlotInfo.kind }
+        : this.draftSetup.slots[slotId];
       const palette = FACTION_PALETTES[slotId];
       const hexColor = `#${palette.tacticalHex.toString(16).padStart(6, '0')}`;
       const standing = outcome.standings.find((s) => s.playerId === slotId);
       const standingInfo = formatStandingBadge(standing);
-      const isLocalCommand = this.draftSetup.localPlayerId === slotId;
+      const isLocalCommand = isJoinedP2P
+        ? roomState!.localPlayerId === slotId
+        : this.draftSetup.localPlayerId === slotId;
+      const localBadgeLabel = isJoinedP2P ? 'YOU (Remote)' : 'YOU';
 
       const roleBtnsHtml = (['human', 'ai', 'empty'] as const)
         .map((role) => {
@@ -465,6 +776,7 @@ export class LobbyController {
               class="hud-btn ${active ? 'active' : ''}"
               data-lobby-slot="${slotId}"
               data-lobby-role="${role}"
+              ${disabledAttr}
             >
               ${label}
             </button>
@@ -472,28 +784,67 @@ export class LobbyController {
         })
         .join('');
 
-      const difficultyBtnsHtml =
-        slotCfg.kind === 'ai'
-          ? AI_DIFFICULTY_IDS.map((diffId) => {
-              const prof = AI_DIFFICULTY_PROFILES[diffId];
-              const active = slotCfg.difficulty === diffId;
-              return `
+      let detailHtml: string;
+      if (slotCfg.kind === 'ai') {
+        detailHtml = AI_DIFFICULTY_IDS.map((diffId) => {
+          const prof = AI_DIFFICULTY_PROFILES[diffId];
+          const active = slotCfg.difficulty === diffId;
+          return `
+            <button
+              type="button"
+              class="hud-btn ${active ? 'active' : ''}"
+              data-lobby-slot="${slotId}"
+              data-lobby-difficulty="${diffId}"
+              title="${prof.description}"
+              ${disabledAttr}
+            >
+              ${prof.displayName.replace(' AI', '')}
+            </button>
+          `;
+        }).join('');
+      } else if (slotCfg.kind === 'empty') {
+        detailHtml =
+          '<span style="font-size: 0.7rem; color: #94a3b8;">Unclaimed Starter Sector (10-Slot Homeworld Open for Colonization)</span>';
+      } else if (isHostingP2P && roomState) {
+        if (slotId === roomState.localPlayerId) {
+          detailHtml =
+            '<span style="font-size: 0.7rem; color: #86efac;">Host (Local Commander)</span>';
+        } else {
+          const assignedPeer = roomState.peers.find(
+            (p) => p.assignedSlotId === slotId,
+          );
+          const assignBtns = roomState.peers
+            .filter((p) => p.connected && p.assignedSlotId !== slotId)
+            .map(
+              (p) => `
                 <button
                   type="button"
-                  class="hud-btn ${active ? 'active' : ''}"
-                  data-lobby-slot="${slotId}"
-                  data-lobby-difficulty="${diffId}"
-                  title="${prof.description}"
+                  class="hud-btn"
+                  data-p2p-assign-slot="${slotId}"
+                  data-p2p-peer-id="${p.peerId}"
                 >
-                  ${prof.displayName.replace(' AI', '')}
+                  Assign ${p.label}
                 </button>
-              `;
-            }).join('')
-          : `<span style="font-size: 0.7rem; color: #94a3b8;">${
-              slotCfg.kind === 'human'
-                ? 'Local Commander Slot (Direct HUD & Fleet Control)'
-                : 'Unclaimed Starter Sector (10-Slot Homeworld Open for Colonization)'
-            }</span>`;
+              `,
+            )
+            .join('');
+          const assignedHtml = assignedPeer
+            ? `<span style="font-size: 0.7rem; color: #7dd3fc;">Remote Human: <strong>${assignedPeer.label}</strong></span>
+               <button type="button" class="hud-btn" data-p2p-unassign-slot="${slotId}">Unassign</button>`
+            : '<span style="font-size: 0.7rem; color: #94a3b8;">Remote Human • Open Remote Slot</span>';
+          detailHtml = `${assignedHtml}${assignBtns}`;
+        }
+      } else if (isJoinedP2P) {
+        const remoteLabel = peerSlotInfo?.peerId
+          ? `Remote Human (${peerSlotInfo.peerId})`
+          : slotId === roomState?.localPlayerId
+            ? 'Remote Human (You)'
+            : 'Host / Remote Commander';
+        detailHtml = `<span style="font-size: 0.7rem; color: #94a3b8;">${remoteLabel}</span>`;
+      } else {
+        detailHtml =
+          '<span style="font-size: 0.7rem; color: #94a3b8;">Local Commander Slot (Direct HUD & Fleet Control)</span>';
+      }
 
       return `
         <div class="lobby-slot-row" data-lobby-slot-row="${slotId}">
@@ -502,7 +853,7 @@ export class LobbyController {
               <span class="lobby-faction-swatch" style="background: ${hexColor}; box-shadow: 0 0 8px ${hexColor};"></span>
               <strong>${palette.label}</strong>
               <span class="hud-badge">Starter System ${index + 1}</span>
-              ${isLocalCommand ? '<span class="hud-badge" style="background: rgba(34, 197, 94, 0.2); color: #86efac;">YOU</span>' : ''}
+              ${isLocalCommand ? `<span class="hud-badge" style="background: rgba(34, 197, 94, 0.2); color: #86efac;">${localBadgeLabel}</span>` : ''}
             </div>
             <span class="lobby-standing-pill" data-lobby-standing="${slotId}" data-tone="${standingInfo.tone}">
               ${standingInfo.text}
@@ -513,20 +864,23 @@ export class LobbyController {
               ${roleBtnsHtml}
             </div>
             <div class="hud-btn-row" role="group" aria-label="${palette.label} AI Difficulty">
-              ${difficultyBtnsHtml}
+              ${detailHtml}
             </div>
           </div>
         </div>
       `;
     }).join('');
 
-    const draftPreset = MATCH_PRESETS[this.draftSetup.presetId];
+    const draftPreset = MATCH_PRESETS[activePresetId];
     const activeAIProfiles = PLAYER_SLOT_IDS.filter(
       (id) => this.draftSetup.slots[id].kind === 'ai',
     ).length;
     const emptySectors = PLAYER_SLOT_IDS.filter(
       (id) => this.draftSetup.slots[id].kind === 'empty',
     ).length;
+    const localLabel = isJoinedP2P
+      ? FACTION_PALETTES[roomState!.localPlayerId].label
+      : FACTION_PALETTES[this.draftSetup.localPlayerId].label;
 
     this.drawerEl.innerHTML = `
       <div class="lobby-drawer-header">
@@ -537,7 +891,7 @@ export class LobbyController {
           </div>
         </div>
         <div class="hud-btn-row">
-          <button type="button" class="hud-btn active" data-action="launch-tutorial">
+          <button type="button" class="hud-btn active" data-action="launch-tutorial" ${disabledAttr}>
             Start Guided Tutorial
           </button>
           <button type="button" class="hud-btn" data-action="close-lobby">
@@ -545,6 +899,8 @@ export class LobbyController {
           </button>
         </div>
       </div>
+
+      ${this.renderP2PPanel(roomState)}
 
       <div>
         <div class="hud-label">1. Select Match Mode Preset</div>
@@ -562,19 +918,23 @@ export class LobbyController {
 
       <div class="lobby-drawer-footer">
         <div style="font-size: 0.72rem; color: #cbd5e1;">
-          Draft: <strong>${draftPreset.displayName}</strong> • Local Commander: <strong>${FACTION_PALETTES[this.draftSetup.localPlayerId].label}</strong> • AI Opponents: <strong>${activeAIProfiles}</strong> • Empty Colonizable Sectors: <strong>${emptySectors}</strong>
+          Draft: <strong>${draftPreset.displayName}</strong> • Local Commander: <strong>${localLabel}</strong> • AI Opponents: <strong>${activeAIProfiles}</strong> • Empty Colonizable Sectors: <strong>${emptySectors}</strong>
         </div>
         <div class="hud-btn-row">
           <button type="button" class="hud-btn" data-action="close-lobby">
             Cancel
           </button>
-          <button type="button" class="hud-btn active" data-action="launch-match" style="font-weight: 700;">
+          <button type="button" class="hud-btn active" data-action="launch-match" style="font-weight: 700;" ${disabledAttr}>
             Launch New Match
           </button>
         </div>
       </div>
     `;
 
+    this.wireDrawerEvents();
+  }
+
+  private wireDrawerEvents(): void {
     this.drawerEl
       .querySelectorAll<HTMLButtonElement>('[data-lobby-preset]')
       .forEach((btn) => {
@@ -634,6 +994,145 @@ export class LobbyController {
       .querySelector<HTMLButtonElement>('[data-action="launch-match"]')
       ?.addEventListener('click', () => {
         this.launchDraftMatch();
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="host-p2p-room"]')
+      ?.addEventListener('click', () => {
+        this.hostOnlineRoom();
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="join-p2p-room"]')
+      ?.addEventListener('click', () => {
+        const inputEl = this.drawerEl.querySelector<HTMLInputElement>(
+          '[data-p2p-join-input]',
+        );
+        const code = inputEl?.value ?? '';
+        void this.joinOnlineRoom(code);
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="leave-p2p-room"]')
+      ?.addEventListener('click', () => {
+        this.leaveOnlineRoom();
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="copy-room-code"]')
+      ?.addEventListener('click', () => {
+        const code = this.p2pAdapter?.getRoomState().roomCode ?? '';
+        if (!code) {
+          return;
+        }
+        try {
+          void globalThis.navigator?.clipboard?.writeText?.(code);
+          this.p2pStatusMessage = `Copied room code ${code}.`;
+          this.renderDrawer();
+        } catch {
+          this.p2pStatusMessage = `Room code: ${code}`;
+          this.renderDrawer();
+        }
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="create-manual-invite"]')
+      ?.addEventListener('click', () => {
+        if (!this.p2pAdapter) {
+          return;
+        }
+        void this.p2pAdapter
+          .createManualInviteToken()
+          .then((token) => {
+            this.manualTokenOutput = token;
+            this.p2pStatusMessage = 'Invite token created. Share it with a remote peer.';
+            this.renderDrawer();
+          })
+          .catch((err: unknown) => {
+            this.p2pStatusMessage =
+              err instanceof Error ? err.message : 'Failed to create invite token.';
+            this.renderDrawer();
+          });
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="accept-manual-invite"]')
+      ?.addEventListener('click', () => {
+        const tokenInput = this.drawerEl.querySelector<HTMLInputElement>(
+          '[data-p2p-token-input]',
+        );
+        const token = tokenInput?.value?.trim() ?? '';
+        if (!token) {
+          this.p2pStatusMessage = 'Paste a manual invite token first.';
+          this.renderDrawer();
+          return;
+        }
+        const p2p = this.ensureP2PAdapter();
+        this.sceneManager.setSimAdapter?.(p2p);
+        void p2p
+          .acceptManualInviteToken(token)
+          .then((answerToken) => {
+            this.manualTokenOutput = answerToken;
+            this.p2pStatusMessage =
+              'Answer token generated. Send it back to the host.';
+            this.renderDrawer();
+          })
+          .catch((err: unknown) => {
+            this.p2pStatusMessage =
+              err instanceof Error ? err.message : 'Invalid manual invite token.';
+            this.renderDrawer();
+          });
+      });
+
+    this.drawerEl
+      .querySelector<HTMLButtonElement>('[data-action="apply-manual-answer"]')
+      ?.addEventListener('click', () => {
+        if (!this.p2pAdapter) {
+          return;
+        }
+        const tokenInput = this.drawerEl.querySelector<HTMLInputElement>(
+          '[data-p2p-token-input]',
+        );
+        const token = tokenInput?.value?.trim() ?? '';
+        if (!token) {
+          this.p2pStatusMessage = 'Paste a peer answer token first.';
+          this.renderDrawer();
+          return;
+        }
+        void this.p2pAdapter
+          .applyManualAnswerToken(token)
+          .then(() => {
+            this.p2pStatusMessage = 'Peer answer token applied.';
+            this.renderDrawer();
+          })
+          .catch((err: unknown) => {
+            this.p2pStatusMessage =
+              err instanceof Error ? err.message : 'Invalid answer token.';
+            this.renderDrawer();
+          });
+      });
+
+    this.drawerEl
+      .querySelectorAll<HTMLButtonElement>('[data-p2p-assign-slot]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const slotId = btn.dataset.p2pAssignSlot as PlayerSlotId | undefined;
+          const peerId = btn.dataset.p2pPeerId;
+          if (slotId && peerId) {
+            this.assignPeerToSlot(peerId, slotId);
+          }
+        });
+      });
+
+    this.drawerEl
+      .querySelectorAll<HTMLButtonElement>('[data-p2p-unassign-slot]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const slotId = btn.dataset.p2pUnassignSlot as PlayerSlotId | undefined;
+          if (slotId) {
+            this.unassignPeerSlot(slotId);
+          }
+        });
       });
   }
 }

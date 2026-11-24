@@ -54,6 +54,14 @@ import {
   PlayerIntelRegistry,
   type PlayerSystemView,
 } from './playerIntel.ts';
+import {
+  computeFleetLiveAnchor,
+  getMaxConcurrentDocksForPreset,
+  getPlatformUnloadRateForPreset,
+  validateDeepSpacePlacementPure,
+  type SimulationView,
+} from './simulationView.ts';
+import type { StateSnapshot } from '../protocol/snapshots.ts';
 
 export const ORBITAL_RING_ROTATION_SPEED_RAD_PER_SEC = 0.025;
 
@@ -558,7 +566,7 @@ export function reduceMatchOutcomeTick(
   };
 }
 
-export class GameSimulation {
+export class GameSimulation implements SimulationView {
   public readonly matchSetup: MatchSetupConfig;
   public readonly presetId: MatchPresetId;
   public readonly galaxy: GalaxyTopology;
@@ -629,6 +637,18 @@ export class GameSimulation {
     return lastAt !== undefined && this.elapsedSeconds - lastAt <= windowSeconds;
   }
 
+  private filterCombatEventsForViewer(
+    events: readonly CombatVisualEvent[],
+    viewerId: PlayerSlotId,
+  ): CombatVisualEvent[] {
+    return events.filter(
+      (ev) =>
+        ev.ownerId === viewerId ||
+        this.isPositionVisibleToPlayer(viewerId, ev.systemId, ev.fromPos) ||
+        this.isPositionVisibleToPlayer(viewerId, ev.systemId, ev.toPos),
+    );
+  }
+
   /**
    * Drains and returns all pending combat visual events (weapon tracers, shield impact ripples,
    * and hull explosions) for the 3D VFX renderer to consume once per frame.
@@ -641,12 +661,53 @@ export class GameSimulation {
     if (!viewerId) {
       return events;
     }
-    return events.filter(
-      (ev) =>
-        ev.ownerId === viewerId ||
-        this.isPositionVisibleToPlayer(viewerId, ev.systemId, ev.fromPos) ||
-        this.isPositionVisibleToPlayer(viewerId, ev.systemId, ev.toPos),
-    );
+    return this.filterCombatEventsForViewer(events, viewerId);
+  }
+
+  /**
+   * Drains pending combat visual events once and returns a per-viewer Fog-of-War-filtered map
+   * so the host and multiple P2P peers each receive only their visible events.
+   */
+  public drainCombatEventsForViewers(
+    viewerIds: readonly PlayerSlotId[],
+  ): Map<PlayerSlotId, CombatVisualEvent[]> {
+    const result = new Map<PlayerSlotId, CombatVisualEvent[]>();
+    const events =
+      this.pendingCombatEvents.length > 0
+        ? this.pendingCombatEvents.splice(0, this.pendingCombatEvents.length)
+        : [];
+    for (const viewerId of viewerIds) {
+      result.set(
+        viewerId,
+        events.length > 0 ? this.filterCombatEventsForViewer(events, viewerId) : [],
+      );
+    }
+    return result;
+  }
+
+  public buildStateSnapshot(
+    viewerId: PlayerSlotId,
+    combatEvents: readonly CombatVisualEvent[] = [],
+  ): StateSnapshot {
+    const systems: Record<string, PlayerSystemView> = {};
+    for (const sys of this.galaxy.systems) {
+      systems[sys.id] = this.getPlayerSystemView(viewerId, sys.id);
+    }
+
+    return {
+      version: 1,
+      tick: this.currentTick,
+      elapsedSeconds: this.elapsedSeconds,
+      presetId: this.presetId,
+      viewerId,
+      matchSetup: this.getMatchSetup(),
+      matchOutcome: this.getMatchOutcome(),
+      viewerEconomy: this.getPlayerState(viewerId),
+      viewerFleets: this.getFleetsForPlayer(viewerId),
+      systems,
+      combatEvents: [...combatEvents],
+      isViewerInActiveCombat: this.isPlayerInActiveCombat(viewerId),
+    };
   }
 
   public getPlayerSystemView(viewerId: PlayerSlotId, systemId: string): PlayerSystemView {
@@ -1101,94 +1162,7 @@ export class GameSimulation {
     if (!fleet) {
       return null;
     }
-    const members = this.getShipsInFleet(fleetId);
-    if (members.length === 0) {
-      return {
-        systemId: fleet.orderSystemId,
-        position: fleet.orderPosition,
-      };
-    }
-    if (members.length === 1) {
-      const only = members[0]!;
-      return {
-        systemId: only.currentSystemId,
-        position: { x: only.position.x, z: only.position.z },
-      };
-    }
-
-    // 1. Pick the star system containing the most fleet ships (ties favor fleet.orderSystemId)
-    const bySystem = new Map<string, CombatShipUnitState[]>();
-    for (const m of members) {
-      const list = bySystem.get(m.currentSystemId);
-      if (list) {
-        list.push(m);
-      } else {
-        bySystem.set(m.currentSystemId, [m]);
-      }
-    }
-    let bestSystemId = members[0]!.currentSystemId;
-    let group: CombatShipUnitState[] = [];
-    for (const [sysId, list] of bySystem.entries()) {
-      if (
-        list.length > group.length ||
-        (list.length === group.length && sysId === fleet.orderSystemId)
-      ) {
-        bestSystemId = sysId;
-        group = list;
-      }
-    }
-    if (group.length === 1) {
-      const only = group[0]!;
-      return {
-        systemId: bestSystemId,
-        position: { x: only.position.x, z: only.position.z },
-      };
-    }
-
-    // 2. Find the majority spatial cluster within 140u (ties favor proximity to fleet.orderPosition)
-    const CLUSTER_RADIUS = 140;
-    let bestCluster: CombatShipUnitState[] = [group[0]!];
-    let bestClusterOrderDist = Infinity;
-
-    for (const seed of group) {
-      const cluster = group.filter(
-        (other) =>
-          Math.hypot(
-            other.position.x - seed.position.x,
-            other.position.z - seed.position.z,
-          ) <= CLUSTER_RADIUS,
-      );
-      let cx = 0;
-      let cz = 0;
-      for (const s of cluster) {
-        cx += s.position.x;
-        cz += s.position.z;
-      }
-      cx /= cluster.length;
-      cz /= cluster.length;
-      const distToOrder = Math.hypot(
-        cx - fleet.orderPosition.x,
-        cz - fleet.orderPosition.z,
-      );
-      if (
-        cluster.length > bestCluster.length ||
-        (cluster.length === bestCluster.length && distToOrder < bestClusterOrderDist)
-      ) {
-        bestCluster = cluster;
-        bestClusterOrderDist = distToOrder;
-      }
-    }
-
-    let sumX = 0;
-    let sumZ = 0;
-    for (const m of bestCluster) {
-      sumX += m.position.x;
-      sumZ += m.position.z;
-    }
-    return {
-      systemId: bestSystemId,
-      position: { x: sumX / bestCluster.length, z: sumZ / bestCluster.length },
-    };
+    return computeFleetLiveAnchor(fleet, this.getShipsInFleet(fleetId));
   }
 
   /**
@@ -1939,106 +1913,15 @@ export class GameSimulation {
     position: Vector2D,
     structureId: DeepSpaceStructureId,
   ): CommandResult {
-    const player = this.players.get(playerId);
-    const system = this.galaxy.systems.find((s) => s.id === systemId);
-    if (!player || !system) {
-      return { ok: false, reason: 'Invalid player or star system' };
-    }
-
-    const config = DEEP_SPACE_STRUCTURES[structureId];
-    if (!config) {
-      return { ok: false, reason: 'Unknown deep-space structure type' };
-    }
-
-    if (!Number.isFinite(position.x) || !Number.isFinite(position.z)) {
-      return { ok: false, reason: 'Invalid placement coordinates' };
-    }
-
-    // 1. Ensure placement does not overlap any planet or its orbital ring
-    for (const planet of system.planets) {
-      const orbitalRingRadius =
-        PLANET_CLASSES[planet.planetClass].radiusUnits * 1.52;
-      const minClearance =
-        orbitalRingRadius + MIN_DEEP_SPACE_PLANET_CLEARANCE_BUFFER;
-      const distToPlanet = Math.hypot(
-        position.x - planet.position.x,
-        position.z - planet.position.z,
-      );
-      if (distToPlanet < minClearance) {
-        return {
-          ok: false,
-          reason: `Too close to ${planet.name} orbital ring (requires ${Math.ceil(minClearance)}u clearance)`,
-        };
-      }
-    }
-
-    // 2. Ensure placement stays clear of every wormhole mouth in this system
-    for (const wormhole of this.galaxy.wormholes) {
-      const mouthPos =
-        wormhole.fromSystemId === systemId
-          ? wormhole.fromPosition
-          : wormhole.toSystemId === systemId
-            ? wormhole.toPosition
-            : null;
-      if (mouthPos) {
-        const distToWormhole = Math.hypot(
-          position.x - mouthPos.x,
-          position.z - mouthPos.z,
-        );
-        if (distToWormhole < MIN_DEEP_SPACE_WORMHOLE_CLEARANCE) {
-          return {
-            ok: false,
-            reason: `Too close to wormhole mouth (requires ${MIN_DEEP_SPACE_WORMHOLE_CLEARANCE}u clearance)`,
-          };
-        }
-      }
-    }
-
-    // 3. Enforce per-structure minimum spacing against every existing deep-space installation
-    const existingInSystem = this.getDeepSpaceStructuresInSystem(systemId);
-    for (const existing of existingInSystem) {
-      const requiredSpacing = getMinDeepSpaceStructureSpacing(
-        structureId,
-        existing.structureId,
-      );
-      const dist = Math.hypot(
-        position.x - existing.position.x,
-        position.z - existing.position.z,
-      );
-      if (dist < requiredSpacing) {
-        const existingName = DEEP_SPACE_STRUCTURES[existing.structureId].displayName;
-        return {
-          ok: false,
-          reason: `Too close to an existing ${existingName} (requires ${requiredSpacing}u spacing)`,
-        };
-      }
-    }
-
-    // 4. Enforce Logistics Hub radius rule for Defence Towers (PD Tower & Hull Breaker Tower)
-    if (config.requiresLogisticsHubRadius) {
-      const hubConfig = DEEP_SPACE_STRUCTURES.logistics_hub;
-      const insideFriendlyHub = existingInSystem.some(
-        (s) =>
-          s.structureId === 'logistics_hub' &&
-          s.ownerId === playerId &&
-          s.isComplete &&
-          Math.hypot(position.x - s.position.x, position.z - s.position.z) <=
-          hubConfig.buildRadiusProvided,
-      );
-      if (!insideFriendlyHub) {
-        return {
-          ok: false,
-          reason: `Requires placement within a completed friendly Logistics Hub radius (${hubConfig.buildRadiusProvided}u)`,
-        };
-      }
-    }
-
-    // 5. Verify Ore & Crystal reserves
-    if (player.ore < config.cost.ore || player.crystal < config.cost.crystal) {
-      return { ok: false, reason: 'Insufficient Ore or Crystals' };
-    }
-
-    return { ok: true };
+    return validateDeepSpacePlacementPure({
+      player: this.players.get(playerId),
+      galaxy: this.galaxy,
+      playerId,
+      systemId,
+      position,
+      structureId,
+      existingInSystem: this.getDeepSpaceStructuresInSystem(systemId),
+    });
   }
 
   private handleBuildDeepSpaceStructure(
@@ -3882,24 +3765,11 @@ export class GameSimulation {
   }
 
   public getPlatformUnloadRatePerSecond(structure: OrbitalStructureInstance): number {
-    const multiplier = MATCH_PRESETS[this.presetId].harvestRateMultiplier;
-    if (structure.structureId === 'refinery') {
-      return REFINERY_UNLOAD_RATE_PER_SECOND * multiplier;
-    }
-    if (structure.structureId === 'command_and_control') {
-      return CNC_UNLOAD_RATE_PER_SECOND * multiplier;
-    }
-    return 0;
+    return getPlatformUnloadRateForPreset(this.presetId, structure);
   }
 
   public getMaxConcurrentDocks(structure: OrbitalStructureInstance): number {
-    if (structure.structureId === 'refinery') {
-      return MATCH_PRESETS[this.presetId].refineryMaxConcurrentDocks;
-    }
-    if (structure.structureId === 'command_and_control') {
-      return MATCH_PRESETS[this.presetId].cncMaxConcurrentDocks;
-    }
-    return 0;
+    return getMaxConcurrentDocksForPreset(this.presetId, structure);
   }
 
   private enterPlatformDockOrQueue(

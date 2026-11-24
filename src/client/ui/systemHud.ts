@@ -22,6 +22,7 @@ import {
   MAX_SHIP_PRODUCTION_QUEUE_SIZE,
   SMALLEST_FIRST_FLEET_HULLS,
 } from '../../shared/sim/gameSimulation.ts';
+import type { SimulationView } from '../../shared/sim/simulationView.ts';
 import type { ProjectedOrbitalStructure } from '../../shared/sim/playerIntel.ts';
 import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
@@ -130,8 +131,33 @@ function getProjectedOrbitalData(item: ProjectedOrbitalStructure) {
  * Continuous progress bars, percentages, timers, dock counts, and reserves are patched in-place
  * via `textContent` so DOM buttons are never destroyed or recreated while the player clicks/hovers.
  */
+function hasBattleSimulator(sim: SimulationView): sim is GameSimulation {
+  return (
+    'launchFleetBattleSimulator' in sim &&
+    typeof (sim as GameSimulation).launchFleetBattleSimulator === 'function'
+  );
+}
+
+function getVisibleHarvesters(
+  sim: SimulationView,
+  viewerId: PlayerSlotId,
+) {
+  return sim.galaxy.systems.flatMap(
+    (s) => sim.getPlayerSystemView(viewerId, s.id).harvesters,
+  );
+}
+
+function getVisibleCombatShips(
+  sim: SimulationView,
+  viewerId: PlayerSlotId,
+) {
+  return sim.galaxy.systems.flatMap(
+    (s) => sim.getPlayerSystemView(viewerId, s.id).combatShips,
+  );
+}
+
 export function computeMainPanelSignature(
-  sim: GameSimulation,
+  sim: SimulationView,
   params: MainPanelSignatureParams,
 ): string {
   const viewerId = params.playerId ?? 'player_1';
@@ -171,15 +197,13 @@ export function computeMainPanelSignature(
   );
   const selectedStruct = selectedItem?.kind === 'live' ? selectedItem.structure : null;
   const assignedHarvesterSig = selectedStruct
-    ? sim
-        .getAllHarvesters()
+    ? getVisibleHarvesters(sim, viewerId)
         .filter((h) => h.homeStructureId === selectedStruct.id)
         .map((h) => h.id)
         .join(',')
     : 'none';
   const assignedCombatShipSig = selectedStruct
-    ? sim
-        .getAllCombatShips()
+    ? getVisibleCombatShips(sim, viewerId)
         .filter((c) => c.homeDockyardId === selectedStruct.id)
         .map((c) => c.id)
         .join(',')
@@ -199,7 +223,7 @@ export function computeMainPanelSignature(
     .join(',');
 
   const fleetSig = sim
-    .getAllFleets()
+    .getFleetsForPlayer(viewerId)
     .map((f) => {
       const counts = SMALLEST_FIRST_FLEET_HULLS.map((h) => f.desiredCounts[h]).join('/');
       const live = sim.getShipsInFleet(f.id).length;
@@ -207,7 +231,7 @@ export function computeMainPanelSignature(
     })
     .join(';');
 
-  const simStats = sim.getBattleSimulatorStats();
+  const simStats = hasBattleSimulator(sim) ? sim.getBattleSimulatorStats() : null;
   const battleSimSig = simStats
     ? `${simStats.status}:${simStats.friendly.survivingShips}/${simStats.friendly.startedShips}:${simStats.hostile.survivingShips}/${simStats.hostile.startedShips}`
     : 'none';
@@ -265,11 +289,12 @@ export function mountSystemHud(
   sceneManager: SystemSceneManager,
   musicPlayer?: AmbientMusicPlayer,
 ): void {
-  const simAdapter = sceneManager.simAdapter;
+  let simAdapter = sceneManager.simAdapter;
   let sim = simAdapter.simulation;
   let playerId = simAdapter.localPlayerId;
 
   function syncSimRefs(): void {
+    simAdapter = sceneManager.simAdapter;
     sim = simAdapter.simulation;
     playerId = simAdapter.localPlayerId;
   }
@@ -424,8 +449,13 @@ export function mountSystemHud(
 
   hubMiningBtnEl?.addEventListener('click', () => {
     syncSimRefs();
-    crossSystemMiningEnabled = !crossSystemMiningEnabled;
-    sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
+    if (
+      'setPlayerHarvestersCrossSystemMining' in sim &&
+      typeof sim.setPlayerHarvestersCrossSystemMining === 'function'
+    ) {
+      crossSystemMiningEnabled = !crossSystemMiningEnabled;
+      sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
+    }
     renderEconomyBar();
   });
 
@@ -447,9 +477,9 @@ export function mountSystemHud(
   function renderEconomyBar(): void {
     syncSimRefs();
     const pState = sim.getPlayerState(playerId);
-    const playerHarvesters = sim
-      .getAllHarvesters()
-      .filter((h) => h.ownerId === playerId);
+    const playerHarvesters = getVisibleHarvesters(sim, playerId).filter(
+      (h) => h.ownerId === playerId,
+    );
     const outcome = sim.getMatchOutcome();
     const presetCfg = MATCH_PRESETS[sim.presetId];
     const survivingCount =
@@ -898,11 +928,9 @@ export function mountSystemHud(
       const dockStatusText = `Unload: ${unloadRateLabel}/s • Docks: ${selectedStruct.activeDockingHarvesterIds.length}/${maxDocks} (Queued: ${selectedStruct.queuedDockingHarvesterIds.length})`;
 
       const assignedHarvesters = isDropoffPlatform
-        ? sim
-            .getAllHarvesters()
-            .filter(
-              (h) => h.ownerId === playerId && h.homeStructureId === selectedStruct.id,
-            )
+        ? getVisibleHarvesters(sim, playerId).filter(
+            (h) => h.ownerId === playerId && h.homeStructureId === selectedStruct.id,
+          )
         : [];
       const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
 
@@ -1301,7 +1329,9 @@ export function mountSystemHud(
                       </div>`,
                     )
                     .join('');
-                const stats = sim.getBattleSimulatorStats();
+                const stats = hasBattleSimulator(sim)
+                  ? sim.getBattleSimulatorStats()
+                  : null;
                 let statsHtml = '';
                 if (stats && stats.status !== 'idle') {
                   const duration = (
@@ -1710,6 +1740,11 @@ export function mountSystemHud(
     mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="launch-battle-sim"]')
       ?.addEventListener('click', () => {
+        if (!hasBattleSimulator(sim)) {
+          statusBannerMessage = 'Battle Simulator is only available in local single-player mode.';
+          renderMainPanel();
+          return;
+        }
         const res = sim.launchFleetBattleSimulator(
           battleSimFriendly,
           battleSimHostile,
@@ -1724,6 +1759,9 @@ export function mountSystemHud(
     mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="clear-battle-sim"]')
       ?.addEventListener('click', () => {
+        if (!hasBattleSimulator(sim)) {
+          return;
+        }
         const removed = sim.clearBattleSimulatorShips();
         statusBannerMessage = `Ended Battle Simulator and cleared ${removed} ship${removed === 1 ? '' : 's'}.`;
         renderMainPanel();
@@ -1739,6 +1777,9 @@ export function mountSystemHud(
     mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="dismiss-battle-stats"]')
       ?.addEventListener('click', () => {
+        if (!hasBattleSimulator(sim)) {
+          return;
+        }
         sim.dismissBattleSimulatorStats();
         renderMainPanel();
       });
@@ -2134,11 +2175,9 @@ export function mountSystemHud(
       });
 
       if (isDropoffPlatform) {
-        const assignedHarvesters = sim
-          .getAllHarvesters()
-          .filter(
-            (h) => h.ownerId === playerId && h.homeStructureId === selectedStruct.id,
-          );
+        const assignedHarvesters = getVisibleHarvesters(sim, playerId).filter(
+          (h) => h.ownerId === playerId && h.homeStructureId === selectedStruct.id,
+        );
         for (const h of assignedHarvesters) {
           const badgeEl = mainBodyEl.querySelector<HTMLElement>(
             `[data-harvester-badge="${h.id}"]`,

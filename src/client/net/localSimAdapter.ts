@@ -16,6 +16,7 @@ import {
   type CommandResult,
   GameSimulation,
 } from '../../shared/sim/gameSimulation.ts';
+import type { ClientSimAdapter } from './simAdapter.ts';
 
 function buildAIBotsForSetup(setup: MatchSetupConfig): readonly AIBotController[] {
   const bots: AIBotController[] = [];
@@ -28,7 +29,8 @@ function buildAIBotsForSetup(setup: MatchSetupConfig): readonly AIBotController[
   return bots;
 }
 
-export class LocalSimAdapter {
+export class LocalSimAdapter implements ClientSimAdapter {
+  public readonly mode = 'local' as const;
   public localPlayerId: PlayerSlotId = 'player_1';
   public simulation: GameSimulation;
   public simSpeedMultiplier = 1;

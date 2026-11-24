@@ -1,6 +1,6 @@
 import type { MatchPresetId, OrbitalStructureId } from '../config/index.ts';
 import type { FleetHullClassId, PlayerSlotId } from '../protocol/commands.ts';
-import type { GameSimulation } from './gameSimulation.ts';
+import type { SimulationView } from './simulationView.ts';
 
 export type TutorialStepId =
   | 'build_refinery'
@@ -44,9 +44,9 @@ export interface TutorialStepDefinition {
   readonly title: string;
   readonly instruction: string;
   readonly hint: string;
-  readonly isComplete: (sim: GameSimulation, playerId: PlayerSlotId) => boolean;
+  readonly isComplete: (sim: SimulationView, playerId: PlayerSlotId) => boolean;
   readonly resolveHighlight: (
-    sim: GameSimulation,
+    sim: SimulationView,
     playerId: PlayerSlotId,
     ui: TutorialUiContext,
   ) => TutorialHighlightTarget;
@@ -59,7 +59,7 @@ export interface TutorialProgressState {
 }
 
 function hasCompletedStructure(
-  sim: GameSimulation,
+  sim: SimulationView,
   playerId: PlayerSlotId,
   structureId: OrbitalStructureId,
 ): boolean {
@@ -81,7 +81,7 @@ function hasCompletedStructure(
 }
 
 function findPlayerHomeSystemId(
-  sim: GameSimulation,
+  sim: SimulationView,
   playerId: PlayerSlotId,
 ): string {
   for (const system of sim.galaxy.systems) {
@@ -118,7 +118,7 @@ function resolveOrbitalBuildHighlight(
 }
 
 function resolveFleetTemplateHighlight(
-  sim: GameSimulation,
+  sim: SimulationView,
   playerId: PlayerSlotId,
   ui: TutorialUiContext,
   hull: FleetHullClassId,
@@ -218,14 +218,14 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
         return true;
       }
       const inCentral = sim
-        .getCombatShipsInSystem('system_central_hub')
-        .some((s) => s.ownerId === playerId);
+        .getPlayerSystemView(playerId, 'system_central_hub')
+        .combatShips.some((s) => s.ownerId === playerId);
       if (inCentral) {
         return true;
       }
       return sim
-        .getCombatShipsInSystem('system_starter_2')
-        .some((s) => s.ownerId === playerId);
+        .getPlayerSystemView(playerId, 'system_starter_2')
+        .combatShips.some((s) => s.ownerId === playerId);
     },
     resolveHighlight: () => ({
       kind: 'system-nav',
@@ -265,7 +265,7 @@ export function getCurrentTutorialStep(
 
 export function evaluateTutorialProgress(
   state: TutorialProgressState,
-  sim: GameSimulation,
+  sim: SimulationView,
   playerId: PlayerSlotId,
 ): TutorialProgressState {
   if (state.status !== 'active') {

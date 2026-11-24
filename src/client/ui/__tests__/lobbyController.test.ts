@@ -7,6 +7,17 @@ import type {
 import { CENTRAL_SUPER_EARTH_PLANET_ID } from '../../../shared/sim/gameSimulation.ts';
 import { LocalSimAdapter } from '../../net/localSimAdapter.ts';
 import {
+  InMemorySignalingHub,
+  createInMemorySignalingTransport,
+} from '../../net/signaling.ts';
+import type { ClientSimAdapter } from '../../net/simAdapter.ts';
+import {
+  WebRTCPeerAdapter,
+  type DataChannelLike,
+  type PeerConnectionFactory,
+  type PeerConnectionLike,
+} from '../../net/webrtcPeerAdapter.ts';
+import {
   LobbyController,
   formatMatchClockSeconds,
   type LobbySceneManagerContract,
@@ -17,6 +28,7 @@ class FakeHtmlElement {
   public dataset: Record<string, string> = {};
   public style: Record<string, string> = {};
   public textContent = '';
+  public value = '';
   public children: FakeHtmlElement[] = [];
   private html = '';
   private readonly listeners = new Map<string, Set<() => void>>();
@@ -104,6 +116,32 @@ class FakeHtmlElement {
         const el = new FakeHtmlElement();
         el.dataset.lobbyStanding = slot;
         matches.push(el);
+      }
+    } else if (selector === '[data-p2p-assign-slot]') {
+      const regex =
+        /data-p2p-assign-slot="([^"]+)"\s+data-p2p-peer-id="([^"]+)"/g;
+      for (const m of this.html.matchAll(regex)) {
+        const el = new FakeHtmlElement();
+        el.dataset.p2pAssignSlot = m[1]!;
+        el.dataset.p2pPeerId = m[2]!;
+        matches.push(el);
+      }
+    } else if (selector === '[data-p2p-unassign-slot]') {
+      const regex = /data-p2p-unassign-slot="([^"]+)"/g;
+      for (const m of this.html.matchAll(regex)) {
+        const el = new FakeHtmlElement();
+        el.dataset.p2pUnassignSlot = m[1]!;
+        matches.push(el);
+      }
+    } else if (
+      selector === '[data-p2p-join-input]' ||
+      selector === '[data-p2p-token-input]' ||
+      selector === '[data-p2p-room-code]' ||
+      selector === '[data-p2p-status]'
+    ) {
+      const attr = selector.slice(1, -1);
+      if (this.html.includes(attr)) {
+        matches.push(new FakeHtmlElement());
       }
     }
 
@@ -364,5 +402,322 @@ describe('LocalSimAdapter & LobbyController', () => {
       expect(adapter.getAIBots().map((b) => b.difficulty)).toEqual(['cadet']);
     });
   });
+
+  it('hosts an online P2P room, syncs preset/slot changes, assigns a remote peer, and launches match_start', async () => {
+    await withFakeDocument(async () => {
+      const hub = new InMemorySignalingHub();
+      const pcRegistry = new FakePeerConnectionRegistry();
+      const factory = pcRegistry.createFactory();
+
+      let currentAdapter: ClientSimAdapter = new LocalSimAdapter('standard_tactical');
+      const hostP2P = new WebRTCPeerAdapter({
+        localPeerId: 'host-1',
+        signalingTransport: createInMemorySignalingTransport(hub),
+        peerConnectionFactory: factory,
+      });
+
+      const sceneManager: LobbySceneManagerContract = {
+        get simAdapter() {
+          return currentAdapter;
+        },
+        setSimAdapter(next) {
+          currentAdapter = next;
+        },
+        resetMatch: (s) => currentAdapter.resetMatch(s),
+      };
+
+      const hostContainer = new FakeHtmlElement();
+      const lobby = new LobbyController({
+        hostContainer: hostContainer as unknown as HTMLElement,
+        sceneManager,
+        createP2PAdapter: () => hostP2P,
+      });
+
+      lobby.openLobby();
+      const code = lobby.hostOnlineRoom('SC-TEST');
+      expect(code).toBe('SC-TEST');
+      expect(currentAdapter.mode).toBe('p2p_host');
+
+      const rootEl = hostContainer.children[0]!;
+      const drawerEl = rootEl.querySelector('[data-hud-panel="lobby-drawer"]')!;
+      expect(drawerEl.innerHTML).toContain('SC-TEST');
+      expect(drawerEl.innerHTML).toContain('Host (Local Commander)');
+
+      lobby.setDraftPreset('blitz_skirmish');
+      expect(hostP2P.getRoomState().presetId).toBe('blitz_skirmish');
+
+      lobby.setDraftSlotRole('player_2', 'human');
+      expect(hostP2P.getRoomState().slots.find((s) => s.slotId === 'player_2')?.kind).toBe(
+        'human',
+      );
+      expect(drawerEl.innerHTML).toContain('Open Remote Slot');
+
+      const peer2 = new WebRTCPeerAdapter({
+        localPeerId: 'peer-2',
+        signalingTransport: createInMemorySignalingTransport(hub),
+        peerConnectionFactory: factory,
+      });
+      await peer2.joinRoom('SC-TEST');
+      await flushMicrotasks();
+
+      expect(hostP2P.getRoomState().peers).toHaveLength(1);
+      expect(drawerEl.innerHTML).toContain('data-p2p-unassign-slot="player_2"');
+
+      const unassignBtn = drawerEl
+        .querySelectorAll('[data-p2p-unassign-slot]')
+        .find((b) => b.dataset.p2pUnassignSlot === 'player_2')!;
+      expect(unassignBtn).toBeDefined();
+      unassignBtn.click();
+      await flushMicrotasks();
+
+      expect(hostP2P.getRoomState().peers[0]!.assignedSlotId).toBeNull();
+      expect(drawerEl.innerHTML).toContain('data-p2p-assign-slot="player_2"');
+
+      const assignBtn = drawerEl
+        .querySelectorAll('[data-p2p-assign-slot]')
+        .find(
+          (b) =>
+            b.dataset.p2pAssignSlot === 'player_2' &&
+            b.dataset.p2pPeerId === 'peer-2',
+        )!;
+      expect(assignBtn).toBeDefined();
+      assignBtn.click();
+      await flushMicrotasks();
+
+      expect(peer2.getRoomState().localPlayerId).toBe('player_2');
+      expect(drawerEl.innerHTML).toContain('data-p2p-unassign-slot="player_2"');
+
+      const launched = lobby.launchDraftMatch();
+      await flushMicrotasks();
+
+      expect(launched.presetId).toBe('blitz_skirmish');
+      expect(hostP2P.getRoomState().status).toBe('in_match');
+      expect(peer2.getRoomState().status).toBe('in_match');
+      expect(peer2.simulation.presetId).toBe('blitz_skirmish');
+    });
+  });
+
+  it('joins an online P2P room as a peer, receives lobby_sync and match_start, and restores local mode on leaveOnlineRoom()', async () => {
+    await withFakeDocument(async () => {
+      const hub = new InMemorySignalingHub();
+      const pcRegistry = new FakePeerConnectionRegistry();
+      const factory = pcRegistry.createFactory();
+
+      const hostP2P = new WebRTCPeerAdapter({
+        localPeerId: 'host-1',
+        signalingTransport: createInMemorySignalingTransport(hub),
+        peerConnectionFactory: factory,
+      });
+      hostP2P.hostRoom({
+        roomCode: 'SC-JOIN',
+        presetOrSetup: {
+          presetId: 'grand_conquest',
+          localPlayerId: 'player_1',
+          slots: {
+            player_1: { kind: 'human' },
+            player_2: { kind: 'human' },
+            player_3: { kind: 'ai', difficulty: 'standard' },
+            player_4: { kind: 'empty' },
+          },
+        },
+      });
+
+      let currentAdapter: ClientSimAdapter = new LocalSimAdapter('standard_tactical');
+      let peerLaunchedSetup: MatchSetupConfig | null = null;
+      const peerP2P = new WebRTCPeerAdapter({
+        localPeerId: 'peer-2',
+        signalingTransport: createInMemorySignalingTransport(hub),
+        peerConnectionFactory: factory,
+      });
+
+      const sceneManager: LobbySceneManagerContract = {
+        get simAdapter() {
+          return currentAdapter;
+        },
+        setSimAdapter(next) {
+          currentAdapter = next;
+        },
+        resetMatch: (s) => currentAdapter.resetMatch(s),
+      };
+
+      const hostContainer = new FakeHtmlElement();
+      const lobby = new LobbyController({
+        hostContainer: hostContainer as unknown as HTMLElement,
+        sceneManager,
+        createP2PAdapter: () => peerP2P,
+        onMatchLaunched: (setup) => {
+          peerLaunchedSetup = setup;
+        },
+      });
+
+      lobby.openLobby();
+      await lobby.joinOnlineRoom('SC-JOIN');
+      await flushMicrotasks();
+
+      expect(currentAdapter.mode).toBe('p2p_client');
+      const rootEl = hostContainer.children[0]!;
+      const drawerEl = rootEl.querySelector('[data-hud-panel="lobby-drawer"]')!;
+      expect(drawerEl.innerHTML).toContain('Connected to Room SC-JOIN');
+      expect(drawerEl.innerHTML).toContain('YOU (Remote)');
+
+      hostP2P.assignPeerToSlot('peer-2', 'player_2');
+      await flushMicrotasks();
+      hostP2P.launchMatch();
+      await flushMicrotasks();
+
+      expect(lobby.isLobbyOpen()).toBe(false);
+      expect(peerLaunchedSetup).not.toBeNull();
+      expect(peerLaunchedSetup!.presetId).toBe('grand_conquest');
+      expect(peerP2P.getRoomState().status).toBe('in_match');
+
+      lobby.leaveOnlineRoom();
+      expect(currentAdapter.mode).toBe('local');
+    });
+  });
 });
+
+class FakeDataChannel implements DataChannelLike {
+  public readonly label: string;
+  public readyState: RTCDataChannelState = 'connecting';
+  public onopen: (() => void) | null = null;
+  public onclose: (() => void) | null = null;
+  public onerror: (() => void) | null = null;
+  public onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+  public peer: FakeDataChannel | null = null;
+
+  constructor(label: string) {
+    this.label = label;
+  }
+
+  public open(): void {
+    if (this.readyState === 'open') {
+      return;
+    }
+    this.readyState = 'open';
+    this.onopen?.();
+  }
+
+  public send(data: string): void {
+    if (this.readyState !== 'open') {
+      throw new Error('FakeDataChannel is not open');
+    }
+    const peer = this.peer;
+    if (peer && peer.readyState === 'open') {
+      peer.onmessage?.({ data });
+    }
+  }
+
+  public close(): void {
+    if (this.readyState === 'closed') {
+      return;
+    }
+    this.readyState = 'closed';
+    this.onclose?.();
+    if (this.peer && this.peer.readyState !== 'closed') {
+      this.peer.close();
+    }
+  }
+}
+
+class FakePeerConnectionRegistry {
+  private counter = 0;
+  private readonly pcs = new Map<string, FakePeerConnection>();
+
+  public createFactory(): PeerConnectionFactory {
+    return () => {
+      this.counter += 1;
+      const id = `pc-${this.counter}`;
+      const pc = new FakePeerConnection(id, this);
+      this.pcs.set(id, pc);
+      return pc;
+    };
+  }
+
+  public get(id: string): FakePeerConnection | undefined {
+    return this.pcs.get(id);
+  }
+}
+
+class FakePeerConnection implements PeerConnectionLike {
+  public readonly id: string;
+  private readonly registry: FakePeerConnectionRegistry;
+
+  public onicecandidate:
+    | ((event: { readonly candidate: RTCIceCandidateInit | null }) => void)
+    | null = null;
+  public ondatachannel:
+    | ((event: { readonly channel: DataChannelLike }) => void)
+    | null = null;
+  public onconnectionstatechange: (() => void) | null = null;
+
+  public readonly localChannels: FakeDataChannel[] = [];
+  private channelsPaired = false;
+
+  constructor(id: string, registry: FakePeerConnectionRegistry) {
+    this.id = id;
+    this.registry = registry;
+  }
+
+  public createDataChannel(label: string): DataChannelLike {
+    const ch = new FakeDataChannel(label);
+    this.localChannels.push(ch);
+    return ch;
+  }
+
+  public async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: 'offer', sdp: `fake-offer:${this.id}` };
+  }
+
+  public async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    return { type: 'answer', sdp: `fake-answer:${this.id}` };
+  }
+
+  public async setLocalDescription(): Promise<void> {
+    this.onicecandidate?.({
+      candidate: { candidate: `candidate:${this.id}`, sdpMid: '0', sdpMLineIndex: 0 },
+    });
+  }
+
+  public async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
+    const sdp = desc.sdp ?? '';
+    const colonIdx = sdp.indexOf(':');
+    if (colonIdx !== -1) {
+      const remoteId = sdp.slice(colonIdx + 1);
+      const remote = this.registry.get(remoteId);
+      if (remote && desc.type === 'answer') {
+        this.pairDataChannelsWith(remote);
+      }
+    }
+  }
+
+  public async addIceCandidate(): Promise<void> {}
+
+  public close(): void {
+    for (const ch of this.localChannels) {
+      ch.close();
+    }
+  }
+
+  private pairDataChannelsWith(remote: FakePeerConnection): void {
+    if (this.channelsPaired) {
+      return;
+    }
+    this.channelsPaired = true;
+    for (const hostCh of this.localChannels) {
+      const peerCh = new FakeDataChannel(hostCh.label);
+      hostCh.peer = peerCh;
+      peerCh.peer = hostCh;
+      remote.localChannels.push(peerCh);
+      remote.ondatachannel?.({ channel: peerCh });
+      hostCh.open();
+      peerCh.open();
+    }
+  }
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 6; i++) {
+    await Promise.resolve();
+  }
+}
 

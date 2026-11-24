@@ -1,6 +1,6 @@
 import type { MatchPresetId } from '../../shared/config/index.ts';
 import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
-import type { GameSimulation } from '../../shared/sim/gameSimulation.ts';
+import type { SimulationView } from '../../shared/sim/simulationView.ts';
 import {
   TUTORIAL_STEPS,
   createInitialTutorialState,
@@ -86,7 +86,7 @@ export class TutorialController {
   }
 
   public sync(
-    sim: GameSimulation,
+    sim: SimulationView,
     playerId: PlayerSlotId,
     uiContext: TutorialUiContext,
   ): void {
@@ -122,7 +122,7 @@ export class TutorialController {
   }
 
   public applyCurrentHighlight(
-    sim: GameSimulation,
+    sim: SimulationView,
     playerId: PlayerSlotId,
     uiContext: TutorialUiContext,
   ): void {
