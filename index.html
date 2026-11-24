@@ -462,6 +462,44 @@
         background: rgba(239, 68, 68, 0.18);
         color: #fca5a5;
       }
+      .lobby-p2p-panel {
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 7px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .lobby-p2p-header,
+      .lobby-p2p-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+      }
+      .lobby-p2p-row {
+        justify-content: flex-start;
+      }
+      .lobby-p2p-input {
+        background: rgba(2, 6, 23, 0.85);
+        color: #e2e8f0;
+        border: 1px solid rgba(100, 116, 139, 0.55);
+        border-radius: 5px;
+        padding: 4px 8px;
+        font-size: 0.72rem;
+        min-width: 130px;
+        flex: 1 1 140px;
+      }
+      .lobby-p2p-input:focus {
+        outline: none;
+        border-color: #38bdf8;
+      }
+      .lobby-p2p-status {
+        font-size: 0.7rem;
+        color: #7dd3fc;
+      }
       .hud-tutorial-coach {
         position: fixed;
         top: 14px;

@@ -263,9 +263,10 @@ flowchart TD
 1. **Local vs. AI Matches (100% Local in Browser — Implemented)**:
    * Runs **purely locally** inside the user's browser main thread via `LocalSimAdapter` (`src/client/net/localSimAdapter.ts`; Web Worker offloading optional in future).
    * Requires **zero servers and zero network traffic**—ideal for instant play, offline play, and rapid AI/balance tuning against table-driven `StandardAIBot` controllers (`Cadet`, `Standard`, and `Admiral` profiles in `src/shared/ai/aiController.ts`).
-2. **Online Multiplayer (Player-Hosted P2P via WebRTC — Planned)**:
-   * One player creates a match and acts as the **Authoritative Listen-Server Host** directly in their browser (`WebRTCPeerAdapter`, not yet implemented).
-   * Up to 3 other human players join peer-to-peer using a short **Room Code** over **WebRTC DataChannels** (with any remaining slots filled by AI bots running on the host).
+2. **Online Multiplayer (Player-Hosted P2P via WebRTC — Implemented)**:
+   * One player creates a match and acts as the **Authoritative Listen-Server Host** directly in their browser (`WebRTCPeerAdapter` in `src/client/net/webrtcPeerAdapter.ts` implementing `ClientSimAdapter` and `MultiplayerRoomAdapter`).
+   * Up to 3 other human players join peer-to-peer using a short **Room Code** (`SC-XXXX` via `BroadcastChannelSignalingTransport` for same-browser tabs or copy-paste manual SDP/ICE signal tokens for cross-network play) over reliable ordered **WebRTC DataChannels** (`starconquest-p2p`), with any remaining slots filled by AI bots running on the host or left as empty colonizable sectors.
+   * The host broadcasts per-player Fog-of-War `StateSnapshot` packets (`src/shared/protocol/snapshots.ts`) at 20 Hz, and peer clients render via `SnapshotSimulationView` (`src/shared/sim/snapshotSimulationView.ts`) while submitting validated `GameCommand` packets back to the host.
    * Eliminates the need to run or pay for dedicated game simulation servers while keeping latency smooth for macro-focused RTS controls.
 3. **Optional Dedicated Headless Host (Future-Proofed — Planned)**:
    * Because `src/shared/sim` has no browser dependencies, it can also be wrapped in a lightweight Node.js WebSocket server (`src/server/`, not yet created) if public matchmaking or dedicated rooms are ever desired.
@@ -329,10 +330,11 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
    * When friendly sensors leave an area, observed orbital and deep-space structures remain visible as ghosted/dimmed **last-known snapshots** (`applyGhostIntelMaterial`, HUD `LAST KNOWN INTEL` badges) until a friendly unit re-enters sensor range to refresh them.
    * Client right-click targeting on hostile ships and structures submits `ORDER_FLEET_ATTACK` (`src/shared/protocol/commands.ts`).
    * Combat ship `sensorRange` equals `maxWeaponRange * 1.25` (`+25%`), and ships will not engage hostiles outside friendly sensor visibility.
-2. **Player-Hosted P2P Online Multiplayer (`feature/p2p-multiplayer`)**
-   * Define serializable `StateSnapshot` packets in `src/shared/protocol/` (respecting per-player Fog of War visibility).
-   * Implement `WebRTCPeerAdapter` (`src/client/net/`) for authoritative host + up to 3 peer players over WebRTC DataChannels using room codes.
-   * Extend the Pre-Match Lobby (`src/client/ui/lobbyController.ts`) with Host / Join Room Code controls and remote human slot assignment.
+2. **Player-Hosted P2P Online Multiplayer (`feature/p2p-multiplayer`) — Implemented**
+   * Defined serializable per-player Fog-of-War `StateSnapshot` packets, `P2PWireMessage` envelopes, and boundary validation (`parseP2PWireMessage`, `isStateSnapshot`) in `src/shared/protocol/snapshots.ts`.
+   * Extracted the read-only `SimulationView` contract (`src/shared/sim/simulationView.ts`) and `SnapshotSimulationView` (`src/shared/sim/snapshotSimulationView.ts`) so peer clients render the 3D scene and HUD from host snapshots without running authoritative simulation logic.
+   * Implemented `WebRTCPeerAdapter` (`src/client/net/webrtcPeerAdapter.ts`) and `RoomSignalingTransport` (`src/client/net/signaling.ts`) for authoritative host + up to 3 peer players over WebRTC DataChannels using `SC-XXXX` room codes (same-origin `BroadcastChannel` + cross-network manual signal tokens) with anti-spoofing `playerId` enforcement.
+   * Extended the Pre-Match Lobby (`src/client/ui/lobbyController.ts`) with Host / Join Room Code controls and remote human slot assignment.
 3. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**
    * Build an in-game wiki/codex overlay accessible from the tactical HUD and Pre-Match Lobby.
    * **Interactive 3D Preview Viewport**: Render any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js canvas with full orbit, zoom, and pan controls.

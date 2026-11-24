@@ -20,7 +20,7 @@ import {
   type DockyardWaypoint,
 } from '../../shared/sim/gameSimulation.ts';
 import type { ProjectedDeepSpaceStructure } from '../../shared/sim/playerIntel.ts';
-import type { LocalSimAdapter } from '../net/localSimAdapter.ts';
+import type { ClientSimAdapter } from '../net/simAdapter.ts';
 import { CombatFleetRenderer } from './combatFleetRenderer.ts';
 import { CombatVfxRenderer } from './combatVfxRenderer.ts';
 import { applyGhostIntelMaterial } from './ghostIntelMaterial.ts';
@@ -53,7 +53,7 @@ export class SystemSceneManager {
   private readonly scene: THREE.Scene;
   private readonly galaxy: GalaxyTopology;
   public readonly cameraController: OrbitalCameraController;
-  public readonly simAdapter: LocalSimAdapter;
+  public simAdapter: ClientSimAdapter;
 
   private activeSystem: StarSystemNode;
   private lastMatchSystemId = 'system_starter_1';
@@ -115,7 +115,7 @@ export class SystemSceneManager {
     scene: THREE.Scene,
     galaxy: GalaxyTopology,
     cameraController: OrbitalCameraController,
-    simAdapter: LocalSimAdapter,
+    simAdapter: ClientSimAdapter,
     canvasElement?: HTMLElement,
   ) {
     this.scene = scene;
@@ -140,6 +140,10 @@ export class SystemSceneManager {
     if (canvasElement) {
       this.bindCanvasPicking(canvasElement);
     }
+  }
+
+  public setSimAdapter(adapter: ClientSimAdapter): void {
+    this.simAdapter = adapter;
   }
 
   public resetMatch(

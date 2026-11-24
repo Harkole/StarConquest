@@ -78,7 +78,8 @@ function bootstrapClient(): void {
     sceneManager.update(elapsedSeconds, deltaSeconds);
 
     // Dynamic ambient <-> combat music switching with 14s anti-flicker cooldown (docs/sounds.md)
-    if (simAdapter.simulation.isPlayerInActiveCombat(simAdapter.localPlayerId)) {
+    const activeAdapter = sceneManager.simAdapter;
+    if (activeAdapter.simulation.isPlayerInActiveCombat(activeAdapter.localPlayerId)) {
       lastCombatActivityElapsed = elapsedSeconds;
       if (musicPlayer.getCategory() !== 'combat') {
         musicPlayer.setCategory('combat');
