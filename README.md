@@ -268,8 +268,8 @@ flowchart TD
    * Up to 3 other human players join peer-to-peer using a short **Room Code** (`SC-XXXX` via `BroadcastChannelSignalingTransport` for same-browser tabs or copy-paste manual SDP/ICE signal tokens for cross-network play) over reliable ordered **WebRTC DataChannels** (`starconquest-p2p`), with any remaining slots filled by AI bots running on the host or left as empty colonizable sectors.
    * The host broadcasts per-player Fog-of-War `StateSnapshot` packets (`src/shared/protocol/snapshots.ts`) at 20 Hz, and peer clients render via `SnapshotSimulationView` (`src/shared/sim/snapshotSimulationView.ts`) while submitting validated `GameCommand` packets back to the host.
    * Eliminates the need to run or pay for dedicated game simulation servers while keeping latency smooth for macro-focused RTS controls.
-3. **Optional Dedicated Headless Host (Future-Proofed — Planned)**:
-   * Because `src/shared/sim` has no browser dependencies, it can also be wrapped in a lightweight Node.js WebSocket server (`src/server/`, not yet created) if public matchmaking or dedicated rooms are ever desired.
+3. **Optional Dedicated Headless Host (`src/server/` — Planned, see [docs/master-server.md](./docs/master-server.md))**:
+   * Because `src/shared/sim` has no browser dependencies, it can also be wrapped in a lightweight Node.js WebSocket server (`src/server/`, not yet created) for reliable `TCP 443` (`wss://`) connections, `SC-XXXX` matchmaking, and mid-game reconnects.
 
 ---
 
