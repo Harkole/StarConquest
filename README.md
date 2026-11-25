@@ -321,7 +321,17 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
 ## 12. Feature Roadmap & Future Work
 
 ### Known Bugs
-* None currently open.
+* **CRITICAL — P2P Online Multiplayer Only Works Locally (`127.0.0.1` / `BroadcastChannel` Scope) & Needs Room Help / Port Guidance**:
+  * **Root Cause**: Room-code signaling (`BroadcastChannelSignalingTransport`) only works across tabs on the same local machine/origin, and manual SDP/ICE tokens can fail across strict NATs or incomplete ICE gathering. Cross-machine `SC-XXXX` room codes require a lightweight signaling/master server to broker initial offers/answers, plus TURN relay fallback for Symmetric NATs.
+  * **Firewall & Port Requirements**:
+    * *Player machines*: WebRTC uses random ephemeral UDP ports rather than a single fixed game port. Allow **outbound UDP `19302`** (for `stun:stun.l.google.com:19302`) and **outbound/ephemeral UDP `49152–65535`** (or `1024–65535`) for ICE hole-punching. Manual static router port forwarding usually does not help because the ephemeral port changes per session.
+    * *Signaling / Master Server (for cross-network `SC-XXXX` room codes)*: Open **inbound `TCP 443`** (`wss://` WebSocket over TLS, or a custom port such as `8080`) on the signaling server only; players connect outbound with zero router changes.
+    * *Optional TURN Relay (for Symmetric NAT / strict corporate firewalls)*: Open **inbound `UDP/TCP 3478`**, **`TCP 5349` / `443`** (TURNS), and **`UDP 49152–65535`** on the TURN server.
+  * **Lobby "Creating Room" Help & Troubleshooting Needed**: The Pre-Match Lobby (`src/client/ui/lobbyController.ts`) needs clearer inline help when hosting a room so players understand how to connect (same-machine `SC-XXXX` vs. two-way Manual Invite → Answer token exchange) and common checks (disable VPNs/strict UDP blockers, verify both Invite and Answer tokens are applied, and check Symmetric NAT / firewall rules).
+* **Orbital Slot Labels Show Generic `Orbital (Ready)`**: All occupied orbital slots currently render as `Orbital (Ready)` in the HUD instead of showing the constructed platform's name, and 2-slot structures (`Command & Control`, `Orbital Dockyard`, `Heavy Defense Platform`) should merge their two slots into a single labeled entry.
+* **No Cancel or Decommission for Orbital Platforms**: Players cannot cancel an orbital platform accidentally queued while it is still under construction, and cannot decommission a completed orbital platform to reclaim slots.
+* **Guided Tutorial AI Aggression & Economy Onboarding**: The `Cadet` AI should not attack the player during the early Guided Tutorial steps while the player is still getting started, and the tutorial needs to clearly explain the importance of Harvesters and the Ore-heavy / Crystal-scarce economy balance.
+* **Low-Contrast Tutorial UI Highlights**: The blue `.tutorial-highlight` pulse blends into the blue HUD background and is not distinct enough for players to follow easily (needs higher-contrast gold/amber or bright accent styling).
 
 ### Planned Feature Execution Order
 1. **Sensor-Range Fog of War, Last-Known-Intel Snapshots & Client Attack Orders (`feature/fog-of-war`) — Implemented**
