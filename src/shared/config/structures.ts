@@ -3,6 +3,9 @@ export interface ResourceCost {
   readonly crystal: number;
 }
 
+export const ORBITAL_CANCEL_REFUND_RATE = 1.0;
+export const ORBITAL_DECOMMISSION_REFUND_RATE = 0.5;
+
 export type OrbitalStructureId =
   | 'command_and_control'
   | 'planetary_outpost'

@@ -9,6 +9,7 @@ The Orbital Ring Builder lets a player inspect occupied orbital slots around the
 - `orb-build-dockyard` constructs a 2-slot Titan Orbital Dockyard spanning two adjacent slots and shows the simplified description plus `Fleet Building` toggle.
 - `orb-queue-harvester` queues a paid Harvester from C&C or Refinery and updates `#econ-harvesters-val` on completion.
 - `orb-mining-focus` switches C&C or Refinery mining focus between `Auto (Balanced)`, `Ore Only`, and `Crystal Only`.
+- `orb-cancel-decommission` cancels an under-construction orbital platform (`[data-cancel-orbital]`) for a 100% refund or decommissions a completed non-C&C orbital platform (`[data-decommission-orbital]`) to reclaim slots and recover 50% salvage.
 
 ## How to get to it (user POV)
 
