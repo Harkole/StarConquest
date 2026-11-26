@@ -1,4 +1,5 @@
 import {
+  CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS,
   DEEP_SPACE_STRUCTURES,
   MATCH_PRESETS,
   ORBITAL_CANCEL_REFUND_RATE,
@@ -1046,6 +1047,23 @@ export function mountSystemHud(
               </button>`
             : '';
 
+      const isOwnedCnc =
+        isOwnedLiveStructure &&
+        selectedStruct.isComplete &&
+        selectedStruct.structureId === 'command_and_control';
+      const emergencyTimer = isOwnedCnc
+        ? sim.getPlayerState(playerId).emergencyHarvesterTimerSeconds
+        : 0;
+      const emergencyRemaining = Math.max(
+        1,
+        Math.ceil(CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS - emergencyTimer),
+      );
+      const emergencyHarvesterHtml = isOwnedCnc
+        ? `<div data-hud-field="emergency-harvester-notice" style="display: ${emergencyTimer > 0 ? 'block' : 'none'}; margin-top: 6px; font-size: 12px; color: #fbbf24;">
+            Emergency Harvester Rebuild in progress (<span data-hud-field="emergency-harvester-secs">${emergencyRemaining}s</span>) — free recovery unit launching at C&amp;C.
+          </div>`
+        : '';
+
       slotActionsHtml = `
         <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
@@ -1064,6 +1082,7 @@ export function mountSystemHud(
               ${structureLifecycleBtnHtml}
             </div>
           </div>
+          ${emergencyHarvesterHtml}
           ${focusControlsHtml}
           ${assignedHarvestersHtml}
           ${dockyardControlsHtml}
@@ -2244,6 +2263,26 @@ export function mountSystemHud(
               : `${shipCfg.displayName} #${idx + 1}${repeatTag}`;
         }
       });
+
+      if (
+        selectedStruct.isComplete &&
+        selectedStruct.ownerId === playerId &&
+        selectedStruct.structureId === 'command_and_control'
+      ) {
+        const noticeEl = mainBodyEl.querySelector<HTMLElement>(
+          '[data-hud-field="emergency-harvester-notice"]',
+        );
+        const secsEl = mainBodyEl.querySelector<HTMLElement>(
+          '[data-hud-field="emergency-harvester-secs"]',
+        );
+        const timer = sim.getPlayerState(playerId).emergencyHarvesterTimerSeconds;
+        if (noticeEl) {
+          noticeEl.style.display = timer > 0 ? 'block' : 'none';
+        }
+        if (secsEl && timer > 0) {
+          secsEl.textContent = `${Math.max(1, Math.ceil(CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS - timer))}s`;
+        }
+      }
 
       if (isDropoffPlatform) {
         const assignedHarvesters = getVisibleHarvesters(sim, playerId).filter(
