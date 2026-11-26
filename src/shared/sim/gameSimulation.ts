@@ -1,6 +1,8 @@
 import {
   DEEP_SPACE_STRUCTURES,
   MATCH_PRESETS,
+  ORBITAL_CANCEL_REFUND_RATE,
+  ORBITAL_DECOMMISSION_REFUND_RATE,
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   PLAYER_SLOT_IDS,
@@ -1263,6 +1265,16 @@ export class GameSimulation implements SimulationView {
           command.slotIndex,
           command.structureId,
         );
+      case 'CANCEL_ORBITAL_STRUCTURE':
+        return this.handleCancelOrbitalStructure(
+          command.playerId,
+          command.structureId,
+        );
+      case 'DECOMMISSION_ORBITAL_STRUCTURE':
+        return this.handleDecommissionOrbitalStructure(
+          command.playerId,
+          command.structureId,
+        );
       case 'BUILD_DEEP_SPACE_STRUCTURE':
         return this.handleBuildDeepSpaceStructure(
           command.playerId,
@@ -2040,6 +2052,118 @@ export class GameSimulation implements SimulationView {
       buildTimeSeconds: harvesterCfg.buildTimeSeconds,
       progressSeconds: 0,
     });
+
+    return { ok: true };
+  }
+
+  private handleCancelOrbitalStructure(
+    playerId: PlayerSlotId,
+    structureId: string,
+  ): CommandResult {
+    const player = this.players.get(playerId);
+    const found = this.getStructureById(structureId);
+    if (!player || !found || found.structure.ownerId !== playerId) {
+      return { ok: false, reason: 'Structure not found or not owned by player' };
+    }
+    if (found.structure.isComplete) {
+      return {
+        ok: false,
+        reason: 'Structure is already complete; decommission it instead',
+      };
+    }
+
+    const { planetState, structure } = found;
+    const idx = planetState.structures.findIndex((s) => s.id === structureId);
+    if (idx === -1) {
+      return { ok: false, reason: 'Structure not found on planet' };
+    }
+    planetState.structures.splice(idx, 1);
+
+    const config = ORBITAL_STRUCTURES[structure.structureId];
+    player.ore += Math.round(config.cost.ore * ORBITAL_CANCEL_REFUND_RATE);
+    player.crystal += Math.round(config.cost.crystal * ORBITAL_CANCEL_REFUND_RATE);
+
+    if (planetState.structures.length === 0) {
+      planetState.ownerId = null;
+    }
+
+    this.refreshMatchOutcome(0);
+    return { ok: true };
+  }
+
+  private handleDecommissionOrbitalStructure(
+    playerId: PlayerSlotId,
+    structureId: string,
+  ): CommandResult {
+    const player = this.players.get(playerId);
+    const found = this.getStructureById(structureId);
+    if (!player || !found || found.structure.ownerId !== playerId) {
+      return { ok: false, reason: 'Structure not found or not owned by player' };
+    }
+    if (!found.structure.isComplete) {
+      return {
+        ok: false,
+        reason: 'Structure is still under construction; cancel it instead',
+      };
+    }
+    if (found.structure.structureId === 'command_and_control') {
+      return {
+        ok: false,
+        reason: 'Command & Control cannot be decommissioned',
+      };
+    }
+
+    const { planetState, structure } = found;
+    if (structure.structureId === 'planetary_outpost') {
+      const otherStructures = planetState.structures.filter((s) => s.id !== structureId);
+      const hasOtherClaimAnchor = otherStructures.some(
+        (s) =>
+          s.structureId === 'planetary_outpost' ||
+          s.structureId === 'command_and_control',
+      );
+      if (otherStructures.length > 0 && !hasOtherClaimAnchor) {
+        return {
+          ok: false,
+          reason:
+            'Decommission other orbital platforms on this planet before removing its Planetary Outpost',
+        };
+      }
+    }
+
+    const idx = planetState.structures.findIndex((s) => s.id === structureId);
+    if (idx === -1) {
+      return { ok: false, reason: 'Structure not found on planet' };
+    }
+    planetState.structures.splice(idx, 1);
+
+    // Refund any active ship production orders and reserved supply on this platform
+    for (const queued of structure.productionQueue) {
+      const shipCfg = SHIP_CLASSES[queued.shipClassId];
+      player.ore += shipCfg.cost.ore;
+      player.crystal += shipCfg.cost.crystal;
+      player.supplyUsed = Math.max(0, player.supplyUsed - shipCfg.supplyCost);
+    }
+    structure.productionQueue.length = 0;
+
+    const config = ORBITAL_STRUCTURES[structure.structureId];
+    player.ore += Math.round(config.cost.ore * ORBITAL_DECOMMISSION_REFUND_RATE);
+    player.crystal += Math.round(config.cost.crystal * ORBITAL_DECOMMISSION_REFUND_RATE);
+    player.supplyCap = Math.max(0, player.supplyCap - config.supplyProvided);
+    if (structure.structureId === 'tech_module') {
+      player.techModulesCompleted = Math.max(0, player.techModulesCompleted - 1);
+    }
+
+    if (planetState.structures.length === 0) {
+      planetState.ownerId = null;
+    }
+
+    this.refreshMatchOutcome(0);
+
+    for (const h of this.harvesters) {
+      if (h.homeStructureId === structureId) {
+        this.reassignHarvesterToClosestHome(h);
+      }
+    }
 
     return { ok: true };
   }

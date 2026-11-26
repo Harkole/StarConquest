@@ -1,6 +1,8 @@
 import {
   DEEP_SPACE_STRUCTURES,
   MATCH_PRESETS,
+  ORBITAL_CANCEL_REFUND_RATE,
+  ORBITAL_DECOMMISSION_REFUND_RATE,
   ORBITAL_STRUCTURES,
   PLANET_CLASSES,
   SHIP_CLASSES,
@@ -1016,20 +1018,40 @@ export function mountSystemHud(
         `;
       }
 
+      const isOwnedLiveStructure = selectedStruct.ownerId === playerId;
+      const cancelOre = Math.round(cfg.cost.ore * ORBITAL_CANCEL_REFUND_RATE);
+      const cancelCrystal = Math.round(cfg.cost.crystal * ORBITAL_CANCEL_REFUND_RATE);
+      const decommOre = Math.round(cfg.cost.ore * ORBITAL_DECOMMISSION_REFUND_RATE);
+      const decommCrystal = Math.round(cfg.cost.crystal * ORBITAL_DECOMMISSION_REFUND_RATE);
+      const structureLifecycleBtnHtml = !isOwnedLiveStructure
+        ? ''
+        : !selectedStruct.isComplete
+          ? `<button class="hud-btn danger" data-cancel-orbital="${selectedStruct.id}" title="Cancel construction and refund ${cancelOre} Ore / ${cancelCrystal} Crystal">
+              Cancel Build (+${cancelOre} Ore / +${cancelCrystal} Cry)
+            </button>`
+          : selectedStruct.structureId !== 'command_and_control'
+            ? `<button class="hud-btn danger" data-decommission-orbital="${selectedStruct.id}" title="Decommission platform to reclaim ${cfg.slotCost} slot${cfg.slotCost > 1 ? 's' : ''} and salvage ${decommOre} Ore / ${decommCrystal} Crystal">
+                Decommission (+${decommOre} Ore / +${decommCrystal} Cry)
+              </button>`
+            : '';
+
       slotActionsHtml = `
         <div class="slot-detail-box" style="flex-direction: column; align-items: stretch;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
             <div>
               <strong>${cfg.displayName}</strong> (${cfg.slotCost} Slot${cfg.slotCost > 1 ? 's' : ''})
               — <span data-hud-field="struct-status">${selectedStruct.isComplete ? (isDropoffPlatform ? dockStatusText : 'Operational') : `Constructing (${Math.ceil(selectedStruct.totalBuildTimeSeconds - selectedStruct.buildProgressSeconds)}s left)`}</span>
             </div>
-            ${
-              isDropoffPlatform
-                ? `<button class="hud-btn active" data-action="spawn-harvester" data-struct-id="${selectedStruct.id}" ${isQueueFull ? 'disabled' : ''}>
-                    ${isQueueFull ? `Queue Full (${queueCount}/${MAX_SHIP_PRODUCTION_QUEUE_SIZE})` : `+ Queue Harvester (${hCost.ore} Ore / ${hCost.crystal} Crystal • ${SHIP_CLASSES.harvester.buildTimeSeconds}s)`}
-                  </button>`
-                : ''
-            }
+            <div class="hud-btn-row" style="margin: 0;">
+              ${
+                isDropoffPlatform
+                  ? `<button class="hud-btn active" data-action="spawn-harvester" data-struct-id="${selectedStruct.id}" ${isQueueFull ? 'disabled' : ''}>
+                      ${isQueueFull ? `Queue Full (${queueCount}/${MAX_SHIP_PRODUCTION_QUEUE_SIZE})` : `+ Queue Harvester (${hCost.ore} Ore / ${hCost.crystal} Crystal • ${SHIP_CLASSES.harvester.buildTimeSeconds}s)`}
+                    </button>`
+                  : ''
+              }
+              ${structureLifecycleBtnHtml}
+            </div>
           </div>
           ${focusControlsHtml}
           ${assignedHarvestersHtml}
@@ -1639,6 +1661,44 @@ export function mountSystemHud(
           statusBannerMessage = res.ok
             ? `Platform mining focus set to ${focus.toUpperCase()}`
             : `Cannot set focus: ${res.reason}`;
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-cancel-orbital]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const structId = btn.dataset.cancelOrbital;
+          if (!structId) return;
+          const res = simAdapter.submitPlayerCommand({
+            type: 'CANCEL_ORBITAL_STRUCTURE',
+            playerId,
+            structureId: structId,
+          });
+          statusBannerMessage = res.ok
+            ? 'Cancelled orbital construction — 100% resources refunded.'
+            : `Cannot cancel: ${res.reason}`;
+          renderEconomyBar();
+          renderMainPanel();
+        });
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-decommission-orbital]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const structId = btn.dataset.decommissionOrbital;
+          if (!structId) return;
+          const res = simAdapter.submitPlayerCommand({
+            type: 'DECOMMISSION_ORBITAL_STRUCTURE',
+            playerId,
+            structureId: structId,
+          });
+          statusBannerMessage = res.ok
+            ? 'Decommissioned orbital platform — slots reclaimed and 50% salvage refunded.'
+            : `Cannot decommission: ${res.reason}`;
+          renderEconomyBar();
           renderMainPanel();
         });
       });

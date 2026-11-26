@@ -99,6 +99,8 @@ Structures are built in a visible **orbital ring** around planets. Each planet c
 | **Tech / Specialization Module** | **1 Slot** | Orbital expansion modules that unlock advanced ship hulls (Cruisers, Carriers, Dreadnoughts), increase **Fleet Supply**, or grant doctrine bonuses (e.g., enhanced fighter bays, heavy siege calibration, shield boosters). |
 | **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries (`65` Heavy DPS + `45` PD DPS) and **3 remote-controlled perimeter sentry turrets** rendered around the far sides of the planet (in simulation, full platform DPS currently fires from the main platform position without planetary LOS occlusion; destroying the main platform destroys its remote sentry turrets). |
 
+* **Cancel & Decommission (`CANCEL_ORBITAL_STRUCTURE` / `DECOMMISSION_ORBITAL_STRUCTURE`)**: Selecting an under-construction orbital platform in the HUD allows cancelling construction for a **`100%` resource refund** and immediate slot release. Selecting a completed orbital platform (except **Command & Control**, or a planet's sole **Planetary Outpost** while other platforms remain on that planet) allows decommissioning it to reclaim orbital slots, refund any active ship queue orders, reassign Harvesters, and recover **`50%` salvage** resources.
+
 ---
 
 ## 5. Deep-Space Logistics & Tower Defence
@@ -329,30 +331,18 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
     * *Optional TURN Relay (for Symmetric NAT / strict corporate firewalls)*: Open **inbound `UDP/TCP 3478`**, **`TCP 5349` / `443`** (TURNS), and **`UDP 49152–65535`** on the TURN server.
   * **Lobby "Creating Room" Help & Troubleshooting Needed**: The Pre-Match Lobby (`src/client/ui/lobbyController.ts`) needs clearer inline help when hosting a room so players understand how to connect (same-machine `SC-XXXX` vs. two-way Manual Invite → Answer token exchange) and common checks (disable VPNs/strict UDP blockers, verify both Invite and Answer tokens are applied, and check Symmetric NAT / firewall rules).
 * **Orbital Slot Labels Show Generic `Orbital (Ready)`**: All occupied orbital slots currently render as `Orbital (Ready)` in the HUD instead of showing the constructed platform's name, and 2-slot structures (`Command & Control`, `Orbital Dockyard`, `Heavy Defense Platform`) should merge their two slots into a single labeled entry.
-* **No Cancel or Decommission for Orbital Platforms**: Players cannot cancel an orbital platform accidentally queued while it is still under construction, and cannot decommission a completed orbital platform to reclaim slots.
 * **Guided Tutorial AI Aggression & Economy Onboarding**: The `Cadet` AI should not attack the player during the early Guided Tutorial steps while the player is still getting started, and the tutorial needs to clearly explain the importance of Harvesters and the Ore-heavy / Crystal-scarce economy balance.
 * **Low-Contrast Tutorial UI Highlights**: The blue `.tutorial-highlight` pulse blends into the blue HUD background and is not distinct enough for players to follow easily (needs higher-contrast gold/amber or bright accent styling).
 
 ### Planned Feature Execution Order
-1. **Sensor-Range Fog of War, Last-Known-Intel Snapshots & Client Attack Orders (`feature/fog-of-war`) — Implemented**
-   * Enforces `fogOfWarMode` from `src/shared/config/presets.ts` (`open_occupied_systems` in Blitz Skirmish vs. `sensor_range` in Standard Tactical and Grand Conquest) via `PlayerIntelRegistry` / `getPlayerSystemView` (`src/shared/sim/playerIntel.ts`).
-   * Unexplored space only reveals base planet locations (hiding live hostile fleets, structures, and resource depletion outside friendly sensor radii).
-   * When friendly sensors leave an area, observed orbital and deep-space structures remain visible as ghosted/dimmed **last-known snapshots** (`applyGhostIntelMaterial`, HUD `LAST KNOWN INTEL` badges) until a friendly unit re-enters sensor range to refresh them.
-   * Client right-click targeting on hostile ships and structures submits `ORDER_FLEET_ATTACK` (`src/shared/protocol/commands.ts`).
-   * Combat ship `sensorRange` equals `maxWeaponRange * 1.25` (`+25%`), and ships will not engage hostiles outside friendly sensor visibility.
-2. **Player-Hosted P2P Online Multiplayer (`feature/p2p-multiplayer`) — Implemented**
-   * Defined serializable per-player Fog-of-War `StateSnapshot` packets, `P2PWireMessage` envelopes, and boundary validation (`parseP2PWireMessage`, `isStateSnapshot`) in `src/shared/protocol/snapshots.ts`.
-   * Extracted the read-only `SimulationView` contract (`src/shared/sim/simulationView.ts`) and `SnapshotSimulationView` (`src/shared/sim/snapshotSimulationView.ts`) so peer clients render the 3D scene and HUD from host snapshots without running authoritative simulation logic.
-   * Implemented `WebRTCPeerAdapter` (`src/client/net/webrtcPeerAdapter.ts`) and `RoomSignalingTransport` (`src/client/net/signaling.ts`) for authoritative host + up to 3 peer players over WebRTC DataChannels using `SC-XXXX` room codes (same-origin `BroadcastChannel` + cross-network manual signal tokens) with anti-spoofing `playerId` enforcement.
-   * Extended the Pre-Match Lobby (`src/client/ui/lobbyController.ts`) with Host / Join Room Code controls and remote human slot assignment.
-3. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**
+1. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**
    * Build an in-game wiki/codex overlay accessible from the tactical HUD and Pre-Match Lobby.
    * **Interactive 3D Preview Viewport**: Render any ship (`ShipModelLibrary`) or orbital/deep-space platform (`StationModelLibrary`) in a dedicated Three.js canvas with full orbit, zoom, and pan controls.
    * **Live Data-Driven Unit & Structure Reference**: Pull costs, slot requirements, shields, hull, speed, tracking, RPS counters, and build times directly from `src/shared/config/`.
    * **How to Play & Victory Guide**: Document the 5-system galaxy, Ore/Crystal scarcity, Central Nexus escalation, macro fleet controls, and mode-specific victory conditions.
-4. **Combat Sound Effects & Additional Soundtrack Tracks (`feature/combat-sfx-and-audio`)**
+2. **Combat Sound Effects & Additional Soundtrack Tracks (`feature/combat-sfx-and-audio`)**
    * Implement Web Audio API weapon, shield impact, hull explosion, building, and UI sound effects per [docs/sounds.md](./docs/sounds.md).
    * Add additional `"ambient"` and `"combat"` tracks for playlist variety.
-5. **Future Enhancements**
+3. **Future Enhancements**
    * **Planet Layout Randomization**: Randomize secondary Small and Medium planet positions/configurations per match while keeping starter balance fair.
    * **Optional Dedicated Headless Host (`src/server/`)**: Wrap `src/shared/sim` and `src/shared/ai` in a lightweight Node.js WebSocket server if public matchmaking or dedicated rooms are needed later.

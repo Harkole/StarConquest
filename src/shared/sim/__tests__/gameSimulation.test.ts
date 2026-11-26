@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeMatchSetupConfig } from '../../config/index.ts';
+import { ORBITAL_STRUCTURES, normalizeMatchSetupConfig } from '../../config/index.ts';
 import {
   CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER,
   CENTRAL_SUPER_EARTH_PLANET_ID,
@@ -1935,5 +1935,120 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
     expect(finalOutcome.winnerId).toBe('player_1');
     expect(finalOutcome.victoryCondition).toBe('king_of_the_hill');
     expect(finalOutcome.kingOfTheHill.remainingSeconds).toBe(0);
+  });
+
+  it('cancels under-construction orbital platforms with 100% refund and decommissions completed platforms with 50% salvage', () => {
+    const sim = new GameSimulation('blitz_skirmish');
+    const homeworld = sim.getPlanetState('system_starter_1_homeworld');
+    const p1 = sim.getPlayerState('player_1');
+
+    const startOre = p1.ore;
+    const startCrystal = p1.crystal;
+
+    // 1. Build an Orbital Dockyard and cancel before completion -> 100% refund & slots freed
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'orbital_dockyard',
+      }).ok,
+    ).toBe(true);
+
+    const dockyard = homeworld.structures.find(
+      (s) => s.structureId === 'orbital_dockyard',
+    )!;
+    expect(dockyard.isComplete).toBe(false);
+    expect(p1.ore).toBe(startOre - ORBITAL_STRUCTURES.orbital_dockyard.cost.ore);
+
+    // Cannot decommission while still under construction
+    expect(
+      sim.submitCommand({
+        type: 'DECOMMISSION_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        structureId: dockyard.id,
+      }).ok,
+    ).toBe(false);
+
+    expect(
+      sim.submitCommand({
+        type: 'CANCEL_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        structureId: dockyard.id,
+      }).ok,
+    ).toBe(true);
+
+    expect(p1.ore).toBe(startOre);
+    expect(p1.crystal).toBe(startCrystal);
+    expect(
+      homeworld.structures.some((s) => s.id === dockyard.id),
+    ).toBe(false);
+
+    // 2. Build and complete a Tech Module, then decommission -> 50% salvage & tech/supply reverted
+    const supplyBeforeTech = p1.supplyCap;
+    expect(
+      sim.submitCommand({
+        type: 'BUILD_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        planetId: homeworld.planet.id,
+        slotIndex: 2,
+        structureId: 'tech_module',
+      }).ok,
+    ).toBe(true);
+
+    sim.stepTick(ORBITAL_STRUCTURES.tech_module.buildTimeSeconds);
+    const techMod = homeworld.structures.find(
+      (s) => s.structureId === 'tech_module',
+    )!;
+    expect(techMod.isComplete).toBe(true);
+    expect(p1.techModulesCompleted).toBe(1);
+    expect(p1.supplyCap).toBe(
+      supplyBeforeTech + ORBITAL_STRUCTURES.tech_module.supplyProvided,
+    );
+
+    // Cannot cancel once complete
+    expect(
+      sim.submitCommand({
+        type: 'CANCEL_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        structureId: techMod.id,
+      }).ok,
+    ).toBe(false);
+
+    const oreBeforeDecomm = p1.ore;
+    const crystalBeforeDecomm = p1.crystal;
+    expect(
+      sim.submitCommand({
+        type: 'DECOMMISSION_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        structureId: techMod.id,
+      }).ok,
+    ).toBe(true);
+
+    expect(p1.ore).toBe(
+      oreBeforeDecomm + Math.round(ORBITAL_STRUCTURES.tech_module.cost.ore * 0.5),
+    );
+    expect(p1.crystal).toBe(
+      crystalBeforeDecomm +
+        Math.round(ORBITAL_STRUCTURES.tech_module.cost.crystal * 0.5),
+    );
+    expect(p1.techModulesCompleted).toBe(0);
+    expect(p1.supplyCap).toBe(supplyBeforeTech);
+    expect(
+      homeworld.structures.some((s) => s.id === techMod.id),
+    ).toBe(false);
+
+    // 3. Command & Control cannot be decommissioned
+    const cnc = homeworld.structures.find(
+      (s) => s.structureId === 'command_and_control',
+    )!;
+    expect(
+      sim.submitCommand({
+        type: 'DECOMMISSION_ORBITAL_STRUCTURE',
+        playerId: 'player_1',
+        structureId: cnc.id,
+      }).ok,
+    ).toBe(false);
   });
 });
