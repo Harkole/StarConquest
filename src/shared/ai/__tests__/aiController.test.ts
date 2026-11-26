@@ -293,5 +293,69 @@ describe('Table-Driven Macro AI Controller', () => {
       ),
     ).toBe(true);
   });
+
+  it('keeps Cadet AI defensive in its home system during Guided Tutorial until provoked', () => {
+    const sim = new GameSimulation('tutorial');
+    const p2 = sim.getPlayerState('player_2');
+    p2.ore = 0;
+    p2.crystal = 0;
+
+    expect(
+      sim.submitCommand({
+        type: 'CREATE_FLEET',
+        playerId: 'player_2',
+        rallySystemId: 'system_starter_2',
+        rallyPosition: { x: 180, z: 120 },
+        stance: 'aggressive',
+      }).ok,
+    ).toBe(true);
+    const fleet = sim.getFleetsForPlayer('player_2')[0]!;
+    for (let i = 0; i < 4; i++) {
+      const ship = sim.spawnCombatShipDirect(
+        'player_2',
+        'system_starter_2',
+        { x: 180 + i * 15, z: 120 },
+        'destroyer',
+        'aggressive',
+      );
+      ship.fleetId = fleet.id;
+    }
+
+    // Unprovoked in Guided Tutorial: Cadet AI must NOT issue offensive orders outside its home system
+    const unprovokedCmds = evaluateAIBotCommands(
+      sim.galaxy,
+      sim,
+      'player_2',
+      AI_DIFFICULTY_PROFILES.cadet,
+    );
+    const offensiveCmds = unprovokedCmds.filter(
+      (c) =>
+        (c.type === 'ORDER_FLEET_ATTACK' || c.type === 'ORDER_FLEET_MOVE') &&
+        c.targetSystemId !== 'system_starter_2',
+    );
+    expect(offensiveCmds).toHaveLength(0);
+
+    // Once player enters Sector 2, Cadet AI defends its home system immediately
+    sim.spawnCombatShipDirect(
+      'player_1',
+      'system_starter_2',
+      { x: 300, z: 0 },
+      'cruiser',
+      'aggressive',
+    );
+    const provokedCmds = evaluateAIBotCommands(
+      sim.galaxy,
+      sim,
+      'player_2',
+      AI_DIFFICULTY_PROFILES.cadet,
+    );
+    expect(
+      provokedCmds.some(
+        (c) =>
+          c.type === 'ORDER_FLEET_ATTACK' &&
+          c.targetSystemId === 'system_starter_2',
+      ),
+    ).toBe(true);
+  });
 });
 

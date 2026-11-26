@@ -4,6 +4,7 @@ import type { SimulationView } from './simulationView.ts';
 
 export type TutorialStepId =
   | 'build_refinery'
+  | 'queue_harvester'
   | 'build_dockyard'
   | 'create_fleet'
   | 'tech_and_cruisers'
@@ -22,7 +23,7 @@ export type TutorialHighlightTarget =
   | { readonly kind: 'slot'; readonly slotIndex: number }
   | { readonly kind: 'section'; readonly sectionId: 'orbital_ring' | 'fleet_command' }
   | { readonly kind: 'build-struct'; readonly structureId: OrbitalStructureId }
-  | { readonly kind: 'action'; readonly action: 'create-fleet' | 'toggle-fleet-panel' }
+  | { readonly kind: 'action'; readonly action: 'create-fleet' | 'toggle-fleet-panel' | 'spawn-harvester' }
   | { readonly kind: 'fleet-inc'; readonly hull: FleetHullClassId }
   | { readonly kind: 'speed'; readonly speed: 4 }
   | { readonly kind: 'system-nav'; readonly systemId: string }
@@ -33,6 +34,7 @@ export interface TutorialUiContext {
   readonly homeSystemId: string;
   readonly selectedPlanetId: string;
   readonly selectedSlotOccupied: boolean;
+  readonly selectedSlotCanQueueHarvester?: boolean;
   readonly firstEmptySlotIndex: number | null;
   readonly isOrbitalRingCollapsed: boolean;
   readonly isFleetPanelOpen: boolean;
@@ -132,6 +134,33 @@ function resolveFleetTemplateHighlight(
   return { kind: 'fleet-inc', hull };
 }
 
+function hasExtraHarvesterOrQueued(
+  sim: SimulationView,
+  playerId: PlayerSlotId,
+): boolean {
+  let activeHarvesters = 0;
+  for (const system of sim.galaxy.systems) {
+    const view = sim.getPlayerSystemView(playerId, system.id);
+    activeHarvesters += view.harvesters.filter(
+      (h) => h.ownerId === playerId && h.hull > 0,
+    ).length;
+    if (activeHarvesters >= 3) {
+      return true;
+    }
+    for (const planet of sim.getPlanetsInSystem(system.id)) {
+      for (const s of planet.structures) {
+        if (
+          s.ownerId === playerId &&
+          s.productionQueue.some((q) => q.shipClassId === 'harvester')
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   {
     id: 'build_refinery',
@@ -139,15 +168,37 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
     title: 'Build an Orbital Refinery',
     instruction:
       'Select an empty orbital slot around your Homeworld and construct a Refinery to boost Ore and Crystal income.',
-    hint: 'Each Refinery spawns a free Harvester and adds unloading docks.',
+    hint: 'Each Refinery spawns 1 free Harvester and adds unloading docks. Harvesters are the lifeblood of your economy.',
     isComplete: (sim, playerId) =>
       hasCompletedStructure(sim, playerId, 'refinery'),
     resolveHighlight: (_sim, _playerId, ui) =>
       resolveOrbitalBuildHighlight(ui, 'refinery'),
   },
   {
-    id: 'build_dockyard',
+    id: 'queue_harvester',
     order: 2,
+    title: 'Scale Harvesters & Economy',
+    instruction:
+      'Select your Command & Control or Refinery and queue an extra Harvester so your Ore and Crystal income scales rapidly.',
+    hint: 'Starter systems are Ore-heavy and Crystal-scarce (6:1). Use Mining Focus if needed, and expand into the enriched Central Nexus before local Crystals run dry.',
+    isComplete: (sim, playerId) =>
+      hasExtraHarvesterOrQueued(sim, playerId),
+    resolveHighlight: (_sim, _playerId, ui) => {
+      if (ui.selectedPlanetId !== ui.homePlanetId) {
+        return { kind: 'planet', planetId: ui.homePlanetId };
+      }
+      if (ui.isOrbitalRingCollapsed) {
+        return { kind: 'section', sectionId: 'orbital_ring' };
+      }
+      if (!ui.selectedSlotCanQueueHarvester) {
+        return { kind: 'slot', slotIndex: 0 };
+      }
+      return { kind: 'action', action: 'spawn-harvester' };
+    },
+  },
+  {
+    id: 'build_dockyard',
+    order: 3,
     title: 'Build an Orbital Dockyard',
     instruction:
       'Select an empty orbital slot on your Homeworld and construct an Orbital Dockyard (2 slots) to produce warships.',
@@ -159,11 +210,11 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   },
   {
     id: 'create_fleet',
-    order: 3,
+    order: 4,
     title: 'Create a Fleet & Queue Destroyers',
     instruction:
       'Open Fleet Command, create a new fleet, and set its Destroyer template count to at least 3.',
-    hint: 'Destroyers are fast, hull-only raiders that form your initial vanguard.',
+    hint: 'Destroyers are fast, hull-only raiders that cost mostly Ore and form your initial vanguard.',
     isComplete: (sim, playerId) =>
       sim.getFleetsForPlayer(playerId).some((f) => f.desiredCounts.destroyer >= 3),
     resolveHighlight: (sim, playerId, ui) =>
@@ -171,11 +222,11 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   },
   {
     id: 'tech_and_cruisers',
-    order: 4,
+    order: 5,
     title: 'Unlock & Queue Cruisers',
     instruction:
       'Build a Tech Module in orbit around your Homeworld, then add at least 2 Cruisers to your fleet template.',
-    hint: 'Cruisers carry Shields and Point Defence that shred enemy Fighters and Destroyers.',
+    hint: 'Cruisers require Crystals and carry Shields and Point Defence that shred enemy Fighters and Destroyers.',
     isComplete: (sim, playerId) =>
       sim.getPlayerTechModuleCount(playerId) >= 1 &&
       sim.getFleetsForPlayer(playerId).some((f) => f.desiredCounts.cruiser >= 2),
@@ -188,7 +239,7 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   },
   {
     id: 'assemble_fleet',
-    order: 5,
+    order: 6,
     title: 'Assemble Your Battle Fleet',
     instruction:
       'Wait for your Dockyard to launch at least 4 combat ships into your fleet.',
@@ -204,11 +255,11 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   },
   {
     id: 'invade_enemy_system',
-    order: 6,
+    order: 7,
     title: 'Cross the Wormhole',
     instruction:
       'Order your fleet through the wormhole into the Central Nexus or the enemy Cadet AI system.',
-    hint: 'Select your fleet and issue a Move or Attack order in another star system.',
+    hint: 'The Central Nexus holds enriched 1.6x Crystal and Ore belts. Select your fleet and issue a Move or Attack order in another star system.',
     isComplete: (sim, playerId) => {
       const homeSystemId = findPlayerHomeSystemId(sim, playerId);
       const hasOutboundOrder = sim
@@ -234,7 +285,7 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   },
   {
     id: 'defeat_cadet_ai',
-    order: 7,
+    order: 8,
     title: 'Destroy the Cadet AI Base',
     instruction:
       "Locate and destroy the Cadet AI's Command & Control station in Sector 2 to win the match.",

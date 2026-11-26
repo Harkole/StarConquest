@@ -72,6 +72,20 @@ describe('Tutorial Step State Machine', () => {
     ).toBe(true);
     advanceSeconds(sim, 20);
     state = evaluateTutorialProgress(state, sim, 'player_1');
+    expect(getCurrentTutorialStep(state)?.id).toBe('queue_harvester');
+
+    const p1Home = sim.getPlanetState('system_starter_1_homeworld');
+    const p1Refinery = p1Home.structures.find((s) => s.structureId === 'refinery')!;
+    expect(
+      sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: p1Refinery.id,
+        shipClassId: 'harvester',
+        autoRepeat: false,
+      }).ok,
+    ).toBe(true);
+    state = evaluateTutorialProgress(state, sim, 'player_1');
     expect(getCurrentTutorialStep(state)?.id).toBe('build_dockyard');
 
     expect(
@@ -197,15 +211,33 @@ describe('Tutorial Step State Machine', () => {
     ).toBe(true);
     advanceSeconds(sim, 20);
 
+    const p1Home = sim.getPlanetState('system_starter_1_homeworld');
+    const p1Cnc = p1Home.structures.find(
+      (s) => s.structureId === 'command_and_control',
+    )!;
+    expect(
+      sim.submitCommand({
+        type: 'QUEUE_SHIP',
+        playerId: 'player_1',
+        dockyardOrRefineryId: p1Cnc.id,
+        shipClassId: 'harvester',
+        autoRepeat: false,
+      }).ok,
+    ).toBe(true);
+
     state = evaluateTutorialProgress(state, sim, 'player_1');
     expect(getCurrentTutorialStep(state)?.id).toBe('create_fleet');
-    expect(state.completedStepIds).toEqual(['build_refinery', 'build_dockyard']);
+    expect(state.completedStepIds).toEqual([
+      'build_refinery',
+      'queue_harvester',
+      'build_dockyard',
+    ]);
   });
 
   it('supports skipCurrentTutorialStep and dismissTutorial', () => {
     let state = createInitialTutorialState('tutorial');
     state = skipCurrentTutorialStep(state);
-    expect(getCurrentTutorialStep(state)?.id).toBe('build_dockyard');
+    expect(getCurrentTutorialStep(state)?.id).toBe('queue_harvester');
     expect(state.completedStepIds).toEqual(['build_refinery']);
 
     const dismissed = dismissTutorial(state);
