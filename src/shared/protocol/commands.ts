@@ -26,6 +26,18 @@ export interface BuildOrbitalStructureCommand {
   readonly structureId: OrbitalStructureId;
 }
 
+export interface CancelOrbitalStructureCommand {
+  readonly type: 'CANCEL_ORBITAL_STRUCTURE';
+  readonly playerId: PlayerSlotId;
+  readonly structureId: string;
+}
+
+export interface DecommissionOrbitalStructureCommand {
+  readonly type: 'DECOMMISSION_ORBITAL_STRUCTURE';
+  readonly playerId: PlayerSlotId;
+  readonly structureId: string;
+}
+
 export interface BuildDeepSpaceStructureCommand {
   readonly type: 'BUILD_DEEP_SPACE_STRUCTURE';
   readonly playerId: PlayerSlotId;
@@ -169,6 +181,8 @@ export interface SetDockyardFleetBuildingCommand {
 
 export type GameCommand =
   | BuildOrbitalStructureCommand
+  | CancelOrbitalStructureCommand
+  | DecommissionOrbitalStructureCommand
   | BuildDeepSpaceStructureCommand
   | QueueShipCommand
   | SetRallyPointCommand

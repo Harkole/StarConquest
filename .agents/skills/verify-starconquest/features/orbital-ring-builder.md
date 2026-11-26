@@ -9,6 +9,7 @@ The Orbital Ring Builder lets a player inspect occupied orbital slots around the
 - `orb-build-dockyard` constructs a 2-slot Titan Orbital Dockyard spanning two adjacent slots and shows the simplified description plus `Fleet Building` toggle.
 - `orb-queue-harvester` queues a paid Harvester from C&C or Refinery and updates `#econ-harvesters-val` on completion.
 - `orb-mining-focus` switches C&C or Refinery mining focus between `Auto (Balanced)`, `Ore Only`, and `Crystal Only`.
+- `orb-cancel-decommission` cancels an under-construction orbital platform (`[data-cancel-orbital]`) for a 100% refund or decommissions a completed non-C&C orbital platform (`[data-decommission-orbital]`) to reclaim slots and recover 50% salvage.
 
 ## How to get to it (user POV)
 
@@ -27,7 +28,7 @@ Preconditions:
 - **Inspect C&C & Mining Focus.** Click `[data-slot-index="0"]`, then click `[data-set-focus="ore"]`. The `Ore Only` button becomes `active` and `.hud-status-msg` reads `Platform mining focus set to ORE`.
 - **Queue a Harvester.** Record `#econ-harvesters-val` (initially `1`) and `#econ-ore-val`. Click `[data-action="spawn-harvester"]`. `.hud-status-msg` confirms deployment, `#econ-ore-val` drops by `100`, and a build queue pill appears; after `~2.5s` at `4x`, `#econ-harvesters-val` increments to `2`.
 - **Build 1-slot Refinery.** Click empty slot `[data-slot-index="2"]` and click `[data-build-struct="refinery"]`. `.hud-status-msg` confirms construction on Slot 3, `[data-slot-pct="2"]` counts up from `0%`, and after `~5.5s` at `4x` it reaches `Ready` while `#econ-harvesters-val` increases by `+1` (free Refinery Harvester).
-- **Build 2-slot Orbital Dockyard.** Click empty slot `[data-slot-index="3"]` and click `[data-build-struct="orbital_dockyard"]`. Both slots `3` and `4` show `S4: Orbital (...)` / `S5: Orbital (...)`; after completion (`7.5s` at `4x` for a `30s` build), selecting `[data-slot-index="3"]` displays the dual-bay description and `[data-toggle-dockyard-fleet-building]` reading `Enabled (Supplying Fleets)`.
+- **Build 2-slot Orbital Dockyard.** Click empty slot `[data-slot-index="3"]` and click `[data-build-struct="orbital_dockyard"]`. Slots `3` and `4` merge into one labeled pill `S4-5: Orbital Dockyard (...)`; after completion (`7.5s` at `4x` for a `30s` build), selecting `[data-slot-index="3"]` displays the dual-bay description and `[data-toggle-dockyard-fleet-building]` reading `Enabled (Supplying Fleets)`.
 - **Toggle Dockyard Fleet Building.** Click `[data-toggle-dockyard-fleet-building]`. Button text changes to `Disabled (Paused)` and loses `active`; click again to restore `Enabled (Supplying Fleets)`.
 - **Proof.** Capture a screenshot showing the operational Dockyard on the Homeworld orbital ring and the simplified Dockyard HUD panel, plus before/after Ore, Harvester count, and console error count (`0`).
 

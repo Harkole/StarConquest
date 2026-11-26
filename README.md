@@ -99,6 +99,8 @@ Structures are built in a visible **orbital ring** around planets. Each planet c
 | **Tech / Specialization Module** | **1 Slot** | Orbital expansion modules that unlock advanced ship hulls (Cruisers, Carriers, Dreadnoughts), increase **Fleet Supply**, or grant doctrine bonuses (e.g., enhanced fighter bays, heavy siege calibration, shield boosters). |
 | **Heavy Defense Platform / Shield** | **2 Slots** | Fortifies the planet's orbital ring with heavy batteries (`65` Heavy DPS + `45` PD DPS) and **3 remote-controlled perimeter sentry turrets** rendered around the far sides of the planet (in simulation, full platform DPS currently fires from the main platform position without planetary LOS occlusion; destroying the main platform destroys its remote sentry turrets). |
 
+* **Cancel & Decommission (`CANCEL_ORBITAL_STRUCTURE` / `DECOMMISSION_ORBITAL_STRUCTURE`)**: Selecting an under-construction orbital platform in the HUD allows cancelling construction for a **`100%` resource refund** and immediate slot release. Selecting a completed orbital platform (except **Command & Control**, or a planet's sole **Planetary Outpost** while other platforms remain on that planet) allows decommissioning it to reclaim orbital slots, refund any active ship queue orders, reassign Harvesters, and recover **`50%` salvage** resources.
+
 ---
 
 ## 5. Deep-Space Logistics & Tower Defence
@@ -328,8 +330,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
     * *Signaling / Master Server (for cross-network `SC-XXXX` room codes)*: Open **inbound `TCP 443`** (`wss://` WebSocket over TLS, or a custom port such as `8080`) on the signaling server only; players connect outbound with zero router changes.
     * *Optional TURN Relay (for Symmetric NAT / strict corporate firewalls)*: Open **inbound `UDP/TCP 3478`**, **`TCP 5349` / `443`** (TURNS), and **`UDP 49152–65535`** on the TURN server.
   * **Lobby "Creating Room" Help & Troubleshooting Needed**: The Pre-Match Lobby (`src/client/ui/lobbyController.ts`) needs clearer inline help when hosting a room so players understand how to connect (same-machine `SC-XXXX` vs. two-way Manual Invite → Answer token exchange) and common checks (disable VPNs/strict UDP blockers, verify both Invite and Answer tokens are applied, and check Symmetric NAT / firewall rules).
-* **Orbital Slot Labels Show Generic `Orbital (Ready)`**: All occupied orbital slots currently render as `Orbital (Ready)` in the HUD instead of showing the constructed platform's name, and 2-slot structures (`Command & Control`, `Orbital Dockyard`, `Heavy Defense Platform`) should merge their two slots into a single labeled entry.
-* **No Cancel or Decommission for Orbital Platforms**: Players cannot cancel an orbital platform accidentally queued while it is still under construction, and cannot decommission a completed orbital platform to reclaim slots.
 * **Low-Contrast Tutorial UI Highlights**: The blue `.tutorial-highlight` pulse blends into the blue HUD background and is not distinct enough for players to follow easily (needs higher-contrast gold/amber or bright accent styling).
 
 ### Planned Feature Execution Order
