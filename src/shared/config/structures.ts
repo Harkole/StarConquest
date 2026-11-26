@@ -17,6 +17,7 @@ export type OrbitalStructureId =
 export interface OrbitalStructureConfig {
   readonly id: OrbitalStructureId;
   readonly displayName: string;
+  readonly shortName: string;
   readonly slotCost: 1 | 2;
   readonly cost: ResourceCost;
   readonly buildTimeSeconds: number;
@@ -35,6 +36,7 @@ export const ORBITAL_STRUCTURES: Readonly<Record<OrbitalStructureId, OrbitalStru
   command_and_control: {
     id: 'command_and_control',
     displayName: 'Command & Control (C&C)',
+    shortName: 'Command & Control',
     slotCost: 2,
     cost: { ore: 0, crystal: 0 },
     buildTimeSeconds: 0,
@@ -51,6 +53,7 @@ export const ORBITAL_STRUCTURES: Readonly<Record<OrbitalStructureId, OrbitalStru
   planetary_outpost: {
     id: 'planetary_outpost',
     displayName: 'Planetary Outpost',
+    shortName: 'Outpost',
     slotCost: 1,
     cost: { ore: 300, crystal: 100 },
     buildTimeSeconds: 25,
@@ -67,6 +70,7 @@ export const ORBITAL_STRUCTURES: Readonly<Record<OrbitalStructureId, OrbitalStru
   orbital_dockyard: {
     id: 'orbital_dockyard',
     displayName: 'Orbital Dockyard',
+    shortName: 'Orbital Dockyard',
     slotCost: 2,
     cost: { ore: 400, crystal: 150 },
     buildTimeSeconds: 30,
@@ -83,6 +87,7 @@ export const ORBITAL_STRUCTURES: Readonly<Record<OrbitalStructureId, OrbitalStru
   refinery: {
     id: 'refinery',
     displayName: 'Orbital Refinery',
+    shortName: 'Refinery',
     slotCost: 1,
     cost: { ore: 250, crystal: 50 },
     buildTimeSeconds: 20,
@@ -99,6 +104,7 @@ export const ORBITAL_STRUCTURES: Readonly<Record<OrbitalStructureId, OrbitalStru
   tech_module: {
     id: 'tech_module',
     displayName: 'C&C Tech & Specialization Module',
+    shortName: 'Tech Module',
     slotCost: 1,
     cost: { ore: 200, crystal: 300 },
     buildTimeSeconds: 25,
@@ -115,6 +121,7 @@ export const ORBITAL_STRUCTURES: Readonly<Record<OrbitalStructureId, OrbitalStru
   heavy_defense_platform: {
     id: 'heavy_defense_platform',
     displayName: 'Heavy Orbital Defense Platform',
+    shortName: 'Heavy Defense',
     slotCost: 2,
     cost: { ore: 450, crystal: 300 },
     buildTimeSeconds: 35,
