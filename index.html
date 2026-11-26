@@ -509,13 +509,13 @@
         z-index: 30;
         pointer-events: auto;
         background: rgba(10, 17, 34, 0.94);
-        border: 1px solid rgba(56, 189, 248, 0.65);
+        border: 1px solid rgba(251, 191, 36, 0.8);
         border-radius: 8px;
         padding: 10px 12px;
         display: flex;
         flex-direction: column;
         gap: 6px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 14px rgba(245, 158, 11, 0.2);
         backdrop-filter: blur(8px);
       }
       .tutorial-coach-header {
@@ -525,15 +525,15 @@
         gap: 8px;
       }
       .tutorial-coach-badge {
-        background: rgba(14, 165, 233, 0.22);
-        color: #7dd3fc;
+        background: rgba(245, 158, 11, 0.24);
+        color: #fde68a;
         font-weight: 700;
         letter-spacing: 0.06em;
       }
       .tutorial-coach-progress {
         font-size: 0.72rem;
         font-weight: 700;
-        color: #38bdf8;
+        color: #fbbf24;
       }
       .tutorial-coach-title {
         font-size: 0.84rem;
@@ -548,22 +548,27 @@
       .tutorial-coach-hint {
         font-size: 0.7rem;
         line-height: 1.35;
-        color: #94a3b8;
-        border-left: 2px solid rgba(56, 189, 248, 0.5);
+        color: #cbd5e1;
+        border-left: 2px solid rgba(251, 191, 36, 0.75);
         padding-left: 7px;
       }
       .tutorial-highlight {
-        outline: 2px solid #38bdf8 !important;
+        outline: 2px solid #fbbf24 !important;
         outline-offset: 2px;
-        animation: tutorialPulse 1.5s ease-in-out infinite;
+        border-color: #fbbf24 !important;
+        background-color: rgba(245, 158, 11, 0.22) !important;
+        color: #fef3c7 !important;
+        position: relative;
+        z-index: 2;
+        animation: tutorialPulse 1.35s ease-in-out infinite;
       }
       @keyframes tutorialPulse {
         0%,
         100% {
-          box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55);
+          box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.75), 0 0 6px 1px rgba(245, 158, 11, 0.55);
         }
         50% {
-          box-shadow: 0 0 12px 3px rgba(56, 189, 248, 0.85);
+          box-shadow: 0 0 0 3px rgba(253, 224, 71, 0.95), 0 0 16px 5px rgba(245, 158, 11, 0.9);
         }
       }
     </style>
