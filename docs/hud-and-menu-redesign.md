@@ -128,7 +128,7 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 
 ## Progress tracker
 
-- [ ] Phase 1: App state machine and lazy match lifecycle
+- [x] Phase 1: App state machine and lazy match lifecycle
 - [ ] Phase 2: Main Menu and pre-match setup screens
 - [ ] Phase 3: Split HUD shell, Top Bar, and Left Outliner
 - [ ] Phase 4: Contextual Bottom Inspector and Quick Action Dock

@@ -110,6 +110,7 @@ export class SystemSceneManager {
   private readonly selectionListeners: (() => void)[] = [];
   private readonly placementResultListeners: ((message: string, ok: boolean) => void)[] =
     [];
+  private cleanupPickingEvents: (() => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -886,7 +887,7 @@ export class SystemSceneManager {
     let downY = 0;
     const hitPoint = new THREE.Vector3();
 
-    window.addEventListener('keydown', (e) => {
+    const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         if (this.pendingDeepSpaceBuildType !== null) {
           this.startDeepSpacePlacement(null);
@@ -896,9 +897,9 @@ export class SystemSceneManager {
           this.notifyPlacementResult('Cancelled fleet order placement.', false);
         }
       }
-    });
+    };
 
-    canvasElement.addEventListener('pointermove', (e) => {
+    const onPointerMove = (e: PointerEvent): void => {
       if (!this.pendingDeepSpaceBuildType) {
         return;
       }
@@ -918,12 +919,12 @@ export class SystemSceneManager {
         this.placementPreviewGroup.visible = true;
         this.updatePlacementPreviewValidity();
       }
-    });
+    };
 
     let rightDownX = 0;
     let rightDownY = 0;
 
-    canvasElement.addEventListener('pointerdown', (e) => {
+    const onPointerDown = (e: PointerEvent): void => {
       if (e.button === 0) {
         downX = e.clientX;
         downY = e.clientY;
@@ -931,9 +932,9 @@ export class SystemSceneManager {
         rightDownX = e.clientX;
         rightDownY = e.clientY;
       }
-    });
+    };
 
-    canvasElement.addEventListener('pointerup', (e) => {
+    const onPointerUp = (e: PointerEvent): void => {
       if (e.button === 2) {
         const rightMoveDist = Math.hypot(e.clientX - rightDownX, e.clientY - rightDownY);
         if (rightMoveDist <= 5 && this.selectedFleetId) {
@@ -1244,9 +1245,9 @@ export class SystemSceneManager {
         this.focusWormhole(pickedWh.wormholeId);
         return;
       }
-    });
+    };
 
-    canvasElement.addEventListener('dblclick', (e) => {
+    const onDblClick = (e: MouseEvent): void => {
       if (this.pendingFleetOrder || this.pendingDeepSpaceBuildType) {
         return;
       }
@@ -1261,7 +1262,41 @@ export class SystemSceneManager {
       if (pickedWh) {
         this.transitCameraThroughWormhole(pickedWh.wormholeId);
       }
-    });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    canvasElement.addEventListener('pointermove', onPointerMove);
+    canvasElement.addEventListener('pointerdown', onPointerDown);
+    canvasElement.addEventListener('pointerup', onPointerUp);
+    canvasElement.addEventListener('dblclick', onDblClick);
+
+    this.cleanupPickingEvents = () => {
+      window.removeEventListener('keydown', onKeyDown);
+      canvasElement.removeEventListener('pointermove', onPointerMove);
+      canvasElement.removeEventListener('pointerdown', onPointerDown);
+      canvasElement.removeEventListener('pointerup', onPointerUp);
+      canvasElement.removeEventListener('dblclick', onDblClick);
+    };
+  }
+
+  public dispose(): void {
+    this.cleanupPickingEvents?.();
+    this.cleanupPickingEvents = null;
+    this.selectionListeners.length = 0;
+    this.placementResultListeners.length = 0;
+    this.pendingDeepSpaceBuildType = null;
+    this.pendingFleetOrder = null;
+    this.placementPreviewGroup.clear();
+    this.clearCurrentSystem();
+    this.scene.remove(this.harvesterRenderer.rootGroup);
+    this.scene.remove(this.combatFleetRenderer.rootGroup);
+    this.scene.remove(this.combatVfxRenderer.rootGroup);
+    this.scene.remove(this.deepSpaceRootGroup);
+    this.scene.remove(this.placementPreviewGroup);
+    this.hubRadiusRingGeom.dispose();
+    this.hubRadiusRingMat.dispose();
+    this.placementPreviewWireframeMat.dispose();
+    this.placementPreviewRingMat.dispose();
   }
 
   private notifySelectionChanged(): void {

@@ -146,6 +146,11 @@ export class TutorialController {
       });
   }
 
+  public dispose(): void {
+    this.clearHighlights();
+    this.coachEl.remove();
+  }
+
   private clearHighlights(): void {
     this.hudRoot
       .querySelectorAll<HTMLElement>('.tutorial-highlight')

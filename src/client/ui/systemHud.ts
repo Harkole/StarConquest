@@ -287,12 +287,21 @@ const SPEAKER_UNMUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fil
 
 const SPEAKER_MUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
 
+export interface SystemHudHandle {
+  readonly dispose: () => void;
+}
+
+export interface MountSystemHudOptions {
+  readonly onQuitToMainMenu?: () => void;
+}
+
 export function mountSystemHud(
   container: HTMLElement,
   galaxy: GalaxyTopology,
   sceneManager: SystemSceneManager,
   musicPlayer?: AmbientMusicPlayer,
-): void {
+  options?: MountSystemHudOptions,
+): SystemHudHandle {
   let simAdapter = sceneManager.simAdapter;
   let sim = simAdapter.simulation;
   let playerId = simAdapter.localPlayerId;
@@ -382,6 +391,11 @@ export function mountSystemHud(
       <button class="hud-btn" data-action="toggle-music" aria-label="Mute ambient music" title="Mute ambient music" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px;">
         ${SPEAKER_UNMUTED_SVG}
       </button>
+      ${
+        options?.onQuitToMainMenu
+          ? `<button class="hud-btn" data-action="quit-to-main-menu" title="Return to Main Menu">Main Menu</button>`
+          : ''
+      }
     </div>
   `;
 
@@ -403,6 +417,12 @@ export function mountSystemHud(
   const musicToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
     '[data-action="toggle-music"]',
   );
+  const quitToMainMenuBtnEl = topBarEl.querySelector<HTMLButtonElement>(
+    '[data-action="quit-to-main-menu"]',
+  );
+  quitToMainMenuBtnEl?.addEventListener('click', () => {
+    options?.onQuitToMainMenu?.();
+  });
   const speedBtnEls = Array.from(
     topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
   );
@@ -2317,7 +2337,7 @@ export function mountSystemHud(
     }
   }
 
-  window.setInterval(() => {
+  const pollIntervalId = window.setInterval(() => {
     renderEconomyBar();
     renderHarvesterInspector();
     const nextSignature = getCurrentMainPanelSignature();
@@ -2328,4 +2348,13 @@ export function mountSystemHud(
     }
     tutorialController.sync(sim, playerId, buildTutorialUiContext());
   }, 250);
+
+  return {
+    dispose: () => {
+      window.clearInterval(pollIntervalId);
+      tutorialController.dispose();
+      tutorialHostEl.remove();
+      container.innerHTML = '';
+    },
+  };
 }
