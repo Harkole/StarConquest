@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
-import { MATCH_PRESETS, type MatchPresetId } from '../shared/config/index.ts';
+import type { MatchSetupConfig } from '../shared/config/index.ts';
 import { BATTLE_SIMULATOR_SYSTEM_ID } from '../shared/sim/gameSimulation.ts';
 import {
   createInitialAppState,
@@ -13,9 +13,15 @@ import {
   type AppTransitionResult,
 } from './app/appStateMachine.ts';
 import { LocalSimAdapter } from './net/localSimAdapter.ts';
+import type { ClientSimAdapter, MultiplayerRoomAdapter } from './net/simAdapter.ts';
 import { AmbientMusicPlayer } from './audio/ambientMusicPlayer.ts';
 import { OrbitalCameraController } from './renderer/orbitalCamera.ts';
 import { SystemSceneManager } from './renderer/systemSceneManager.ts';
+import {
+  MenuController,
+  type MenuLaunchRequest,
+  type MenuScreenModel,
+} from './ui/menuController.ts';
 import { mountSystemHud } from './ui/systemHud.ts';
 
 export interface MatchRuntimeHandle {
@@ -28,6 +34,8 @@ export interface MatchRuntimeFactoryParams {
   readonly session: ActiveMatchSession;
   readonly getState: () => AppScreenState;
   readonly onQuitToMainMenu: () => void;
+  readonly matchSetup?: MatchSetupConfig;
+  readonly simAdapter?: ClientSimAdapter;
 }
 
 export type MatchRuntimeFactory = (
@@ -38,6 +46,7 @@ export interface ClientAppShellOptions {
   readonly canvas: HTMLCanvasElement;
   readonly hudContainer: HTMLElement;
   readonly createMatchRuntime?: MatchRuntimeFactory;
+  readonly createP2PAdapter?: () => MultiplayerRoomAdapter;
 }
 
 export interface ClientAppController {
@@ -49,14 +58,29 @@ export interface ClientAppController {
 }
 
 const COMBAT_MUSIC_COOLDOWN_SECONDS = 14.0;
-const SETUP_PRESET_IDS: readonly MatchPresetId[] = [
-  'standard_tactical',
-  'blitz_skirmish',
-  'grand_conquest',
-];
 
-function isMatchPresetId(value: string | undefined): value is MatchPresetId {
-  return value !== undefined && value in MATCH_PRESETS;
+function isMultiplayerRoomAdapter(
+  adapter: ClientSimAdapter,
+): adapter is MultiplayerRoomAdapter {
+  return 'leaveRoom' in adapter && typeof adapter.leaveRoom === 'function';
+}
+
+function toMenuScreenModel(state: AppScreenState): MenuScreenModel | null {
+  switch (state.kind) {
+    case 'main_menu':
+    case 'single_player_setup':
+    case 'host_room_lobby':
+    case 'join_room_lobby':
+      return state;
+    case 'in_match':
+    case 'pause_menu':
+    case 'match_outcome':
+      return null;
+    default: {
+      const _exhaustive: never = state;
+      return _exhaustive;
+    }
+  }
 }
 
 function createDefaultMatchRuntime(
@@ -64,7 +88,9 @@ function createDefaultMatchRuntime(
 ): MatchRuntimeHandle {
   const { canvas, hudContainer, session, getState, onQuitToMainMenu } = params;
 
-  const simAdapter = new LocalSimAdapter(session.presetId);
+  const simAdapter =
+    params.simAdapter ??
+    new LocalSimAdapter(params.matchSetup ?? session.presetId);
   const galaxy = simAdapter.simulation.galaxy;
 
   const renderer = new THREE.WebGLRenderer({
@@ -106,6 +132,7 @@ function createDefaultMatchRuntime(
 
   const hudHandle = mountSystemHud(hudContainer, galaxy, sceneManager, musicPlayer, {
     onQuitToMainMenu,
+    isBattleSimulator: session.sessionKind === 'battle_simulator',
   });
 
   const composer = new EffectComposer(renderer);
@@ -172,6 +199,12 @@ function createDefaultMatchRuntime(
       window.cancelAnimationFrame(rafId);
       window.removeEventListener('resize', onResize);
       hudHandle.dispose();
+      const activeAdapter = sceneManager.simAdapter;
+      if (isMultiplayerRoomAdapter(activeAdapter)) {
+        activeAdapter.leaveRoom();
+      } else if (isMultiplayerRoomAdapter(simAdapter)) {
+        simAdapter.leaveRoom();
+      }
       musicPlayer.dispose();
       sceneManager.dispose();
       cameraController.dispose();
@@ -189,7 +222,7 @@ export function createClientAppShell(
 
   let state: AppScreenState = createInitialAppState();
   let activeRuntime: MatchRuntimeHandle | null = null;
-  let selectedSetupPresetId: MatchPresetId = 'standard_tactical';
+  let pendingLaunchRequest: MenuLaunchRequest | null = null;
 
   function disposeMatchRuntime(): void {
     if (activeRuntime) {
@@ -209,109 +242,51 @@ export function createClientAppShell(
     }
   }
 
+  const menuController = new MenuController({
+    container: hudContainer,
+    ...(options.createP2PAdapter
+      ? { createP2PAdapter: options.createP2PAdapter }
+      : {}),
+    onOpenSinglePlayer: (presetId) => {
+      dispatch({ type: 'OPEN_SINGLE_PLAYER_SETUP', presetId });
+    },
+    onOpenHostRoom: (presetId) => {
+      dispatch({ type: 'OPEN_HOST_ROOM_LOBBY', presetId });
+    },
+    onOpenJoinRoom: () => {
+      dispatch({ type: 'OPEN_JOIN_ROOM_LOBBY' });
+    },
+    onLaunchTutorial: () => {
+      dispatch({ type: 'LAUNCH_GUIDED_TUTORIAL' });
+    },
+    onLaunchBattleSimulator: () => {
+      dispatch({ type: 'LAUNCH_BATTLE_SIMULATOR' });
+    },
+    onBackToMainMenu: () => {
+      dispatch({ type: 'BACK_TO_MAIN_MENU' });
+    },
+    onStartMatch: (request) => {
+      pendingLaunchRequest = request;
+      const res = dispatch({
+        type: 'START_MATCH',
+        ...(request.setup ? { presetId: request.setup.presetId } : {}),
+        ...(request.roomCode !== undefined ? { roomCode: request.roomCode } : {}),
+      });
+      if (!res.ok) {
+        pendingLaunchRequest = null;
+      }
+    },
+  });
+
   function renderShell(): void {
-    if (isMatchRuntimeActive(state)) {
+    const menuScreen = toMenuScreenModel(state);
+    if (!menuScreen) {
       return;
     }
 
     canvas.style.display = 'none';
-
-    if (state.kind === 'main_menu') {
-      hudContainer.innerHTML = `
-        <div class="hud-section" data-app-screen="main_menu">
-          <div class="hud-title">STARCONQUEST</div>
-          <div class="hud-btn-row" style="margin-top: 8px;">
-            <button type="button" class="hud-btn active" data-menu-action="open-single-player">Start Single Player</button>
-            <button type="button" class="hud-btn" data-menu-action="launch-tutorial">Guided Tutorial</button>
-            <button type="button" class="hud-btn" data-menu-action="launch-battle-sim">Battle Simulator</button>
-          </div>
-        </div>
-      `;
-
-      hudContainer
-        .querySelector<HTMLButtonElement>('[data-menu-action="open-single-player"]')
-        ?.addEventListener('click', () => {
-          dispatch({
-            type: 'OPEN_SINGLE_PLAYER_SETUP',
-            presetId: selectedSetupPresetId,
-          });
-        });
-
-      hudContainer
-        .querySelector<HTMLButtonElement>('[data-menu-action="launch-tutorial"]')
-        ?.addEventListener('click', () => {
-          dispatch({ type: 'LAUNCH_GUIDED_TUTORIAL' });
-        });
-
-      hudContainer
-        .querySelector<HTMLButtonElement>('[data-menu-action="launch-battle-sim"]')
-        ?.addEventListener('click', () => {
-          dispatch({ type: 'LAUNCH_BATTLE_SIMULATOR' });
-        });
-      return;
-    }
-
-    if (state.kind === 'single_player_setup') {
-      selectedSetupPresetId = state.presetId;
-      const presetButtonsHtml = SETUP_PRESET_IDS.map((presetId) => {
-        const cfg = MATCH_PRESETS[presetId];
-        const activeClass = presetId === selectedSetupPresetId ? 'active' : '';
-        return `<button type="button" class="hud-btn ${activeClass}" data-setup-preset="${presetId}">${cfg.displayName}</button>`;
-      }).join('');
-
-      hudContainer.innerHTML = `
-        <div class="hud-section" data-app-screen="single_player_setup">
-          <div class="hud-title">Single Player Setup</div>
-          <div class="hud-btn-row" style="margin-top: 8px;">
-            ${presetButtonsHtml}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 8px;">
-            <button type="button" class="hud-btn active" data-menu-action="start-match">Start Match</button>
-            <button type="button" class="hud-btn" data-menu-action="back-to-main">Back</button>
-          </div>
-        </div>
-      `;
-
-      hudContainer
-        .querySelectorAll<HTMLButtonElement>('[data-setup-preset]')
-        .forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const preset = btn.dataset.setupPreset;
-            if (isMatchPresetId(preset)) {
-              selectedSetupPresetId = preset;
-              state = { kind: 'single_player_setup', presetId: preset };
-              renderShell();
-            }
-          });
-        });
-
-      hudContainer
-        .querySelector<HTMLButtonElement>('[data-menu-action="start-match"]')
-        ?.addEventListener('click', () => {
-          dispatch({ type: 'START_MATCH', presetId: selectedSetupPresetId });
-        });
-
-      hudContainer
-        .querySelector<HTMLButtonElement>('[data-menu-action="back-to-main"]')
-        ?.addEventListener('click', () => {
-          dispatch({ type: 'BACK_TO_MAIN_MENU' });
-        });
-      return;
-    }
-
-    hudContainer.innerHTML = `
-      <div class="hud-section" data-app-screen="${state.kind}">
-        <div class="hud-title">${state.kind === 'host_room_lobby' ? 'Host Room Lobby' : 'Join Room Lobby'}</div>
-        <div class="hud-btn-row" style="margin-top: 8px;">
-          <button type="button" class="hud-btn" data-menu-action="back-to-main">Back</button>
-        </div>
-      </div>
-    `;
-    hudContainer
-      .querySelector<HTMLButtonElement>('[data-menu-action="back-to-main"]')
-      ?.addEventListener('click', () => {
-        dispatch({ type: 'BACK_TO_MAIN_MENU' });
-      });
+    hudContainer.classList?.add('menu-active');
+    menuController.render(menuScreen);
   }
 
   function dispatch(event: AppStateEvent): AppTransitionResult {
@@ -325,6 +300,9 @@ export function createClientAppShell(
 
     if (isMatchRuntimeActive(nextState)) {
       if (!activeRuntime && nextState.kind === 'in_match') {
+        const launch = pendingLaunchRequest;
+        pendingLaunchRequest = null;
+        hudContainer.classList?.remove('menu-active');
         canvas.style.display = 'block';
         hudContainer.innerHTML = '';
         activeRuntime = createMatchRuntime({
@@ -333,9 +311,12 @@ export function createClientAppShell(
           session: nextState.session,
           getState: () => state,
           onQuitToMainMenu: quitToMainMenu,
+          ...(launch?.setup ? { matchSetup: launch.setup } : {}),
+          ...(launch?.simAdapter ? { simAdapter: launch.simAdapter } : {}),
         });
       }
     } else {
+      pendingLaunchRequest = null;
       disposeMatchRuntime();
       renderShell();
     }
@@ -351,7 +332,10 @@ export function createClientAppShell(
     dispatch,
     disposeMatchRuntime,
     dispose: () => {
+      pendingLaunchRequest = null;
       disposeMatchRuntime();
+      menuController.dispose();
+      hudContainer.classList?.remove('menu-active');
       hudContainer.innerHTML = '';
     },
   };

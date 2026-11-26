@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GameSimulation } from '../../../shared/sim/gameSimulation.ts';
+import { LocalSimAdapter } from '../../net/localSimAdapter.ts';
+import type { SystemSceneManager } from '../../renderer/systemSceneManager.ts';
 import {
   computeMainPanelSignature,
   createDefaultHudCollapsedState,
   isHudSectionId,
+  mountSystemHud,
   toggleHudSection,
   type HudSectionId,
   type MainPanelSignatureParams,
@@ -294,5 +297,201 @@ describe('systemHud — fog-of-war intel projection', () => {
     expect(p2Sig).toContain('system_starter_2_homeworld:live:player_2:');
     expect(p2Sig).toContain('|known|');
     expect(p2Sig).not.toBe(unexploredSig);
+  });
+});
+
+class FakeHudElement {
+  public className = '';
+  public dataset: Record<string, string> = {};
+  public style: Record<string, string> = {};
+  public textContent = '';
+  public title = '';
+  public parentElement: FakeHudElement | null = null;
+  public children: FakeHudElement[] = [];
+  private readonly attrs = new Map<string, string>();
+  private readonly classSet = new Set<string>();
+  public readonly classList = {
+    add: (cls: string): void => {
+      this.classSet.add(cls);
+    },
+    remove: (cls: string): void => {
+      this.classSet.delete(cls);
+    },
+    toggle: (cls: string, force?: boolean): boolean => {
+      const next = force !== undefined ? force : !this.classSet.has(cls);
+      if (next) {
+        this.classSet.add(cls);
+      } else {
+        this.classSet.delete(cls);
+      }
+      return next;
+    },
+    contains: (cls: string): boolean => this.classSet.has(cls),
+  };
+  private html = '';
+  private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly interactiveBySelector = new Map<string, FakeHudElement[]>();
+
+  public get innerHTML(): string {
+    return this.html;
+  }
+
+  public set innerHTML(value: string) {
+    this.html = value;
+    this.interactiveBySelector.clear();
+  }
+
+  public append(...nodes: FakeHudElement[]): void {
+    for (const node of nodes) {
+      node.parentElement = this;
+      this.children.push(node);
+    }
+  }
+
+  public remove(): void {}
+
+  public setAttribute(name: string, value: string): void {
+    this.attrs.set(name, value);
+  }
+
+  public removeAttribute(name: string): void {
+    this.attrs.delete(name);
+  }
+
+  public addEventListener(type: string, cb: () => void): void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(cb);
+    this.listeners.set(type, set);
+  }
+
+  public click(): void {
+    for (const fn of this.listeners.get('click') ?? []) {
+      fn();
+    }
+  }
+
+  public getBoundingClientRect(): { right: number; top: number; left: number; bottom: number } {
+    return { left: 0, top: 0, right: 400, bottom: 600 };
+  }
+
+  public querySelector<T = FakeHudElement>(selector: string): T | null {
+    const list = this.querySelectorAll<T>(selector);
+    return list[0] ?? null;
+  }
+
+  public querySelectorAll<T = FakeHudElement>(selector: string): T[] {
+    const cached = this.interactiveBySelector.get(selector);
+    if (cached) {
+      return cached as unknown as T[];
+    }
+    const matches: FakeHudElement[] = [];
+    if (selector.startsWith('[data-action="')) {
+      const action = selector.slice('[data-action="'.length, -2);
+      if (this.html.includes(`data-action="${action}"`)) {
+        const el = new FakeHudElement();
+        el.dataset.action = action;
+        matches.push(el);
+      }
+    }
+    this.interactiveBySelector.set(selector, matches);
+    return matches as unknown as T[];
+  }
+}
+
+describe('systemHud — battle simulator section visibility', () => {
+  function runWithFakeDom<T>(fn: () => T): T {
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    const prevWin = (globalThis as { window?: unknown }).window;
+    (globalThis as { document?: unknown }).document = {
+      createElement: () => new FakeHudElement(),
+    };
+    (globalThis as { window?: unknown }).window = {
+      innerWidth: 1440,
+      setInterval: () => 1,
+      clearInterval: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+    try {
+      return fn();
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+      (globalThis as { window?: unknown }).window = prevWin;
+    }
+  }
+
+  function createFakeSceneManager(adapter: LocalSimAdapter): SystemSceneManager {
+    const activeSystem = adapter.simulation.galaxy.systems[0]!;
+    return {
+      simAdapter: adapter,
+      getActiveSystem: () => activeSystem,
+      getSelectedPlanetId: () => activeSystem.planets[0]?.id ?? null,
+      getSelectedHarvesterId: () => null,
+      getSelectedFleetId: () => null,
+      getPendingDeepSpacePlacement: () => null,
+      getPendingFleetOrder: () => null,
+      getPendingRallyDockyardId: () => null,
+      getActiveWormholes: () => [],
+      getLastMatchSystemId: () => activeSystem.id,
+      onSelectionChange: () => {},
+      onDeepSpacePlacementResult: () => {},
+      loadSystem: () => {},
+      focusPlanet: () => {},
+      selectHarvester: () => {},
+      selectFleet: () => {},
+      focusFleet: () => {},
+      focusWorldPoint: () => {},
+      focusWormhole: () => {},
+      enterSystemOverview: () => {},
+      resetMatch: (presetOrSetup: Parameters<LocalSimAdapter['resetMatch']>[0]) =>
+        adapter.resetMatch(presetOrSetup),
+    } as unknown as SystemSceneManager;
+  }
+
+  it('omits battle_sim section in normal matches and renders it expanded with Return to Main Menu when isBattleSimulator is true', () => {
+    runWithFakeDom(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const sceneManager = createFakeSceneManager(adapter);
+
+      const normalContainer = new FakeHudElement();
+      const normalHud = mountSystemHud(
+        normalContainer as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+      );
+      const normalMainBody = normalContainer.children.find(
+        (c) => c.className === 'hud-main-body',
+      )!;
+      expect(normalMainBody.innerHTML).not.toContain('data-hud-section="battle_sim"');
+      expect(normalMainBody.innerHTML).not.toContain('Launch Battle in Void Arena');
+      normalHud.dispose();
+
+      let quitCalls = 0;
+      const simContainer = new FakeHudElement();
+      const simHud = mountSystemHud(
+        simContainer as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+        undefined,
+        {
+          isBattleSimulator: true,
+          onQuitToMainMenu: () => {
+            quitCalls += 1;
+          },
+        },
+      );
+      const simMainBody = simContainer.children.find(
+        (c) => c.className === 'hud-main-body',
+      )!;
+      expect(simMainBody.innerHTML).toContain('data-hud-section="battle_sim"');
+      expect(simMainBody.innerHTML).toContain('Launch Battle in Void Arena');
+      expect(simMainBody.innerHTML).toContain('Return to Main Menu');
+
+      const exitBtn = simMainBody.querySelector('[data-action="exit-battle-sim"]');
+      expect(exitBtn).not.toBeNull();
+      exitBtn!.click();
+      expect(quitCalls).toBe(1);
+      simHud.dispose();
+    });
   });
 });

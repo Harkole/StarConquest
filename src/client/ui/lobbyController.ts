@@ -1,21 +1,14 @@
 import {
-  AI_DIFFICULTY_IDS,
-  AI_DIFFICULTY_PROFILES,
   MATCH_PRESETS,
   PLAYER_SLOT_IDS,
-  getDefaultSlotsForPreset,
   normalizeMatchSetupConfig,
   type AIDifficultyId,
   type MatchPresetId,
   type MatchSetupConfig,
   type MatchSetupInput,
-  type PlayerSlotConfig,
 } from '../../shared/config/index.ts';
 import type { PlayerSlotId } from '../../shared/protocol/commands.ts';
-import type {
-  MatchOutcomeState,
-  PlayerStandingSummary,
-} from '../../shared/sim/gameSimulation.ts';
+import type { MatchOutcomeState } from '../../shared/sim/gameSimulation.ts';
 import type { SimulationView } from '../../shared/sim/simulationView.ts';
 import { LocalSimAdapter } from '../net/localSimAdapter.ts';
 import type {
@@ -26,13 +19,20 @@ import type {
 } from '../net/simAdapter.ts';
 import { WebRTCPeerAdapter } from '../net/webrtcPeerAdapter.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
-
-const MATCH_PRESET_IDS: readonly MatchPresetId[] = [
-  'tutorial',
-  'blitz_skirmish',
-  'standard_tactical',
-  'grand_conquest',
-] as const;
+import {
+  ALL_LOBBY_PRESET_IDS,
+  applyPresetSelection,
+  applySlotDifficultyChange,
+  applySlotRoleChange,
+  escapeHtmlAttribute,
+  formatStandingBadge,
+  isAIDifficultyId,
+  isMatchPresetId,
+  isPlayerSlotId,
+  isPlayerSlotRole,
+  renderPresetCardsHtml,
+  renderSlotRowsHtml,
+} from './lobbySetupHelpers.ts';
 
 export interface LobbySceneManagerContract {
   readonly simAdapter: ClientSimAdapter;
@@ -58,28 +58,6 @@ export function formatMatchClockSeconds(totalSeconds: number): string {
   const mins = Math.floor(clamped / 60);
   const secs = clamped % 60;
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
-
-function formatStandingBadge(standing: PlayerStandingSummary | undefined): {
-  readonly text: string;
-  readonly tone: 'active' | 'defeated' | 'empty';
-} {
-  if (!standing || !standing.isActiveContender) {
-    return {
-      text: 'EMPTY SECTOR • Unclaimed Homeworld',
-      tone: 'empty',
-    };
-  }
-  if (standing.isDefeated) {
-    return {
-      text: 'DEFEATED • C&C Destroyed',
-      tone: 'defeated',
-    };
-  }
-  return {
-    text: `ACTIVE C&C • ${standing.ownedPlanetCount} Planet${standing.ownedPlanetCount === 1 ? '' : 's'} • ${standing.activeFleetShipCount} Ship${standing.activeFleetShipCount === 1 ? '' : 's'}`,
-    tone: 'active',
-  };
 }
 
 export class LobbyController {
@@ -333,18 +311,7 @@ export class LobbyController {
     if (this.isJoinedP2PPeer()) {
       return;
     }
-    this.draftSetup = normalizeMatchSetupConfig(
-      presetId === 'tutorial'
-        ? {
-            presetId,
-            localPlayerId: 'player_1',
-            slots: getDefaultSlotsForPreset('tutorial'),
-          }
-        : {
-            ...this.draftSetup,
-            presetId,
-          },
-    );
+    this.draftSetup = applyPresetSelection(this.draftSetup, presetId);
     this.syncHostLobbySetup();
     this.renderDrawer();
   }
@@ -356,47 +323,8 @@ export class LobbyController {
     if (this.isJoinedP2PPeer()) {
       return;
     }
-    const currentSlot = this.draftSetup.slots[slotId];
-    let nextSlot: PlayerSlotConfig;
-    if (role === 'human') {
-      nextSlot = { kind: 'human' };
-    } else if (role === 'empty') {
-      nextSlot = { kind: 'empty' };
-    } else {
-      const prevDiff: AIDifficultyId =
-        currentSlot.kind === 'ai' ? currentSlot.difficulty : 'standard';
-      nextSlot = { kind: 'ai', difficulty: prevDiff };
-    }
-
-    const nextSlots: Record<PlayerSlotId, PlayerSlotConfig> = {
-      ...this.draftSetup.slots,
-      [slotId]: nextSlot,
-    };
-
-    const hasActive = PLAYER_SLOT_IDS.some(
-      (id) => nextSlots[id].kind !== 'empty',
-    );
-    if (!hasActive) {
-      nextSlots[slotId] = { kind: 'human' };
-    }
-
-    const keepHostLocal =
-      this.isHostingP2PRoom() &&
-      nextSlots[this.draftSetup.localPlayerId].kind === 'human';
-    const nextLocalPlayerId = keepHostLocal
-      ? this.draftSetup.localPlayerId
-      : role === 'human'
-        ? slotId
-        : nextSlots[this.draftSetup.localPlayerId].kind === 'human'
-          ? this.draftSetup.localPlayerId
-          : (PLAYER_SLOT_IDS.find((id) => nextSlots[id].kind === 'human') ??
-            PLAYER_SLOT_IDS.find((id) => nextSlots[id].kind !== 'empty') ??
-            'player_1');
-
-    this.draftSetup = normalizeMatchSetupConfig({
-      presetId: this.draftSetup.presetId,
-      localPlayerId: nextLocalPlayerId,
-      slots: nextSlots,
+    this.draftSetup = applySlotRoleChange(this.draftSetup, slotId, role, {
+      keepHostLocal: this.isHostingP2PRoom(),
     });
     this.syncHostLobbySetup();
     this.renderDrawer();
@@ -409,14 +337,7 @@ export class LobbyController {
     if (this.isJoinedP2PPeer()) {
       return;
     }
-    this.draftSetup = normalizeMatchSetupConfig({
-      presetId: this.draftSetup.presetId,
-      localPlayerId: this.draftSetup.localPlayerId,
-      slots: {
-        ...this.draftSetup.slots,
-        [slotId]: { kind: 'ai', difficulty },
-      },
-    });
+    this.draftSetup = applySlotDifficultyChange(this.draftSetup, slotId, difficulty);
     this.syncHostLobbySetup();
     this.renderDrawer();
   }
@@ -590,7 +511,7 @@ export class LobbyController {
       ? `
         <div class="lobby-p2p-row">
           <span style="font-size: 0.7rem; color: #94a3b8;">Generated Token:</span>
-          <input type="text" class="lobby-p2p-input" data-p2p-generated-token value="${this.manualTokenOutput}" readonly />
+          <input type="text" class="lobby-p2p-input" data-p2p-generated-token value="${escapeHtmlAttribute(this.manualTokenOutput)}" readonly />
         </div>
       `
       : '';
@@ -695,9 +616,6 @@ export class LobbyController {
     const activeSetup = sim.getMatchSetup();
     const outcome = sim.getMatchOutcome();
     const roomState = this.p2pAdapter?.getRoomState() ?? null;
-    const isHostingP2P = Boolean(
-      roomState && roomState.role === 'host' && roomState.status !== 'idle',
-    );
     const isJoinedP2P = Boolean(
       roomState && roomState.role === 'client' && roomState.status !== 'idle',
     );
@@ -706,170 +624,19 @@ export class LobbyController {
       : this.draftSetup.presetId;
     const disabledAttr = isJoinedP2P ? 'disabled' : '';
 
-    const presetCardsHtml = MATCH_PRESET_IDS.map((presetId) => {
-      const preset = MATCH_PRESETS[presetId];
-      const isSelected = activePresetId === presetId;
-      const isLive = activeSetup.presetId === presetId;
-      const victoryRule =
-        preset.centralSuperEarthKingOfTheHillSeconds !== null
-          ? 'Last C&C Standing OR 10m Super-Earth King of the Hill'
-          : 'Last Command & Control Standing';
-      const fogRule =
-        preset.fogOfWarMode === 'open_occupied_systems'
-          ? 'Open System Visibility'
-          : 'Sensor-Range Tactical Radar';
+    const presetCardsHtml = renderPresetCardsHtml({
+      presetIds: ALL_LOBBY_PRESET_IDS,
+      activePresetId,
+      livePresetId: activeSetup.presetId,
+      disabled: isJoinedP2P,
+    });
 
-      return `
-        <button
-          type="button"
-          class="lobby-preset-card ${isSelected ? 'selected' : ''}"
-          data-lobby-preset="${preset.id}"
-          ${disabledAttr}
-        >
-          <div class="planet-card-title" style="justify-content: space-between;">
-            <span>${preset.displayName}</span>
-            <span class="hud-badge">${preset.targetDurationLabel}${isLive ? ' • LIVE' : ''}</span>
-          </div>
-          <div class="planet-card-meta">
-            Start: <strong>${preset.startingOre} Ore / ${preset.startingCrystal} Crystal</strong> • Harvest: <strong>${preset.harvestRateMultiplier}x</strong> • Reserves: <strong>${preset.asteroidReserveMultiplier}x</strong>
-          </div>
-          <div class="planet-card-meta">
-            Docks: <strong>${preset.cncMaxConcurrentDocks} C&C / ${preset.refineryMaxConcurrentDocks} Refinery</strong> • ${fogRule}
-          </div>
-          <div class="planet-card-meta" style="color: #7dd3fc;">
-            Victory: ${victoryRule}
-          </div>
-        </button>
-      `;
-    }).join('');
-
-    const slotRowsHtml = PLAYER_SLOT_IDS.map((slotId, index) => {
-      const peerSlotInfo = isJoinedP2P
-        ? roomState?.slots.find((s) => s.slotId === slotId)
-        : undefined;
-      const slotCfg: PlayerSlotConfig = peerSlotInfo
-        ? peerSlotInfo.kind === 'ai'
-          ? { kind: 'ai', difficulty: peerSlotInfo.aiDifficulty ?? 'standard' }
-          : { kind: peerSlotInfo.kind }
-        : this.draftSetup.slots[slotId];
-      const palette = FACTION_PALETTES[slotId];
-      const hexColor = `#${palette.tacticalHex.toString(16).padStart(6, '0')}`;
-      const standing = outcome.standings.find((s) => s.playerId === slotId);
-      const standingInfo = formatStandingBadge(standing);
-      const isLocalCommand = isJoinedP2P
-        ? roomState!.localPlayerId === slotId
-        : this.draftSetup.localPlayerId === slotId;
-      const localBadgeLabel = isJoinedP2P ? 'YOU (Remote)' : 'YOU';
-
-      const roleBtnsHtml = (['human', 'ai', 'empty'] as const)
-        .map((role) => {
-          const label =
-            role === 'human'
-              ? 'Human'
-              : role === 'ai'
-                ? 'AI Bot'
-                : 'Empty';
-          const active = slotCfg.kind === role;
-          return `
-            <button
-              type="button"
-              class="hud-btn ${active ? 'active' : ''}"
-              data-lobby-slot="${slotId}"
-              data-lobby-role="${role}"
-              ${disabledAttr}
-            >
-              ${label}
-            </button>
-          `;
-        })
-        .join('');
-
-      let detailHtml: string;
-      if (slotCfg.kind === 'ai') {
-        detailHtml = AI_DIFFICULTY_IDS.map((diffId) => {
-          const prof = AI_DIFFICULTY_PROFILES[diffId];
-          const active = slotCfg.difficulty === diffId;
-          return `
-            <button
-              type="button"
-              class="hud-btn ${active ? 'active' : ''}"
-              data-lobby-slot="${slotId}"
-              data-lobby-difficulty="${diffId}"
-              title="${prof.description}"
-              ${disabledAttr}
-            >
-              ${prof.displayName.replace(' AI', '')}
-            </button>
-          `;
-        }).join('');
-      } else if (slotCfg.kind === 'empty') {
-        detailHtml =
-          '<span style="font-size: 0.7rem; color: #94a3b8;">Unclaimed Starter Sector (10-Slot Homeworld Open for Colonization)</span>';
-      } else if (isHostingP2P && roomState) {
-        if (slotId === roomState.localPlayerId) {
-          detailHtml =
-            '<span style="font-size: 0.7rem; color: #86efac;">Host (Local Commander)</span>';
-        } else {
-          const assignedPeer = roomState.peers.find(
-            (p) => p.assignedSlotId === slotId,
-          );
-          const assignBtns = roomState.peers
-            .filter((p) => p.connected && p.assignedSlotId !== slotId)
-            .map(
-              (p) => `
-                <button
-                  type="button"
-                  class="hud-btn"
-                  data-p2p-assign-slot="${slotId}"
-                  data-p2p-peer-id="${p.peerId}"
-                >
-                  Assign ${p.label}
-                </button>
-              `,
-            )
-            .join('');
-          const assignedHtml = assignedPeer
-            ? `<span style="font-size: 0.7rem; color: #7dd3fc;">Remote Human: <strong>${assignedPeer.label}</strong></span>
-               <button type="button" class="hud-btn" data-p2p-unassign-slot="${slotId}">Unassign</button>`
-            : '<span style="font-size: 0.7rem; color: #94a3b8;">Remote Human • Open Remote Slot</span>';
-          detailHtml = `${assignedHtml}${assignBtns}`;
-        }
-      } else if (isJoinedP2P) {
-        const remoteLabel = peerSlotInfo?.peerId
-          ? `Remote Human (${peerSlotInfo.peerId})`
-          : slotId === roomState?.localPlayerId
-            ? 'Remote Human (You)'
-            : 'Host / Remote Commander';
-        detailHtml = `<span style="font-size: 0.7rem; color: #94a3b8;">${remoteLabel}</span>`;
-      } else {
-        detailHtml =
-          '<span style="font-size: 0.7rem; color: #94a3b8;">Local Commander Slot (Direct HUD & Fleet Control)</span>';
-      }
-
-      return `
-        <div class="lobby-slot-row" data-lobby-slot-row="${slotId}">
-          <div class="lobby-slot-header">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="lobby-faction-swatch" style="background: ${hexColor}; box-shadow: 0 0 8px ${hexColor};"></span>
-              <strong>${palette.label}</strong>
-              <span class="hud-badge">Starter System ${index + 1}</span>
-              ${isLocalCommand ? `<span class="hud-badge" style="background: rgba(34, 197, 94, 0.2); color: #86efac;">${localBadgeLabel}</span>` : ''}
-            </div>
-            <span class="lobby-standing-pill" data-lobby-standing="${slotId}" data-tone="${standingInfo.tone}">
-              ${standingInfo.text}
-            </span>
-          </div>
-          <div class="lobby-slot-controls">
-            <div class="hud-btn-row" role="group" aria-label="${palette.label} Slot Role">
-              ${roleBtnsHtml}
-            </div>
-            <div class="hud-btn-row" role="group" aria-label="${palette.label} AI Difficulty">
-              ${detailHtml}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
+    const slotRowsHtml = renderSlotRowsHtml({
+      draftSetup: this.draftSetup,
+      roomState,
+      disabled: isJoinedP2P,
+      standings: outcome.standings,
+    });
 
     const draftPreset = MATCH_PRESETS[activePresetId];
     const activeAIProfiles = PLAYER_SLOT_IDS.filter(
@@ -939,8 +706,8 @@ export class LobbyController {
       .querySelectorAll<HTMLButtonElement>('[data-lobby-preset]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const presetId = btn.dataset.lobbyPreset as MatchPresetId | undefined;
-          if (presetId) {
+          const presetId = btn.dataset.lobbyPreset;
+          if (isMatchPresetId(presetId)) {
             this.setDraftPreset(presetId);
           }
         });
@@ -950,13 +717,9 @@ export class LobbyController {
       .querySelectorAll<HTMLButtonElement>('[data-lobby-role]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const slotId = btn.dataset.lobbySlot as PlayerSlotId | undefined;
-          const role = btn.dataset.lobbyRole as
-            | 'human'
-            | 'ai'
-            | 'empty'
-            | undefined;
-          if (slotId && role) {
+          const slotId = btn.dataset.lobbySlot;
+          const role = btn.dataset.lobbyRole;
+          if (isPlayerSlotId(slotId) && isPlayerSlotRole(role)) {
             this.setDraftSlotRole(slotId, role);
           }
         });
@@ -966,11 +729,9 @@ export class LobbyController {
       .querySelectorAll<HTMLButtonElement>('[data-lobby-difficulty]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const slotId = btn.dataset.lobbySlot as PlayerSlotId | undefined;
-          const diff = btn.dataset.lobbyDifficulty as
-            | AIDifficultyId
-            | undefined;
-          if (slotId && diff) {
+          const slotId = btn.dataset.lobbySlot;
+          const diff = btn.dataset.lobbyDifficulty;
+          if (isPlayerSlotId(slotId) && isAIDifficultyId(diff)) {
             this.setDraftSlotDifficulty(slotId, diff);
           }
         });
@@ -1116,9 +877,9 @@ export class LobbyController {
       .querySelectorAll<HTMLButtonElement>('[data-p2p-assign-slot]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const slotId = btn.dataset.p2pAssignSlot as PlayerSlotId | undefined;
+          const slotId = btn.dataset.p2pAssignSlot;
           const peerId = btn.dataset.p2pPeerId;
-          if (slotId && peerId) {
+          if (isPlayerSlotId(slotId) && peerId) {
             this.assignPeerToSlot(peerId, slotId);
           }
         });
@@ -1128,8 +889,8 @@ export class LobbyController {
       .querySelectorAll<HTMLButtonElement>('[data-p2p-unassign-slot]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
-          const slotId = btn.dataset.p2pUnassignSlot as PlayerSlotId | undefined;
-          if (slotId) {
+          const slotId = btn.dataset.p2pUnassignSlot;
+          if (isPlayerSlotId(slotId)) {
             this.unassignPeerSlot(slotId);
           }
         });

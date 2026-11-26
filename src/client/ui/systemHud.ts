@@ -293,6 +293,7 @@ export interface SystemHudHandle {
 
 export interface MountSystemHudOptions {
   readonly onQuitToMainMenu?: () => void;
+  readonly isBattleSimulator?: boolean;
 }
 
 export function mountSystemHud(
@@ -312,11 +313,15 @@ export function mountSystemHud(
     playerId = simAdapter.localPlayerId;
   }
 
+  const isBattleSimulator = options?.isBattleSimulator === true;
   let selectedSlotIndex = 2;
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
   let selectedFleetStance: FleetStance = 'aggressive';
   let collapsedSections = createDefaultHudCollapsedState();
+  if (isBattleSimulator) {
+    collapsedSections = { ...collapsedSections, battle_sim: false };
+  }
   let lastWormholeClick: { readonly id: string; readonly atMs: number } | null = null;
   let lastWormholeTransitAtMs = 0;
   const battleSimFriendly: Record<CombatShipClassId, number> = {
@@ -1367,15 +1372,18 @@ export function mountSystemHud(
         }
       </div>
 
-      <div class="hud-section">
+      ${
+        isBattleSimulator
+          ? `<div class="hud-section" data-hud-section="battle_sim">
         ${renderSectionHeader(
           'battle_sim',
           `Fleet Battle Simulator — Isolated Void Arena${activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID ? ' (ACTIVE)' : ''}`,
           {
             legacyAction: 'toggle-battle-sim',
             titleLabel: 'Fleet Battle Simulator',
-            extraActionsHtml:
-              activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
+            extraActionsHtml: options?.onQuitToMainMenu
+              ? `<button class="hud-btn active" data-action="exit-battle-sim">Return to Main Menu</button>`
+              : activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
                 ? `<button class="hud-btn active" data-action="exit-battle-sim">Return to Match</button>`
                 : undefined,
           },
@@ -1481,7 +1489,9 @@ export function mountSystemHud(
                 `;
               })()
         }
-      </div>
+      </div>`
+          : ''
+      }
 
       ${
         activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
@@ -1880,6 +1890,10 @@ export function mountSystemHud(
     mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="exit-battle-sim"]')
       ?.addEventListener('click', () => {
+        if (options?.onQuitToMainMenu) {
+          options.onQuitToMainMenu();
+          return;
+        }
         sceneManager.loadSystem(sceneManager.getLastMatchSystemId());
         renderMainPanel();
       });
