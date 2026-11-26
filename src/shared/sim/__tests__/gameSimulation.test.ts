@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ORBITAL_STRUCTURES, normalizeMatchSetupConfig } from '../../config/index.ts';
+import {
+  CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS,
+  ORBITAL_STRUCTURES,
+  normalizeMatchSetupConfig,
+} from '../../config/index.ts';
 import {
   CENTRAL_HUB_ENRICHED_MINING_MULTIPLIER,
   CENTRAL_SUPER_EARTH_PLANET_ID,
@@ -2050,5 +2054,55 @@ describe('GameSimulation — Orbital Ring Builder, Economy & Harvesters', () => 
         structureId: cnc.id,
       }).ok,
     ).toBe(false);
+  });
+
+  it('auto-rebuilds 1 free emergency Harvester at C&C after 25s when player has 0 Harvesters and cannot afford one', () => {
+    const sim = new GameSimulation('standard_tactical');
+    const p1 = sim.getPlayerState('player_1');
+
+    // Destroy player 1's starting Harvester
+    const startHarvesters = sim
+      .getAllHarvesters()
+      .filter((h) => h.ownerId === 'player_1');
+    expect(startHarvesters).toHaveLength(1);
+    startHarvesters[0]!.hull = 0;
+
+    // Case 1: Player CAN afford a Harvester (500 Ore / 250 Crystal) -> timer stays 0, no free spawn
+    sim.stepTick(CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS + 5);
+    expect(p1.emergencyHarvesterTimerSeconds).toBe(0);
+    expect(
+      sim.getAllHarvesters().filter((h) => h.ownerId === 'player_1' && h.hull > 0),
+    ).toHaveLength(0);
+
+    // Case 2: Player drops below Harvester cost (90 Ore / 10 Crystal) -> timer counts up and spawns 1 free Harvester at 25s
+    p1.ore = 90;
+    p1.crystal = 10;
+    sim.stepTick(10);
+    expect(p1.emergencyHarvesterTimerSeconds).toBeCloseTo(10, 5);
+    expect(
+      sim.getAllHarvesters().filter((h) => h.ownerId === 'player_1' && h.hull > 0),
+    ).toHaveLength(0);
+
+    // Snapshot preserves emergencyHarvesterTimerSeconds
+    const snap = sim.buildStateSnapshot('player_1');
+    expect(snap.viewerEconomy.emergencyHarvesterTimerSeconds).toBeCloseTo(10, 5);
+
+    // Case 3: If player regains enough resources mid-countdown, timer resets to 0
+    p1.ore = 100;
+    p1.crystal = 20;
+    sim.stepTick(1);
+    expect(p1.emergencyHarvesterTimerSeconds).toBe(0);
+
+    // Drop resources again and let full 25s elapse -> spawns 1 free Harvester at C&C
+    p1.ore = 50;
+    p1.crystal = 0;
+    sim.stepTick(CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS);
+    expect(p1.emergencyHarvesterTimerSeconds).toBe(0);
+    const recovered = sim
+      .getAllHarvesters()
+      .filter((h) => h.ownerId === 'player_1' && h.hull > 0);
+    expect(recovered).toHaveLength(1);
+    expect(p1.ore).toBe(50);
+    expect(p1.crystal).toBe(0);
   });
 });

@@ -1,4 +1,5 @@
 import {
+  CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS,
   DEEP_SPACE_STRUCTURES,
   MATCH_PRESETS,
   ORBITAL_CANCEL_REFUND_RATE,
@@ -373,6 +374,7 @@ export interface PlayerEconomyState {
   supplyUsed: number;
   supplyCap: number;
   techModulesCompleted: number;
+  emergencyHarvesterTimerSeconds: number;
 }
 
 export interface CommandResult {
@@ -1513,6 +1515,9 @@ export class GameSimulation implements SimulationView {
       this.updateHarvester(harvester, deltaSeconds);
     }
 
+    // 3b. Free C&C emergency Harvester rebuild when a player has 0 Harvesters, 0 queued, and cannot afford one
+    this.updateEmergencyHarvesterRebuild(deltaSeconds);
+
     // 4. Auto-launch & tether Carrier / Logistics Hub Fighter wings
     this.updateCarrierAndHubFighters(deltaSeconds);
 
@@ -1623,6 +1628,69 @@ export class GameSimulation implements SimulationView {
     }
   }
 
+  private updateEmergencyHarvesterRebuild(deltaSeconds: number): void {
+    const harvesterCost = SHIP_CLASSES.harvester.cost;
+
+    for (const slotId of PLAYER_SLOT_IDS) {
+      const player = this.players.get(slotId);
+      if (!player) {
+        continue;
+      }
+      if (!this.isPlayerSlotActive(slotId) || this.defeatedPlayers.has(slotId)) {
+        player.emergencyHarvesterTimerSeconds = 0;
+        continue;
+      }
+
+      const canAffordHarvester =
+        player.ore >= harvesterCost.ore && player.crystal >= harvesterCost.crystal;
+      if (canAffordHarvester) {
+        player.emergencyHarvesterTimerSeconds = 0;
+        continue;
+      }
+
+      const hasLiveHarvester = this.harvesters.some(
+        (h) => h.ownerId === slotId && h.hull > 0,
+      );
+      if (hasLiveHarvester) {
+        player.emergencyHarvesterTimerSeconds = 0;
+        continue;
+      }
+
+      let cncPlanet: PlanetRuntimeState | null = null;
+      let cncStructure: OrbitalStructureInstance | null = null;
+      let hasQueuedHarvester = false;
+
+      for (const planetState of this.planets.values()) {
+        for (const s of planetState.structures) {
+          if (s.ownerId !== slotId || s.hull <= 0) {
+            continue;
+          }
+          if (s.productionQueue.some((q) => q.shipClassId === 'harvester')) {
+            hasQueuedHarvester = true;
+          }
+          if (s.structureId === 'command_and_control' && s.isComplete) {
+            cncPlanet = planetState;
+            cncStructure = s;
+          }
+        }
+      }
+
+      if (hasQueuedHarvester || !cncPlanet || !cncStructure) {
+        player.emergencyHarvesterTimerSeconds = 0;
+        continue;
+      }
+
+      player.emergencyHarvesterTimerSeconds += deltaSeconds;
+      if (
+        player.emergencyHarvesterTimerSeconds >=
+        CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS
+      ) {
+        player.emergencyHarvesterTimerSeconds = 0;
+        this.spawnHarvesterAtStructure(slotId, cncPlanet, cncStructure);
+      }
+    }
+  }
+
   private initializeSimulationState(): void {
     const preset = MATCH_PRESETS[this.presetId];
 
@@ -1635,6 +1703,7 @@ export class GameSimulation implements SimulationView {
         supplyUsed: 0,
         supplyCap: 0,
         techModulesCompleted: 0,
+        emergencyHarvesterTimerSeconds: 0,
       });
     }
 

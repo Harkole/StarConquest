@@ -182,7 +182,8 @@ function isPlayerEconomyState(value: unknown): value is PlayerEconomyState {
     isFiniteNumber(value.crystal) &&
     isFiniteNumber(value.supplyUsed) &&
     isFiniteNumber(value.supplyCap) &&
-    isFiniteNumber(value.techModulesCompleted)
+    isFiniteNumber(value.techModulesCompleted) &&
+    isFiniteNumber(value.emergencyHarvesterTimerSeconds)
   );
 }
 

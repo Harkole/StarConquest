@@ -7,6 +7,8 @@ export type CombatShipClassId =
   | 'carrier'
   | 'dreadnought';
 
+export const CNC_EMERGENCY_HARVESTER_REBUILD_SECONDS = 25;
+
 export type ShipClassId = CombatShipClassId | 'harvester';
 
 export interface ShipWeaponProfile {
