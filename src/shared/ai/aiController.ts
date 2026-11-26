@@ -809,8 +809,14 @@ export function evaluateAIBotCommands(
             }
           }
 
+          const holdDefensiveInTutorial =
+            snapshot.presetId === 'tutorial' &&
+            profile.id === 'cadet' &&
+            !isTutorialCadetProvoked(simulation, playerId, snapshot);
+
           if (
             canEmitMore() &&
+            !holdDefensiveInTutorial &&
             !fleetInCombat &&
             fleetShips.length >= 2 &&
             desiredFleetSupply > 0 &&
@@ -857,6 +863,36 @@ export function evaluateAIBotCommands(
   }
 
   return commands;
+}
+
+function isTutorialCadetProvoked(
+  simulation: GameSimulation,
+  playerId: PlayerSlotId,
+  snapshot: AIBotRuntimeSnapshot,
+): boolean {
+  if (snapshot.hostilesInHomeSystem > 0) {
+    return true;
+  }
+  for (const ship of simulation.getAllCombatShips()) {
+    if (ship.ownerId !== playerId || ship.hull <= 0) continue;
+    if (ship.inCombat || ship.hull < ship.maxHull) {
+      return true;
+    }
+  }
+  for (const h of simulation.getAllHarvesters()) {
+    if (h.ownerId !== playerId || h.hull <= 0) continue;
+    if (h.hull < h.maxHull) {
+      return true;
+    }
+  }
+  for (const planet of snapshot.ownedPlanets) {
+    for (const s of planet.structures) {
+      if (s.ownerId === playerId && s.hull < ORBITAL_STRUCTURES[s.structureId].maxHull) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function selectStrategicAttackTarget(

@@ -105,7 +105,7 @@ Do not alter these core mechanics without explicit user direction:
    * **Carriers**: Shielded + Armored mobile airbase. Launch/replenish **Fighters** anywhere to counter **Dreadnoughts**; vulnerable to **Destroyer** rushes and **Cruiser** PD screens.
    * **Dreadnoughts**: Heavy Shields + Massive Hull, very slow siege capitals. Crush **Cruisers**, **Destroyers**, **Logistics Hubs/Towers**, and **Planetary Bases (C&C)**; countered by **Fighters/Carriers** and **Hull Breaker Towers** (once shields are stripped).
 6. **Four Pre-Match Lobby Modes**:
-   * **Guided Tutorial** (10–15m, 1 Human vs. 1 `Cadet` AI + 2 Empty sectors, 7-step interactive HUD coach, open vision in occupied systems, Last C&C Standing).
+   * **Guided Tutorial** (10–15m, 1 Human vs. 1 `Cadet` AI + 2 Empty sectors, 8-step interactive HUD coach, defensive Cadet AI until provoked, open vision in occupied systems, Last C&C Standing).
    * **Blitz Skirmish** (15–30m, fast economy, open vision in occupied systems, Last C&C Standing).
    * **Standard Tactical** (20–40m, standard economy, sensor-range Fog of War, Last C&C Standing).
    * **Grand Conquest** (45m+, full economy, sensor-range Fog of War, Last C&C Standing OR Central Super-Earth King of the Hill timer).
