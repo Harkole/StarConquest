@@ -33,6 +33,7 @@ import {
   formatMatchClockSeconds,
 } from './lobbyController.ts';
 import { TutorialController } from './tutorialController.ts';
+import { buildOrbitalSlotPills } from './orbitalSlotDisplay.ts';
 import type { TutorialUiContext } from '../../shared/sim/tutorialSteps.ts';
 
 const BUILDABLE_STRUCTURE_IDS: readonly OrbitalStructureId[] = [
@@ -852,36 +853,38 @@ export function mountSystemHud(
       !selectedPlanetView || selectedPlanetView.visibility === 'unexplored';
     const selectedPlanetStructures = selectedPlanetView?.structures ?? [];
 
-    const slotButtonsHtml = Array.from({ length: totalSlots }, (_, idx) => {
-      const isSelectedSlot = idx === selectedSlotIndex;
-      if (isSelectedPlanetUnexplored) {
-        return `<button class="slot-pill free ${isSelectedSlot ? 'selected' : ''}" data-slot-index="${idx}">
-          Slot ${idx + 1}: Unexplored
-        </button>`;
-      }
-      const occupyingItem = selectedPlanetStructures.find((item) =>
-        getProjectedOrbitalData(item).occupiedSlots.includes(idx),
-      );
-      let label = `Slot ${idx + 1}: Empty`;
-      let stateClass = 'free';
-      if (occupyingItem) {
-        const s = getProjectedOrbitalData(occupyingItem);
-        const cfg = ORBITAL_STRUCTURES[s.structureId];
-        if (occupyingItem.kind === 'ghost') {
-          label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (Intel)`;
-          stateClass = s.isComplete ? 'occupied' : 'building';
-        } else {
-          const pct = s.isComplete
-            ? 'Ready'
-            : `${Math.floor((s.buildProgressSeconds / Math.max(1, s.totalBuildTimeSeconds)) * 100)}%`;
-          label = `S${idx + 1}: ${cfg.displayName.split(' ')[0]} (<span data-slot-pct="${idx}">${pct}</span>)`;
-          stateClass = s.isComplete ? 'occupied' : 'building';
-        }
-      }
-      return `<button class="slot-pill ${stateClass} ${isSelectedSlot ? 'selected' : ''}" data-slot-index="${idx}">
+    const slotPills = buildOrbitalSlotPills(
+      totalSlots,
+      isSelectedPlanetUnexplored,
+      selectedPlanetStructures.map((item) => {
+        const data = getProjectedOrbitalData(item);
+        return {
+          id: data.id,
+          kind: item.kind,
+          structureId: data.structureId,
+          occupiedSlots: data.occupiedSlots,
+          isComplete: data.isComplete,
+          buildProgressSeconds: item.kind === 'live' ? item.structure.buildProgressSeconds : 0,
+          totalBuildTimeSeconds: item.kind === 'live' ? item.structure.totalBuildTimeSeconds : 1,
+        };
+      }),
+      selectedSlotIndex,
+    );
+
+    const slotButtonsHtml = slotPills
+      .map((pill) => {
+        const label =
+          pill.structureName === null
+            ? `${pill.slotPrefix}: ${pill.statusText}`
+            : pill.isLiveStructure
+              ? `${pill.slotPrefix}: ${pill.structureName} (<span data-slot-pct="${pill.primarySlotIndex}">${pill.statusText}</span>)`
+              : `${pill.slotPrefix}: ${pill.structureName} (${pill.statusText})`;
+        const multiClass = pill.occupiedSlots.length > 1 ? ' multi-slot' : '';
+        return `<button class="slot-pill ${pill.stateClass}${multiClass} ${pill.isSelected ? 'selected' : ''}" data-slot-index="${pill.primarySlotIndex}" data-occupied-slots="${pill.occupiedSlots.join(',')}">
         ${label}
       </button>`;
-    }).join('');
+      })
+      .join('');
 
     const selectedItem = selectedPlanetStructures.find((item) =>
       getProjectedOrbitalData(item).occupiedSlots.includes(selectedSlotIndex),
