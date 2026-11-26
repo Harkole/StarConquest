@@ -726,9 +726,16 @@ export function mountSystemHud(
 
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
     const selectedPlanetState = sim.getPlanetState(selectedPlanetId);
-    const selectedSlotOccupied = selectedPlanetState.structures.some((s) =>
+    const selectedStruct = selectedPlanetState.structures.find((s) =>
       s.occupiedSlots.includes(selectedSlotIndex),
     );
+    const selectedSlotOccupied = selectedStruct !== undefined;
+    const selectedSlotCanQueueHarvester =
+      selectedStruct !== undefined &&
+      selectedStruct.isComplete &&
+      selectedStruct.ownerId === playerId &&
+      (selectedStruct.structureId === 'refinery' ||
+        selectedStruct.structureId === 'command_and_control');
 
     const homePlanetState = sim.getPlanetState(homePlanetId);
     let firstEmptySlotIndex: number | null = null;
@@ -744,6 +751,7 @@ export function mountSystemHud(
       homeSystemId,
       selectedPlanetId,
       selectedSlotOccupied,
+      selectedSlotCanQueueHarvester,
       firstEmptySlotIndex,
       isOrbitalRingCollapsed: collapsedSections.orbital_ring,
       isFleetPanelOpen: !collapsedSections.fleet,

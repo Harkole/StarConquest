@@ -183,10 +183,10 @@ flowchart LR
 Through the in-game **Match Lobby** drawer (`src/client/ui/lobbyController.ts`, opened via `[data-action="toggle-lobby"]` in the top HUD bar), or directly via the top HUD **Tutorial** quick-launch button (`[data-action="start-tutorial"]`), players can configure and launch a match across four presets defined in `src/shared/config/presets.ts`, assign any of the 4 player slots to **Human**, **AI Bot** (`Cadet`, `Standard`, or `Admiral` profiles in `src/shared/config/aiProfiles.ts`), or **Empty Sector** (whose starter system and wormhole remain open with an unclaimed 10-slot Large Homeworld colonizable via a 1-slot `Planetary Outpost`), and track live victory telemetry:
 
 1. **Guided Tutorial (10–15 Minutes)**
-   * **Setup**: 1 Human (`player_1`) vs. 1 `Cadet` AI (`player_2`) with 2 Empty Sectors (`player_3`, `player_4`).
+   * **Setup**: 1 Human (`player_1`) vs. 1 `Cadet` AI (`player_2`) with 2 Empty Sectors (`player_3`, `player_4`). The `Cadet` AI stays defensive in its home system until the player attacks or invades.
    * **Economy**: Accelerated starter resources (`900` Ore / `450` Crystal), `1.5x` harvesting rate, `1.0x` asteroid reserves, and expanded concurrent Harvester docking (`2` C&C / `3` Refinery).
    * **Visibility**: Open System Visibility (`open_occupied_systems`).
-   * **Interactive Coach (`src/client/ui/tutorialController.ts` & `src/shared/sim/tutorialSteps.ts`)**: Walks new commanders through 7 interactive steps with live HUD target highlighting (`Build an Orbital Refinery`, `Build an Orbital Dockyard`, `Create a Fleet & Queue Destroyers`, `Unlock & Queue Cruisers`, `Assemble Your Battle Fleet`, `Cross the Wormhole`, and `Destroy the Cadet AI Base`).
+   * **Interactive Coach (`src/client/ui/tutorialController.ts` & `src/shared/sim/tutorialSteps.ts`)**: Walks new commanders through 8 interactive steps with live HUD target highlighting (`Build an Orbital Refinery`, `Scale Harvesters & Economy`, `Build an Orbital Dockyard`, `Create a Fleet & Queue Destroyers`, `Unlock & Queue Cruisers`, `Assemble Your Battle Fleet`, `Cross the Wormhole`, and `Destroy the Cadet AI Base`).
    * **Victory Condition**: **Last Command & Control Standing**.
 2. **Blitz Skirmish (15–30 Minutes)**
    * **Economy**: Higher starting resources (`800` Ore / `400` Crystal), `1.6x` accelerated harvesting and platform unload rate, and expanded concurrent Harvester docking (`2` C&C / `4` Refinery).
@@ -330,7 +330,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
     * *Signaling / Master Server (for cross-network `SC-XXXX` room codes)*: Open **inbound `TCP 443`** (`wss://` WebSocket over TLS, or a custom port such as `8080`) on the signaling server only; players connect outbound with zero router changes.
     * *Optional TURN Relay (for Symmetric NAT / strict corporate firewalls)*: Open **inbound `UDP/TCP 3478`**, **`TCP 5349` / `443`** (TURNS), and **`UDP 49152–65535`** on the TURN server.
   * **Lobby "Creating Room" Help & Troubleshooting Needed**: The Pre-Match Lobby (`src/client/ui/lobbyController.ts`) needs clearer inline help when hosting a room so players understand how to connect (same-machine `SC-XXXX` vs. two-way Manual Invite → Answer token exchange) and common checks (disable VPNs/strict UDP blockers, verify both Invite and Answer tokens are applied, and check Symmetric NAT / firewall rules).
-* **Guided Tutorial AI Aggression & Economy Onboarding**: The `Cadet` AI should not attack the player during the early Guided Tutorial steps while the player is still getting started, and the tutorial needs to clearly explain the importance of Harvesters and the Ore-heavy / Crystal-scarce economy balance.
 * **Low-Contrast Tutorial UI Highlights**: The blue `.tutorial-highlight` pulse blends into the blue HUD background and is not distinct enough for players to follow easily (needs higher-contrast gold/amber or bright accent styling).
 
 ### Planned Feature Execution Order
