@@ -330,7 +330,6 @@ All balance numbers live in `src/shared/config/` for rapid tuning and headless t
     * *Signaling / Master Server (for cross-network `SC-XXXX` room codes)*: Open **inbound `TCP 443`** (`wss://` WebSocket over TLS, or a custom port such as `8080`) on the signaling server only; players connect outbound with zero router changes.
     * *Optional TURN Relay (for Symmetric NAT / strict corporate firewalls)*: Open **inbound `UDP/TCP 3478`**, **`TCP 5349` / `443`** (TURNS), and **`UDP 49152–65535`** on the TURN server.
   * **Lobby "Creating Room" Help & Troubleshooting Needed**: The Pre-Match Lobby (`src/client/ui/lobbyController.ts`) needs clearer inline help when hosting a room so players understand how to connect (same-machine `SC-XXXX` vs. two-way Manual Invite → Answer token exchange) and common checks (disable VPNs/strict UDP blockers, verify both Invite and Answer tokens are applied, and check Symmetric NAT / firewall rules).
-* **Low-Contrast Tutorial UI Highlights**: The blue `.tutorial-highlight` pulse blends into the blue HUD background and is not distinct enough for players to follow easily (needs higher-contrast gold/amber or bright accent styling).
 
 ### Planned Feature Execution Order
 1. **In-Game Codex / Wiki & Interactive 3D Model Viewer (`feature/ingame-codex-wiki`)**
