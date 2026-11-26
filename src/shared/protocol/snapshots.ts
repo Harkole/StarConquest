@@ -358,6 +358,9 @@ function isGameCommand(value: unknown): value is GameCommand {
         typeof value.structureId === 'string' &&
         value.structureId in ORBITAL_STRUCTURES
       );
+    case 'CANCEL_ORBITAL_STRUCTURE':
+    case 'DECOMMISSION_ORBITAL_STRUCTURE':
+      return isNonEmptyString(value.structureId);
     case 'BUILD_DEEP_SPACE_STRUCTURE':
       return (
         isNonEmptyString(value.systemId) &&
