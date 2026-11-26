@@ -7,6 +7,7 @@ This file defines the architectural, visual, and gameplay invariants for **StarC
 * **[README.md](./README.md) is the canonical blueprint and single source of truth** for the entire game, and **[docs/artstyle.md](./docs/artstyle.md) is the canonical 3D art style and model construction guide** for all ships and orbital platforms.
 * **Always Reference `README.md` & `docs/artstyle.md` First**: Before designing, implementing, or modifying any game system, UI, shader, 3D model, or network layer, the agent **must** read [README.md](./README.md) (and [docs/artstyle.md](./docs/artstyle.md) when working on 3D ship or platform models) to verify alignment with the blueprint.
 * **Always Keep `README.md` & All Affected `.md` Files Up to Date**: Whenever any code change, feature implementation, design choice, balance adjustment, build option, or architectural change is made, the agent **must** check and update [README.md](./README.md) and **all other affected `.md` files** (including [docs/artstyle.md](./docs/artstyle.md), [docs/sounds.md](./docs/sounds.md), and verification feature docs under [.agents/skills/verify-starconquest/features/](./.agents/skills/verify-starconquest/features/README.md)) at the same time so every source-of-truth document stays accurate and never drifts out of sync with the codebase.
+* **Prune Completed Section 12 Items**: When a bug or planned feature in [README.md](./README.md) Section 12 is completed, **remove** it from Section 12 instead of marking it `— Implemented` (and remove any stale `— Implemented` items encountered) so documentation stays concise and current.
 
 ---
 
@@ -119,6 +120,7 @@ Every agent must strictly follow this source-control workflow when making code c
 1. **Dedicated Branch per Feature, Bug, or Task**:
    * Never commit new feature, bugfix, or task work directly to `main` / `master`.
    * Before starting work on any new item, create and switch to a dedicated, single-purpose branch so commits stay focused and contextual.
+   * **One Branch at a Time into `main`**: Work and merge **one branch/PR into `main` at a time** (merge the PR and pull `main` before cutting the next branch) to avoid merge conflicts in shared files (`README.md`, `package.json`, `systemHud.ts`). If the user queues multiple tasks in a single session, remind them of this rule before creating parallel branches.
    * **Branch Naming Convention**: Use a clear category prefix followed by a descriptive kebab-case name:
      * `feature/<name>` — New gameplay systems, shaders, UI views, or AI capabilities (e.g., `feature/earth-cloud-shaders`, `feature/orbital-ring-builder`).
      * `fix/<name>` — Bug fixes and regressions (e.g., `fix/fighter-shield-damage`, `fix/wormhole-transit`).
@@ -137,3 +139,4 @@ Every agent must strictly follow this source-control workflow when making code c
    * Once the user agrees a branch is complete (prior to final push/PR), bump `"version"` in `package.json`:
      * **Feature branches (`feature/*`)**: Increment the **minor** version upon agreeing no further work will be completed in the branch. This minor version is always incremented by 1 from it's current value, (`0.(X+1).0`) with no cap or reset. Each **minor** version change always resets the **patch** value to `0`
      * **Bug fixes & chores (`fix/*`, `task/*`)**: Increment the **patch** version (`0.X.Y` → `0.X.(Y+1)`), which resets to `0` on the next major feature branch.
+     * **Concurrent PRs**: If multiple PR branches are ever open against `main` at the same time, assign each branch a unique sequential version (`0.X.(Y+1)`, `0.X.(Y+2)`, …) rather than reusing the same version number across branches.
