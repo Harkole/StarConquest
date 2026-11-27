@@ -30,6 +30,12 @@ import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
 import {
+  renderDeepSpaceInspectorHtml,
+  renderEmptySelectionHintHtml,
+  renderFleetInspectorHtml,
+  resolveHudSelectionState,
+} from './contextualInspectorView.ts';
+import {
   buildLeftOutlinerModel,
   renderLeftOutlinerHtml,
 } from './leftOutlinerView.ts';
@@ -51,12 +57,6 @@ const BUILDABLE_DEEP_SPACE_IDS: readonly DeepSpaceStructureId[] = [
   'logistics_hub',
   'point_defence_tower',
   'hull_breaker_tower',
-];
-
-const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label: string }[] = [
-  { id: 'aggressive', label: 'Aggressive' },
-  { id: 'hold_the_line', label: 'Hold the Line' },
-  { id: 'passive', label: 'Passive' },
 ];
 
 export type HudSectionId = 'battle_sim' | 'orbital_ring';
@@ -92,9 +92,11 @@ export function isHudSectionId(value: string | undefined): value is HudSectionId
 export interface MainPanelSignatureParams {
   readonly playerId?: PlayerSlotId;
   readonly activeSystemId: string;
-  readonly selectedPlanetId: string;
+  readonly selectedPlanetId: string | null;
   readonly selectedSlotIndex: number;
   readonly selectedHarvesterId: string | null;
+  readonly selectedFleetId?: string | null;
+  readonly selectedDeepSpaceId?: string | null;
   readonly pendingDeepSpace: DeepSpaceStructureId | null;
   readonly statusBannerMessage: string;
   readonly wormholeStates: readonly { readonly id: string; readonly isOpen: boolean }[];
@@ -162,9 +164,9 @@ export function computeMainPanelSignature(
     })
     .join(',');
 
-  const selectedPlanetView = systemView.planets.find(
-    (p) => p.planet.id === params.selectedPlanetId,
-  );
+  const selectedPlanetView = params.selectedPlanetId
+    ? systemView.planets.find((p) => p.planet.id === params.selectedPlanetId)
+    : undefined;
   const selectedStructures = selectedPlanetView?.structures ?? [];
   const structSig = selectedStructures
     .map((item) => {
@@ -229,9 +231,11 @@ export function computeMainPanelSignature(
   return [
     viewerId,
     params.activeSystemId,
-    params.selectedPlanetId,
+    params.selectedPlanetId ?? 'none',
     params.selectedSlotIndex,
     params.selectedHarvesterId ?? 'none',
+    params.selectedFleetId ?? 'none',
+    params.selectedDeepSpaceId ?? 'none',
     params.pendingDeepSpace ?? 'none',
     params.statusBannerMessage,
     planetSummarySig,
@@ -714,8 +718,10 @@ export function mountSystemHud(
     }
 
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
-    const selectedPlanetState = sim.getPlanetState(selectedPlanetId);
-    const selectedStruct = selectedPlanetState.structures.find((s) =>
+    const selectedPlanetState = selectedPlanetId
+      ? sim.getPlanetState(selectedPlanetId)
+      : undefined;
+    const selectedStruct = selectedPlanetState?.structures.find((s) =>
       s.occupiedSlots.includes(selectedSlotIndex),
     );
     const selectedSlotOccupied = selectedStruct !== undefined;
@@ -738,7 +744,7 @@ export function mountSystemHud(
     return {
       homePlanetId,
       homeSystemId,
-      selectedPlanetId,
+      selectedPlanetId: selectedPlanetId ?? '',
       selectedSlotOccupied,
       selectedSlotCanQueueHarvester,
       firstEmptySlotIndex,
@@ -757,6 +763,8 @@ export function mountSystemHud(
       selectedPlanetId: sceneManager.getSelectedPlanetId(),
       selectedSlotIndex,
       selectedHarvesterId: sceneManager.getSelectedHarvesterId(),
+      selectedFleetId: sceneManager.getSelectedFleetId(),
+      selectedDeepSpaceId: sceneManager.getSelectedDeepSpaceId?.() ?? null,
       pendingDeepSpace: sceneManager.getPendingDeepSpacePlacement(),
       statusBannerMessage,
       wormholeStates: sceneManager.getActiveWormholes().map((wh) => ({
@@ -771,22 +779,34 @@ export function mountSystemHud(
     const activeSystem = sceneManager.getActiveSystem();
     const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
-    const selectedPlanetView = systemView.planets.find(
-      (p) => p.planet.id === selectedPlanetId,
-    );
-    const selectedPlanetNode =
-      selectedPlanetView?.planet ??
-      activeSystem.planets[0] ??
-      sim.getPlanetState(selectedPlanetId).planet;
-    const totalSlots = selectedPlanetNode.orbitalSlots;
+    const selectedFleetId = sceneManager.getSelectedFleetId();
+    const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
+    const selectedDeepSpaceId = sceneManager.getSelectedDeepSpaceId?.() ?? null;
+    const selection = resolveHudSelectionState({
+      selectedFleetId,
+      selectedHarvesterId,
+      selectedDeepSpaceId,
+      selectedPlanetId,
+    });
 
-    if (selectedSlotIndex >= totalSlots) {
+    const selectedPlanetView =
+      selection.kind === 'planet'
+        ? systemView.planets.find((p) => p.planet.id === selection.planetId)
+        : undefined;
+    const selectedPlanetNode =
+      selection.kind === 'planet'
+        ? (selectedPlanetView?.planet ??
+          activeSystem.planets.find((p) => p.id === selection.planetId) ??
+          sim.getPlanetState(selection.planetId).planet)
+        : null;
+    const totalSlots = selectedPlanetNode?.orbitalSlots ?? 0;
+
+    if (totalSlots > 0 && selectedSlotIndex >= totalSlots) {
       selectedSlotIndex = 0;
     }
 
     lastMainPanelSignature = getCurrentMainPanelSignature();
 
-    const selectedFleetId = sceneManager.getSelectedFleetId();
     const pendingOrderGlobal = sceneManager.getPendingFleetOrder();
 
     regions.leftOutliner.innerHTML = renderLeftOutlinerHtml(
@@ -796,7 +816,7 @@ export function mountSystemHud(
         activeSystem,
         selectedPlanetId,
         selectedFleetId,
-        selectedHarvesterId: sceneManager.getSelectedHarvesterId(),
+        selectedHarvesterId,
         wormholeStates: sceneManager.getActiveWormholes().map((wh) => ({
           id: wh.wormholeId,
           destinationSystemId: wh.destinationSystemId,
@@ -1084,81 +1104,6 @@ export function mountSystemHud(
 
     const playerFleets = sim.getFleetsForPlayer(playerId);
 
-    const selectedFleet = selectedFleetId
-      ? playerFleets.find((f) => f.id === selectedFleetId)
-      : undefined;
-    let selectedFleetDetailHtml = '';
-    if (selectedFleet) {
-      const fleetShips = sim.getShipsInFleet(selectedFleet.id);
-      const isFleetPatrolPending =
-        pendingOrderGlobal?.mode === 'fleet_patrol' &&
-        pendingOrderGlobal.fleetId === selectedFleet.id;
-      const otherFleets = playerFleets.filter((f) => f.id !== selectedFleet.id);
-      const techCount = sim.getPlayerTechModuleCount(playerId);
-
-      const templateRowsHtml = SMALLEST_FIRST_FLEET_HULLS.map((hull) => {
-        const sCfg = SHIP_CLASSES[hull];
-        const live = fleetShips.filter((s) => s.shipClassId === hull).length;
-        const desired = selectedFleet.desiredCounts[hull];
-        const techLock =
-          techCount < sCfg.requiredTechModuleCount
-            ? ` (Req ${sCfg.requiredTechModuleCount} Tech)`
-            : '';
-        return `<div style="display: inline-flex; align-items: center; gap: 4px; margin-right: 10px;">
-          <span class="econ-label">${sCfg.displayName}${techLock}: <strong>${live}/${desired}</strong></span>
-          <button class="hud-btn" data-fleet-dec="${hull}" data-fleet-id="${selectedFleet.id}" ${desired <= 0 ? 'disabled' : ''}>−</button>
-          <button class="hud-btn" data-fleet-inc="${hull}" data-fleet-id="${selectedFleet.id}">+</button>
-        </div>`;
-      }).join('');
-
-      const fleetStanceBtns = FLEET_STANCE_OPTIONS.map(
-        (opt) =>
-          `<button class="hud-btn ${selectedFleet.stance === opt.id ? 'active' : ''}" data-fleet-stance="${opt.id}" data-fleet-id="${selectedFleet.id}">${opt.label}</button>`,
-      ).join('');
-
-      const mergeBtns = otherFleets
-        .map(
-          (other) =>
-            `<button class="hud-btn" data-fleet-merge-src="${selectedFleet.id}" data-fleet-merge-dst="${other.id}">Merge → ${other.name}</button>`,
-        )
-        .join('');
-
-      selectedFleetDetailHtml = `
-        <div class="slot-detail-box" style="flex-direction: column; align-items: stretch; margin-top: 6px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div>
-              <strong>${selectedFleet.name}</strong> — ${fleetShips.length} ships • Right-click space to Move • Right-click hostile to Attack
-            </div>
-            <div class="hud-btn-row">
-              <button class="hud-btn" data-fleet-focus="${selectedFleet.id}" title="Jump camera to ${selectedFleet.name}">
-                Focus
-              </button>
-              <button class="hud-btn ${selectedFleet.autoResupply ? 'active' : ''}" data-fleet-resupply="${selectedFleet.id}">
-                Resupply: ${selectedFleet.autoResupply ? 'ON ↻' : 'OFF'}
-              </button>
-              <button class="hud-btn ${isFleetPatrolPending ? 'active' : ''}" data-fleet-patrol="${selectedFleet.id}">
-                ${isFleetPatrolPending ? `Patrol Wp #${(pendingOrderGlobal?.waypointCount ?? 0) + 1}/2...` : 'Patrol Route (2 Clicks)'}
-              </button>
-              <button class="hud-btn ${selectedFleet.orderType === 'flee' ? 'active' : ''}" data-fleet-flee="${selectedFleet.id}" title="Flee at full speed to the nearest Logistics Hub, Planetary Outpost, or C&C">
-                Flee
-              </button>
-              <button class="hud-btn" data-fleet-split="${selectedFleet.id}" ${fleetShips.length < 2 ? 'disabled' : ''}>Split</button>
-              ${mergeBtns}
-              <button class="hud-btn" data-fleet-disband="${selectedFleet.id}">Disband</button>
-            </div>
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">TEMPLATE (SMALLEST FIRST):</span>
-            ${templateRowsHtml}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">STANCE:</span>
-            ${fleetStanceBtns}
-          </div>
-        </div>
-      `;
-    }
-
     function renderSectionHeader(
       sectionId: HudSectionId,
       labelHtml: string,
@@ -1185,9 +1130,83 @@ export function mountSystemHud(
       </div>`;
     }
 
-    mainBodyEl.innerHTML = `
-      ${selectedFleetDetailHtml}
+    let contextualHtml = '';
+    let isEmptySelectionState = false;
+    if (activeSystem.id !== BATTLE_SIMULATOR_SYSTEM_ID) {
+      switch (selection.kind) {
+        case 'fleet': {
+          const selectedFleet = playerFleets.find((f) => f.id === selection.fleetId);
+          if (selectedFleet) {
+            contextualHtml = renderFleetInspectorHtml({
+              sim,
+              playerId,
+              fleet: selectedFleet,
+              allPlayerFleets: playerFleets,
+              pendingFleetOrder: pendingOrderGlobal,
+            });
+          } else {
+            contextualHtml = renderEmptySelectionHintHtml();
+            isEmptySelectionState = true;
+          }
+          break;
+        }
+        case 'planet': {
+          if (selectedPlanetNode) {
+            contextualHtml = `<div class="hud-section" data-inspector-kind="planet">
+              ${renderSectionHeader(
+                'orbital_ring',
+                `Orbital Ring Builder — <strong>${selectedPlanetNode.name}</strong> (${totalSlots} Slots)`,
+                { titleLabel: 'Orbital Ring Builder panel' },
+              )}
+              ${
+                collapsedSections.orbital_ring
+                  ? ''
+                  : `<div class="slot-ring-grid">${slotButtonsHtml}</div>
+              <div class="build-options-grid">${slotActionsHtml}</div>`
+              }
+            </div>`;
+          } else {
+            contextualHtml = renderEmptySelectionHintHtml();
+            isEmptySelectionState = true;
+          }
+          break;
+        }
+        case 'harvester': {
+          contextualHtml = '';
+          break;
+        }
+        case 'deep_space': {
+          const dsItem = systemView.deepSpaceStructures.find(
+            (item) =>
+              (item.kind === 'live' ? item.structure.id : item.id) ===
+              selection.structureId,
+          );
+          if (dsItem) {
+            contextualHtml = renderDeepSpaceInspectorHtml(
+              dsItem,
+              sim.elapsedSeconds,
+              formatIntelAge,
+            );
+          } else {
+            contextualHtml = renderEmptySelectionHintHtml();
+            isEmptySelectionState = true;
+          }
+          break;
+        }
+        case 'none': {
+          contextualHtml = renderEmptySelectionHintHtml();
+          isEmptySelectionState = true;
+          break;
+        }
+      }
+    }
 
+    regions.bottomInspector.classList.toggle(
+      'is-empty',
+      !isBattleSimulator && isEmptySelectionState && statusBannerMessage === '',
+    );
+
+    mainBodyEl.innerHTML = `
       ${
         isBattleSimulator
           ? `<div class="hud-section" data-hud-section="battle_sim">
@@ -1309,35 +1328,9 @@ export function mountSystemHud(
           : ''
       }
 
-      ${
-        activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
-          ? ''
-          : `<div class="hud-section">
-        ${renderSectionHeader(
-          'orbital_ring',
-          `Orbital Ring Builder — <strong>${selectedPlanetNode.name}</strong> (${totalSlots} Slots)`,
-          { titleLabel: 'Orbital Ring Builder panel' },
-        )}
-        ${
-          collapsedSections.orbital_ring
-            ? ''
-            : `<div class="slot-ring-grid">${slotButtonsHtml}</div>
-        <div class="build-options-grid">${slotActionsHtml}</div>`
-        }
-      </div>`
-      }
+      ${contextualHtml}
 
       ${statusBannerMessage ? `<div class="hud-status-msg">${statusBannerMessage}</div>` : ''}
-
-      <div class="hud-controls-hint">
-        <span><strong>Click Harvester/Planet:</strong> Inspect & Follow</span>
-        <span><strong>Double-Click Wormhole:</strong> Transit Camera</span>
-        <span><strong>Right-Click Space / Hostile (Fleet):</strong> Move / Attack</span>
-        <span><strong>Right-Click Wormhole (Fleet):</strong> Transit Fleet</span>
-        <span><strong>Left-Drag / WASD:</strong> Pan (Breaks Follow)</span>
-        <span><strong>Right-Drag:</strong> Orbit</span>
-        <span><strong>Scroll:</strong> Zoom</span>
-      </div>
     `;
 
     regions.leftOutliner
@@ -1452,7 +1445,7 @@ export function mountSystemHud(
       .forEach((btn) => {
         btn.addEventListener('click', () => {
           const structId = btn.dataset.buildStruct as OrbitalStructureId | undefined;
-          if (!structId) {
+          if (!structId || !selectedPlanetId) {
             return;
           }
           const res = simAdapter.submitPlayerCommand({
@@ -1474,7 +1467,10 @@ export function mountSystemHud(
       .querySelector<HTMLButtonElement>('[data-action="spawn-harvester"]')
       ?.addEventListener('click', (e) => {
         const structId =
-          (e.currentTarget as HTMLButtonElement).dataset.structId ?? selectedPlanetId;
+          (e.currentTarget as HTMLButtonElement).dataset.structId ?? selectedPlanetId ?? '';
+        if (!structId) {
+          return;
+        }
         const res = simAdapter.submitPlayerCommand({
           type: 'QUEUE_SHIP',
           playerId,
@@ -1897,6 +1893,26 @@ export function mountSystemHud(
         });
       });
 
+    mainBodyEl
+      .querySelector<HTMLButtonElement>('[data-action="clear-selection"]')
+      ?.addEventListener('click', () => {
+        sceneManager.clearSelection?.();
+        renderHarvesterInspector();
+        renderMainPanel();
+      });
+
+    mainBodyEl
+      .querySelectorAll<HTMLButtonElement>('[data-focus-deepspace]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dsId = btn.dataset.focusDeepspace;
+          if (dsId) {
+            sceneManager.focusDeepSpaceStructure(dsId);
+            renderMainPanel();
+          }
+        });
+      });
+
     tutorialController.applyCurrentHighlight(
       sim,
       playerId,
@@ -1924,9 +1940,10 @@ export function mountSystemHud(
     syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
     const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
-    const selectedPlanetView = systemView.planets.find(
-      (p) => p.planet.id === sceneManager.getSelectedPlanetId(),
-    );
+    const currentSelectedPlanetId = sceneManager.getSelectedPlanetId();
+    const selectedPlanetView = currentSelectedPlanetId
+      ? systemView.planets.find((p) => p.planet.id === currentSelectedPlanetId)
+      : undefined;
 
     // 1. System resource reserves
     const sysRes = systemView.resourceSummary;
@@ -2070,6 +2087,35 @@ export function mountSystemHud(
             const pct = Math.round((h.cargoAmount / Math.max(1, h.cargoCapacity)) * 100);
             badgeEl.textContent = `${h.cargoType.toUpperCase()} ${pct}%`;
           }
+        }
+      }
+    }
+
+    const currentDeepSpaceId = sceneManager.getSelectedDeepSpaceId?.() ?? null;
+    if (currentDeepSpaceId) {
+      const dsItem = systemView.deepSpaceStructures.find(
+        (item) =>
+          (item.kind === 'live' ? item.structure.id : item.id) === currentDeepSpaceId,
+      );
+      if (dsItem) {
+        const ds = dsItem.kind === 'live' ? dsItem.structure : dsItem;
+        const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
+        const dsStatusEl = mainBodyEl.querySelector<HTMLElement>(
+          '[data-hud-field="deepspace-status"]',
+        );
+        if (dsStatusEl) {
+          dsStatusEl.textContent =
+            dsItem.kind === 'ghost'
+              ? `Last Known (${formatIntelAge(sim.elapsedSeconds - dsItem.observedAtSeconds)})`
+              : dsItem.structure.isComplete
+                ? 'Operational'
+                : `Constructing (${Math.floor((dsItem.structure.buildProgressSeconds / Math.max(1, dsItem.structure.totalBuildTimeSeconds)) * 100)}%)`;
+        }
+        const dsHpEl = mainBodyEl.querySelector<HTMLElement>(
+          '[data-hud-field="deepspace-hp"]',
+        );
+        if (dsHpEl) {
+          dsHpEl.textContent = `Shields: ${Math.round(ds.shields)}/${cfg.maxShields} • Hull: ${Math.round(ds.hull)}/${cfg.maxHull}`;
         }
       }
     }

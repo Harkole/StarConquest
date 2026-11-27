@@ -428,16 +428,33 @@ describe('systemHud — battle simulator section visibility', () => {
   function createFakeSceneManager(adapter: LocalSimAdapter): SystemSceneManager {
     const activeSystem = adapter.simulation.galaxy.systems[0]!;
     let pendingDeepSpace: string | null = null;
+    let selectedPlanetId: string | null = activeSystem.planets[0]?.id ?? null;
+    let selectedFleetId: string | null = null;
+    let selectedHarvesterId: string | null = null;
+    let selectedDeepSpaceId: string | null = null;
     const selectionCallbacks: Array<() => void> = [];
+    const notify = (): void => {
+      for (const cb of selectionCallbacks) {
+        cb();
+      }
+    };
     return {
       simAdapter: adapter,
       getActiveSystem: () => activeSystem,
-      getSelectedPlanetId: () => activeSystem.planets[0]?.id ?? null,
-      getSelectedHarvesterId: () => null,
-      getSelectedFleetId: () => null,
+      getSelectedPlanetId: () => selectedPlanetId,
+      getSelectedHarvesterId: () => selectedHarvesterId,
+      getSelectedFleetId: () => selectedFleetId,
+      getSelectedDeepSpaceId: () => selectedDeepSpaceId,
       getPendingDeepSpacePlacement: () => pendingDeepSpace,
       startDeepSpacePlacement: (dsId: string | null) => {
         pendingDeepSpace = dsId;
+      },
+      clearSelection: () => {
+        selectedPlanetId = null;
+        selectedFleetId = null;
+        selectedHarvesterId = null;
+        selectedDeepSpaceId = null;
+        notify();
       },
       getPendingFleetOrder: () => null,
       getPendingRallyDockyardId: () => null,
@@ -447,19 +464,64 @@ describe('systemHud — battle simulator section visibility', () => {
         selectionCallbacks.push(cb);
       },
       triggerSelectionChange: () => {
-        for (const cb of selectionCallbacks) {
-          cb();
-        }
+        notify();
       },
       onDeepSpacePlacementResult: () => {},
       loadSystem: () => {},
-      focusPlanet: () => {},
-      selectHarvester: () => {},
-      selectFleet: () => {},
-      focusFleet: () => {},
+      focusPlanet: (planetId: string) => {
+        selectedPlanetId = planetId;
+        selectedFleetId = null;
+        selectedHarvesterId = null;
+        selectedDeepSpaceId = null;
+        notify();
+      },
+      selectHarvester: (hId: string | null) => {
+        selectedHarvesterId = hId;
+        if (hId) {
+          selectedPlanetId = null;
+          selectedFleetId = null;
+          selectedDeepSpaceId = null;
+        }
+        notify();
+      },
+      selectAndPinHarvester: (hId: string | null) => {
+        selectedHarvesterId = hId;
+        if (hId) {
+          selectedPlanetId = null;
+          selectedFleetId = null;
+          selectedDeepSpaceId = null;
+        }
+        notify();
+      },
+      selectFleet: (fId: string | null) => {
+        selectedFleetId = fId;
+        if (fId) {
+          selectedPlanetId = null;
+          selectedHarvesterId = null;
+          selectedDeepSpaceId = null;
+        }
+        notify();
+      },
+      focusFleet: (fId: string) => {
+        selectedFleetId = fId;
+        selectedPlanetId = null;
+        selectedHarvesterId = null;
+        selectedDeepSpaceId = null;
+        notify();
+      },
+      focusDeepSpaceStructure: (dsId: string) => {
+        selectedDeepSpaceId = dsId;
+        selectedPlanetId = null;
+        selectedFleetId = null;
+        selectedHarvesterId = null;
+        notify();
+      },
       focusWorldPoint: () => {},
       focusWormhole: () => {},
       enterSystemOverview: () => {},
+      cameraController: {
+        isPinned: () => false,
+      },
       resetMatch: (presetOrSetup: Parameters<LocalSimAdapter['resetMatch']>[0]) =>
         adapter.resetMatch(presetOrSetup),
     } as unknown as SystemSceneManager;
@@ -603,6 +665,98 @@ describe('systemHud — battle simulator section visibility', () => {
       expect(quickDock.innerHTML).not.toMatch(
         /data-place-deepspace="hull_breaker_tower"[^>]*disabled/,
       );
+
+      hud.dispose();
+    });
+  });
+
+  it('renders contextual bottom inspector strictly per selection (planet, fleet-only with stacked hull cards, deep_space, harvester, and empty hint collapse)', () => {
+    runWithFakeDom(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const p1 = adapter.simulation.getPlayerState('player_1');
+      p1.ore = 2000;
+      p1.crystal = 1000;
+
+      expect(
+        adapter.simulation.submitCommand({
+          type: 'CREATE_FLEET',
+          playerId: 'player_1',
+          rallySystemId: 'system_starter_1',
+          rallyPosition: { x: 180, z: 120 },
+          stance: 'aggressive',
+          autoResupply: true,
+        }).ok,
+      ).toBe(true);
+      const fleet = adapter.simulation.getFleetsForPlayer('player_1')[0]!;
+
+      expect(
+        adapter.simulation.submitCommand({
+          type: 'BUILD_DEEP_SPACE_STRUCTURE',
+          playerId: 'player_1',
+          systemId: 'system_starter_1',
+          position: { x: 500, z: 300 },
+          structureId: 'logistics_hub',
+        }).ok,
+      ).toBe(true);
+      const hub = adapter.simulation.getDeepSpaceStructuresInSystem('system_starter_1')[0]!;
+      const harvester = adapter.simulation.getAllHarvesters().find((h) => h.ownerId === 'player_1')!;
+
+      const sceneManager = createFakeSceneManager(adapter);
+      const container = new FakeHudElement();
+      const hud = mountSystemHud(
+        container as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+      );
+
+      const bottomInspector = container.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
+      )!;
+
+      // 1. Default selection: Planet (shows Orbital Ring Builder, no Fleet details)
+      const planetHtml = readSubtreeHtml(bottomInspector);
+      expect(planetHtml).toContain('data-inspector-kind="planet"');
+      expect(planetHtml).toContain('Orbital Ring Builder');
+      expect(planetHtml).toContain('data-slot-index=');
+      expect(planetHtml).not.toContain('data-inspector-kind="fleet"');
+      expect(bottomInspector.classList.contains('is-empty')).toBe(false);
+
+      // 2. Fleet selected: strictly Fleet-only (stacked hull cards incl. Dreadnought, zero Orbital Ring Builder)
+      sceneManager.focusFleet(fleet.id);
+      const fleetHtml = readSubtreeHtml(bottomInspector);
+      expect(fleetHtml).toContain('data-inspector-kind="fleet"');
+      expect(fleetHtml).toContain('fleet-hull-grid');
+      expect(fleetHtml).toContain('data-fleet-hull-card="dreadnought"');
+      expect(fleetHtml).toContain('data-fleet-inc="destroyer"');
+      expect(fleetHtml).toContain('data-fleet-inc="dreadnought"');
+      expect(fleetHtml).not.toContain('Orbital Ring Builder');
+      expect(fleetHtml).not.toContain('data-slot-index=');
+      expect(bottomInspector.classList.contains('is-empty')).toBe(false);
+
+      // 3. Deep-Space Structure selected: strictly Deep-Space details
+      sceneManager.focusDeepSpaceStructure(hub.id);
+      const dsHtml = readSubtreeHtml(bottomInspector);
+      expect(dsHtml).toContain('data-inspector-kind="deep_space"');
+      expect(dsHtml).toContain('Logistics Hub');
+      expect(dsHtml).not.toContain('Orbital Ring Builder');
+      expect(dsHtml).not.toContain('data-inspector-kind="fleet"');
+
+      // 4. Harvester selected: strictly Harvester telemetry
+      sceneManager.selectAndPinHarvester(harvester.id);
+      const harvHtml = readSubtreeHtml(bottomInspector);
+      expect(harvHtml).toContain('harvester-telemetry-card');
+      expect(harvHtml).not.toContain('Orbital Ring Builder');
+      expect(harvHtml).not.toContain('data-inspector-kind="fleet"');
+      expect(harvHtml).not.toContain('data-inspector-kind="deep_space"');
+
+      // 5. Empty selection: collapses to hint pill
+      sceneManager.clearSelection();
+      const emptyHtml = readSubtreeHtml(bottomInspector);
+      expect(emptyHtml).toContain('data-inspector-kind="none"');
+      expect(emptyHtml).toContain('hud-empty-hint-pill');
+      expect(emptyHtml).not.toContain('Orbital Ring Builder');
+      expect(emptyHtml).not.toContain('data-inspector-kind="fleet"');
+      expect(bottomInspector.classList.contains('is-empty')).toBe(true);
 
       hud.dispose();
     });

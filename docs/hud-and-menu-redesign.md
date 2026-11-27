@@ -184,6 +184,6 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 - [x] Menu follow-up task 1: Main Menu layout and Feedback button
 - [x] Menu follow-up task 2: Single Player Skirmish exclusive Human slot swap
 - [x] Phase 4a: Move Deep-Space Installations to the Quick Action Dock
-- [ ] Phase 4b: Contextual Bottom Inspector (Fleet-only when Fleet selected)
+- [x] Phase 4b: Contextual Bottom Inspector (Fleet-only when Fleet selected)
 - [ ] Phase 5: Pause Menu, Match Outcome overlay, and Tutorial Coach anchoring
 - [ ] Phase 6: End-to-end verification, documentation sync, and release prep

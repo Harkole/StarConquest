@@ -57,10 +57,11 @@ export class SystemSceneManager {
 
   private activeSystem: StarSystemNode;
   private lastMatchSystemId = 'system_starter_1';
-  private selectedPlanetId: string;
+  private selectedPlanetId: string | null;
   private selectedHarvesterId: string | null = null;
   private selectedCombatShipId: string | null = null;
   private selectedFleetId: string | null = null;
+  private selectedDeepSpaceId: string | null = null;
   private environmentHandle: SpaceEnvironmentHandle | null = null;
   private planetHandles: AnimatedPlanetHandle[] = [];
   private readonly harvesterRenderer = new HarvesterFleetRenderer();
@@ -135,7 +136,7 @@ export class SystemSceneManager {
       throw new Error('Galaxy contains no star systems');
     }
     this.activeSystem = initialSystem;
-    this.selectedPlanetId = initialSystem.planets[0]?.id ?? '';
+    this.selectedPlanetId = initialSystem.planets[0]?.id ?? null;
     this.loadSystem(initialSystem.id);
 
     if (canvasElement) {
@@ -156,6 +157,7 @@ export class SystemSceneManager {
     this.selectedHarvesterId = null;
     this.selectedCombatShipId = null;
     this.selectedFleetId = null;
+    this.selectedDeepSpaceId = null;
     this.cameraController.clearPin();
 
     const slotIndex = Math.max(0, PLAYER_SLOT_IDS.indexOf(setup.localPlayerId));
@@ -187,6 +189,28 @@ export class SystemSceneManager {
     return this.selectedFleetId;
   }
 
+  public getSelectedDeepSpaceId(): string | null {
+    return this.selectedDeepSpaceId;
+  }
+
+  public clearSelection(): void {
+    const hadSelection =
+      this.selectedPlanetId !== null ||
+      this.selectedFleetId !== null ||
+      this.selectedCombatShipId !== null ||
+      this.selectedHarvesterId !== null ||
+      this.selectedDeepSpaceId !== null;
+    this.selectedPlanetId = null;
+    this.selectedFleetId = null;
+    this.selectedCombatShipId = null;
+    this.selectedHarvesterId = null;
+    this.selectedDeepSpaceId = null;
+    this.cameraController.clearPin();
+    if (hadSelection) {
+      this.notifySelectionChanged();
+    }
+  }
+
   public selectFleet(fleetId: string | null): void {
     if (!fleetId) {
       this.selectedFleetId = null;
@@ -210,8 +234,10 @@ export class SystemSceneManager {
     if (anchor.systemId !== this.activeSystem.id) {
       this.loadSystem(anchor.systemId);
     }
+    this.selectedPlanetId = null;
     this.selectedHarvesterId = null;
     this.selectedCombatShipId = null;
+    this.selectedDeepSpaceId = null;
     this.selectedFleetId = fleetId;
     this.cameraController.pinToTarget(
       () => {
@@ -319,7 +345,9 @@ export class SystemSceneManager {
       this.loadSystem(ship.currentSystemId);
     }
 
+    this.selectedPlanetId = null;
     this.selectedHarvesterId = null;
+    this.selectedDeepSpaceId = null;
     this.selectedCombatShipId = ship.id;
     // Selecting any ship in a fleet selects the entire fleet
     this.selectedFleetId = ship.fleetId;
@@ -406,7 +434,11 @@ export class SystemSceneManager {
     if (ds.systemId !== this.activeSystem.id) {
       this.loadSystem(ds.systemId);
     }
+    this.selectedPlanetId = null;
+    this.selectedFleetId = null;
+    this.selectedCombatShipId = null;
     this.selectedHarvesterId = null;
+    this.selectedDeepSpaceId = ds.id;
     this.cameraController.pinToTarget(
       () => ({ x: ds.position.x, y: 0, z: ds.position.z }),
       76,
@@ -430,7 +462,7 @@ export class SystemSceneManager {
     return this.activeSystem.planets;
   }
 
-  public getSelectedPlanetId(): string {
+  public getSelectedPlanetId(): string | null {
     return this.selectedPlanetId;
   }
 
@@ -495,6 +527,7 @@ export class SystemSceneManager {
     });
 
     const primaryPlanet = targetSystem.planets[0];
+    this.selectedDeepSpaceId = null;
     if (primaryPlanet) {
       this.selectedPlanetId = primaryPlanet.id;
       const defaultDist =
@@ -503,6 +536,8 @@ export class SystemSceneManager {
         () => ({ x: primaryPlanet.position.x, y: 0, z: primaryPlanet.position.z }),
         defaultDist,
       );
+    } else {
+      this.selectedPlanetId = null;
     }
 
     return targetSystem;
@@ -514,7 +549,10 @@ export class SystemSceneManager {
       return;
     }
     this.selectedPlanetId = planet.id;
+    this.selectedFleetId = null;
+    this.selectedCombatShipId = null;
     this.selectedHarvesterId = null;
+    this.selectedDeepSpaceId = null;
     const zoomDistance =
       planet.planetClass === 'super_earth'
         ? 128
@@ -547,6 +585,10 @@ export class SystemSceneManager {
       this.loadSystem(h.currentSystemId);
     }
 
+    this.selectedPlanetId = null;
+    this.selectedFleetId = null;
+    this.selectedCombatShipId = null;
+    this.selectedDeepSpaceId = null;
     this.selectedHarvesterId = h.id;
     this.cameraController.pinToTarget(() => {
       const liveH = this.simAdapter.simulation.getHarvesterById(harvesterId);
@@ -1089,6 +1131,9 @@ export class SystemSceneManager {
               );
               const created = fleets[fleets.length - 1];
               if (created) {
+                this.selectedPlanetId = null;
+                this.selectedHarvesterId = null;
+                this.selectedDeepSpaceId = null;
                 this.selectedFleetId = created.id;
               }
             }
@@ -1245,6 +1290,9 @@ export class SystemSceneManager {
         this.focusWormhole(pickedWh.wormholeId);
         return;
       }
+
+      // 5. Clicking empty space clears current selection
+      this.clearSelection();
     };
 
     const onDblClick = (e: MouseEvent): void => {

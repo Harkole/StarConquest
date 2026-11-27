@@ -62,7 +62,7 @@ export interface BuildLeftOutlinerParams {
   readonly galaxy: GalaxyTopology;
   readonly playerId: PlayerSlotId;
   readonly activeSystem: StarSystemNode;
-  readonly selectedPlanetId: string;
+  readonly selectedPlanetId: string | null;
   readonly selectedFleetId: string | null;
   readonly selectedHarvesterId: string | null;
   readonly wormholeStates: readonly OutlinerWormholeInput[];
@@ -127,7 +127,10 @@ export function buildLeftOutlinerModel(
         const pView = systemView.planets.find((p) => p.planet.id === planet.id);
         const pClass = PLANET_CLASSES[planet.planetClass];
         const isSelected =
-          planet.id === selectedPlanetId && selectedHarvesterId === null;
+          selectedPlanetId !== null &&
+          planet.id === selectedPlanetId &&
+          selectedHarvesterId === null &&
+          selectedFleetId === null;
 
         if (!pView || pView.visibility === 'unexplored') {
           return {
