@@ -20,6 +20,7 @@ import {
   applyPresetSelection,
   applySlotDifficultyChange,
   applySlotRoleChange,
+  enforceSingleHumanSlot,
   escapeHtmlAttribute,
   isAIDifficultyId,
   isMatchPresetId,
@@ -122,9 +123,11 @@ export class MenuController {
           this.teardownUnlaunchedP2P();
         }
         if (prevKind !== 'single_player_setup') {
-          this.draftSetup = applyPresetSelection(
-            this.draftSetup,
-            toSetupPresetId(screen.presetId),
+          this.draftSetup = enforceSingleHumanSlot(
+            applyPresetSelection(
+              this.draftSetup,
+              toSetupPresetId(screen.presetId),
+            ),
           );
         }
         break;
@@ -273,6 +276,7 @@ export class MenuController {
   private setDraftSlotRole(slotId: PlayerSlotId, role: PlayerSlotRole): void {
     this.draftSetup = applySlotRoleChange(this.draftSetup, slotId, role, {
       keepHostLocal: this.isHostingP2PRoom(),
+      singleHumanOnly: this.currentScreen.kind === 'single_player_setup',
     });
     this.syncHostLobbySetup();
     this.renderCurrentScreen();
@@ -461,6 +465,7 @@ export class MenuController {
     });
     const slotRowsHtml = renderSlotRowsHtml({
       draftSetup: this.draftSetup,
+      singleHumanOnly: true,
     });
     const draftPreset = MATCH_PRESETS[this.draftSetup.presetId];
     const aiCount = PLAYER_SLOT_IDS.filter(

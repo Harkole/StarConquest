@@ -96,13 +96,92 @@ export function applyPresetSelection(
   );
 }
 
+export function enforceSingleHumanSlot(
+  draft: MatchSetupConfig,
+): MatchSetupConfig {
+  const humanSlotId: PlayerSlotId =
+    draft.slots[draft.localPlayerId].kind === 'human'
+      ? draft.localPlayerId
+      : (PLAYER_SLOT_IDS.find((id) => draft.slots[id].kind === 'human') ??
+        draft.localPlayerId);
+
+  const nextSlots: Record<PlayerSlotId, PlayerSlotConfig> = {
+    player_1: draft.slots.player_1,
+    player_2: draft.slots.player_2,
+    player_3: draft.slots.player_3,
+    player_4: draft.slots.player_4,
+  };
+
+  for (const id of PLAYER_SLOT_IDS) {
+    if (id === humanSlotId) {
+      nextSlots[id] = { kind: 'human' };
+    } else if (nextSlots[id].kind === 'human') {
+      nextSlots[id] = { kind: 'ai', difficulty: 'standard' };
+    }
+  }
+
+  return normalizeMatchSetupConfig({
+    presetId: draft.presetId,
+    localPlayerId: humanSlotId,
+    slots: nextSlots,
+  });
+}
+
 export function applySlotRoleChange(
   draft: MatchSetupConfig,
   slotId: PlayerSlotId,
   role: PlayerSlotRole,
-  options?: { readonly keepHostLocal?: boolean },
+  options?: {
+    readonly keepHostLocal?: boolean;
+    readonly singleHumanOnly?: boolean;
+  },
 ): MatchSetupConfig {
+  const singleHumanOnly = Boolean(options?.singleHumanOnly);
   const currentSlot = draft.slots[slotId];
+
+  if (singleHumanOnly) {
+    const normalizedDraft = enforceSingleHumanSlot(draft);
+    const currentHumanId = normalizedDraft.localPlayerId;
+
+    if (role === 'human') {
+      if (slotId === currentHumanId) {
+        return normalizedDraft;
+      }
+      const swappedSlots: Record<PlayerSlotId, PlayerSlotConfig> = {
+        ...normalizedDraft.slots,
+        [currentHumanId]: { kind: 'ai', difficulty: 'standard' },
+        [slotId]: { kind: 'human' },
+      };
+      return normalizeMatchSetupConfig({
+        presetId: normalizedDraft.presetId,
+        localPlayerId: slotId,
+        slots: swappedSlots,
+      });
+    }
+
+    if (slotId === currentHumanId) {
+      return normalizedDraft;
+    }
+
+    const nextSlot: PlayerSlotConfig =
+      role === 'empty'
+        ? { kind: 'empty' }
+        : {
+            kind: 'ai',
+            difficulty:
+              currentSlot.kind === 'ai' ? currentSlot.difficulty : 'standard',
+          };
+
+    return normalizeMatchSetupConfig({
+      presetId: normalizedDraft.presetId,
+      localPlayerId: currentHumanId,
+      slots: {
+        ...normalizedDraft.slots,
+        [slotId]: nextSlot,
+      },
+    });
+  }
+
   let nextSlot: PlayerSlotConfig;
   if (role === 'human') {
     nextSlot = { kind: 'human' };
@@ -216,11 +295,18 @@ export interface RenderSlotRowsOptions {
   readonly draftSetup: MatchSetupConfig;
   readonly roomState?: WebRTCRoomState | null;
   readonly disabled?: boolean;
+  readonly singleHumanOnly?: boolean;
   readonly standings?: readonly PlayerStandingSummary[];
 }
 
 export function renderSlotRowsHtml(options: RenderSlotRowsOptions): string {
-  const { draftSetup, roomState = null, disabled = false, standings } = options;
+  const {
+    draftSetup,
+    roomState = null,
+    disabled = false,
+    singleHumanOnly = false,
+    standings,
+  } = options;
   const isHostingP2P = Boolean(
     roomState && roomState.role === 'host' && roomState.status !== 'idle',
   );
@@ -265,13 +351,21 @@ export function renderSlotRowsHtml(options: RenderSlotRowsOptions): string {
             ? 'AI Bot'
             : 'Empty';
       const active = slotCfg.kind === role;
+      const isLockedHumanRole =
+        singleHumanOnly && slotCfg.kind === 'human' && role !== 'human';
+      const btnDisabledAttr =
+        disabledAttr || isLockedHumanRole ? 'disabled' : '';
+      const titleAttr = isLockedHumanRole
+        ? 'title="Select Human on another sector to move your commander"'
+        : '';
       return `
         <button
           type="button"
           class="hud-btn ${active ? 'active' : ''}"
           data-lobby-slot="${slotId}"
           data-lobby-role="${role}"
-          ${disabledAttr}
+          ${titleAttr}
+          ${btnDisabledAttr}
         >
           ${label}
         </button>

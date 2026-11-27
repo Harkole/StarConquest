@@ -986,6 +986,110 @@ describe('MenuController & createClientAppShell pre-match flows', () => {
 
     app.dispose();
   });
+
+  it('enforces a single exclusive Human slot in SinglePlayerSetup by swapping previous Human to AI and preserving untouched slots', () => {
+    const canvas = new FakeHtmlElement();
+    const hudContainer = new FakeHtmlElement();
+    let capturedParams: MatchRuntimeFactoryParams | null = null;
+
+    const app = createClientAppShell({
+      canvas: canvas as unknown as HTMLCanvasElement,
+      hudContainer: hudContainer as unknown as HTMLElement,
+      createMatchRuntime: (params) => {
+        capturedParams = params;
+        return { dispose: () => {} };
+      },
+    });
+
+    hudContainer.querySelector('[data-menu-action="open-single-player"]')!.click();
+    expect(app.getState().kind).toBe('single_player_setup');
+
+    // Customize untouched slots: player_3 -> Admiral AI, player_4 -> Empty
+    hudContainer
+      .querySelectorAll('[data-lobby-difficulty]')
+      .find(
+        (b) =>
+          b.dataset.lobbySlot === 'player_3' &&
+          b.dataset.lobbyDifficulty === 'admiral',
+      )!
+      .click();
+    hudContainer
+      .querySelectorAll('[data-lobby-role]')
+      .find(
+        (b) =>
+          b.dataset.lobbySlot === 'player_4' &&
+          b.dataset.lobbyRole === 'empty',
+      )!
+      .click();
+
+    // Attempting to change the sole Human slot (player_1) to AI or Empty must not leave zero Human slots
+    hudContainer
+      .querySelectorAll('[data-lobby-role]')
+      .find(
+        (b) =>
+          b.dataset.lobbySlot === 'player_1' &&
+          b.dataset.lobbyRole === 'ai',
+      )!
+      .click();
+    hudContainer
+      .querySelectorAll('[data-lobby-role]')
+      .find(
+        (b) =>
+          b.dataset.lobbySlot === 'player_1' &&
+          b.dataset.lobbyRole === 'empty',
+      )!
+      .click();
+
+    // Swap Human to player_2 -> player_1 becomes AI Bot, player_3 and player_4 stay untouched
+    hudContainer
+      .querySelectorAll('[data-lobby-role]')
+      .find(
+        (b) =>
+          b.dataset.lobbySlot === 'player_2' &&
+          b.dataset.lobbyRole === 'human',
+      )!
+      .click();
+
+    hudContainer.querySelector('[data-menu-action="start-match"]')!.click();
+
+    expect(capturedParams).not.toBeNull();
+    expect(capturedParams!.matchSetup).toEqual({
+      presetId: 'standard_tactical',
+      localPlayerId: 'player_2',
+      slots: {
+        player_1: { kind: 'ai', difficulty: 'standard' },
+        player_2: { kind: 'human' },
+        player_3: { kind: 'ai', difficulty: 'admiral' },
+        player_4: { kind: 'empty' },
+      },
+    });
+
+    // Return to SinglePlayerSetup and swap Human onto the Empty slot (player_4)
+    capturedParams!.onQuitToMainMenu();
+    hudContainer.querySelector('[data-menu-action="open-single-player"]')!.click();
+    hudContainer
+      .querySelectorAll('[data-lobby-role]')
+      .find(
+        (b) =>
+          b.dataset.lobbySlot === 'player_4' &&
+          b.dataset.lobbyRole === 'human',
+      )!
+      .click();
+    hudContainer.querySelector('[data-menu-action="start-match"]')!.click();
+
+    expect(capturedParams!.matchSetup).toEqual({
+      presetId: 'standard_tactical',
+      localPlayerId: 'player_4',
+      slots: {
+        player_1: { kind: 'ai', difficulty: 'standard' },
+        player_2: { kind: 'ai', difficulty: 'standard' },
+        player_3: { kind: 'ai', difficulty: 'admiral' },
+        player_4: { kind: 'human' },
+      },
+    });
+
+    app.dispose();
+  });
 });
 
 class FakeDataChannel implements DataChannelLike {
