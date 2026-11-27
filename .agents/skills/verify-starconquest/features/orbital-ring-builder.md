@@ -13,7 +13,7 @@ The Orbital Ring Builder lets a player inspect occupied orbital slots around the
 
 ## How to get to it (user POV)
 
-- Click any orbital slot button (`Slot 1`–`Slot 10` on the Homeworld) in the **Orbital Ring Builder** section of `#hud-overlay`.
+- Click any orbital slot button (`Slot 1`–`Slot 10` on the Homeworld) in the **Orbital Ring Builder** section of `.hud-bottom-inspector` inside `#hud-root`.
 - Click a structure build card (`Orbital Refinery`, `Orbital Dockyard`, `C&C Tech & Specialization Module`, `Heavy Orbital Defense Platform`, or `Planetary Outpost` on unclaimed planets).
 - Click an occupied C&C/Refinery slot to access `+ Queue Harvester` and `MINING FOCUS` buttons, or an occupied Orbital Dockyard slot to toggle `FLEET BUILDING`.
 

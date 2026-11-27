@@ -11,7 +11,7 @@ Deep-Space Installations let a player place free-floating Atlas Logistics Hubs a
 
 ## How to get to it (user POV)
 
-- Click `+ Place Logistics Hub (...)`, `+ Place Point Defence (PD) Tower (...)`, or `+ Place Hull Breaker Tower (...)` in the **Deep-Space Installations** section of `#hud-overlay`.
+- Click `+ Place Logistics Hub (...)`, `+ Place Point Defence (PD) Tower (...)`, or `+ Place Hull Breaker Tower (...)` in the **Deep-Space Installations** section of `.hud-bottom-inspector` inside `#hud-root`.
 - Move the cursor over `#app-canvas` to inspect the green (valid) or red (invalid) wireframe ghost, then left-click to place or press `Escape` / click `Cancel Placement (Esc)` to cancel.
 
 ## Driving it with browser
@@ -32,4 +32,4 @@ Preconditions:
 
 - Placing a Logistics Hub right on top of the Homeworld (`< orbitalRingRadius + 24u`) or within `45u` of a wormhole mouth turns the ghost red and rejects the click with a reason in `.hud-status-msg`.
 - Two Logistics Hubs must be at least `120u` apart; a Defence Tower must be at least `42u` from a Hub and `30u` from another Tower.
-- Always zoom out via `[data-action="overview"]` before placing the first Logistics Hub so open deep space is clearly visible to the right of `#hud-overlay`.
+- Always zoom out via `[data-action="overview"]` in `.hud-quick-dock` before placing the first Logistics Hub so open deep space is clearly visible away from the `#hud-root` perimeter panels.

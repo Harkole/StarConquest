@@ -88,6 +88,11 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 - `npm run build` passes.
 - `npm test` passes.
 
+**Phase 3 implementation notes.**
+- `LobbyController` stays mounted inside `.hud-top-right-slot` for King of the Hill and match outcome banners until Phase 5 replaces it with the centered `MatchOutcome` overlay.
+- `TutorialController` already anchors inside `.hud-top-right-slot` without `getBoundingClientRect()` positioning. Phase 5 keeps the remaining work (Pause Menu, MatchOutcome overlay, and dead `tutorialSteps.ts` branch cleanup).
+- `Hub Mine` (`[data-action="toggle-hub-mining"]`) and `Overview` (`[data-action="overview"]`) already live in `.hud-quick-dock`. Phase 4 adds the deep-space placement buttons to the quick dock.
+
 ### Phase 4: Contextual Bottom Inspector and Quick Action Dock
 
 **Goal.** Move Planet Orbital Ring building, Fleet Composition Templates and Stances, Harvester Telemetry, and Deep-Space placement into the contextual bottom inspector and bottom-right dock.
@@ -130,7 +135,7 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 
 - [x] Phase 1: App state machine and lazy match lifecycle
 - [x] Phase 2: Main Menu and pre-match setup screens
-- [ ] Phase 3: Split HUD shell, Top Bar, and Left Outliner
+- [x] Phase 3: Split HUD shell, Top Bar, and Left Outliner
 - [ ] Phase 4: Contextual Bottom Inspector and Quick Action Dock
 - [ ] Phase 5: Pause Menu, Match Outcome overlay, and Tutorial Coach anchoring
 - [ ] Phase 6: End-to-end verification, documentation sync, and release prep
