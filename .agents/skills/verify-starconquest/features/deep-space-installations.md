@@ -11,8 +11,8 @@ Deep-Space Installations let a player place free-floating Atlas Logistics Hubs a
 
 ## How to get to it (user POV)
 
-- Click `+ Place Logistics Hub (...)`, `+ Place Point Defence (PD) Tower (...)`, or `+ Place Hull Breaker Tower (...)` in the **Deep-Space Installations** section of `.hud-bottom-inspector` inside `#hud-root`.
-- Move the cursor over `#app-canvas` to inspect the green (valid) or red (invalid) wireframe ghost, then left-click to place or press `Escape` / click `Cancel Placement (Esc)` to cancel.
+- Click `+ Place Logistics Hub`, `+ Place Point Defence`, or `+ Place Hull Breaker` in the **Quick Actions** dock (`.hud-quick-dock`) inside `#hud-root`.
+- Move the cursor over `#app-canvas` to inspect the green (valid) or red (invalid) wireframe ghost, then left-click to place or press `Escape` / click `Cancel Placement (Esc)` in `.hud-quick-dock` to cancel. Click any placed deep-space structure in 3D space to inspect its live status, shields, and hull in `.hud-bottom-inspector` (`[data-inspector-kind="deep_space"]`).
 
 ## Driving it with browser
 

@@ -13,8 +13,8 @@ Fleet Command lets a player create a fleet with a 3D rally point, configure desi
 ## How to get to it (user POV)
 
 - Click `+ New` (`[data-action="create-fleet"]`) in the **Fleets** section of `.hud-left-outliner` inside `#hud-root`, then left-click open 3D space on `#app-canvas`.
-- Click any fleet row (`Fleet #1`) or click any combat ship in 3D space to select the entire fleet.
-- Use `−`/`+` steppers, `Focus`, `Resupply`, `Aggressive`/`Hold the Line`/`Passive`, `Patrol Route (2 Clicks)`, `Flee` (`[data-fleet-flee]`), `Split`, `Merge`, and `Disband` in `.hud-bottom-inspector`.
+- Click any fleet row (`Fleet #1`) or click any combat ship in 3D space to select the entire fleet; `.hud-bottom-inspector` switches to a strictly Fleet-only contextual view (`[data-inspector-kind="fleet"]`, omitting the Orbital Ring Builder) with stacked two-row hull cards (`[data-fleet-hull-card]`).
+- Use `−`/`+` steppers, `Focus`, `Resupply`, `Aggressive`/`Hold the Line`/`Passive`, `Patrol Route (2 Clicks)`, `Flee` (`[data-fleet-flee]`), `Split`, `Merge`, `Disband`, and `Close` in `.hud-bottom-inspector`, or click empty 3D space to collapse the inspector to a hint pill.
 
 ## Driving it with browser
 
