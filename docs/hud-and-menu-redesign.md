@@ -93,16 +93,61 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 - `TutorialController` already anchors inside `.hud-top-right-slot` without `getBoundingClientRect()` positioning. Phase 5 keeps the remaining work (Pause Menu, MatchOutcome overlay, and dead `tutorialSteps.ts` branch cleanup).
 - `Hub Mine` (`[data-action="toggle-hub-mining"]`) and `Overview` (`[data-action="overview"]`) already live in `.hud-quick-dock`. Phase 4 adds the deep-space placement buttons to the quick dock.
 
-### Phase 4: Contextual Bottom Inspector and Quick Action Dock
+### Phase 4a: Move Deep-Space Installations to the Quick Action Dock
 
-**Goal.** Move Planet Orbital Ring building, Fleet Composition Templates and Stances, Harvester Telemetry, and Deep-Space placement into the contextual bottom inspector and bottom-right dock.
+**Goal.** Remove the Deep-Space Installations section from the bottom-center display and place its build actions in the right-hand Quick Actions dock.
+
+**Tasks.**
+- Remove the `Deep-Space Installations` section from `.hud-bottom-inspector` (and remove `deep_space` from `HudSectionId`).
+- Add `Place Logistics Hub`, `Place Point Defence` (PD Tower), and `Place Hull Breaker` buttons (preserving `data-place-deepspace` and `data-action="cancel-deepspace"`) into `.hud-quick-dock` alongside `Hub Mine` and `Overview`.
+- Keep Logistics Hub radius gating (PD Tower and Hull Breaker disabled until a friendly Logistics Hub is complete in the active system).
+- Update `src/client/ui/__tests__/systemHud.test.ts` to assert deep-space placement controls live in `.hud-quick-dock` and no longer appear in `.hud-bottom-inspector`.
+
+**Verification.**
+- `npm run build` passes.
+- `npm test` passes.
+
+### Phase 4b: Contextual Bottom Inspector (Fleet-Only When Fleet Selected)
+
+**Goal.** Make `.hud-bottom-inspector` strictly contextual so selecting a Fleet shows only Fleet information (no Planet / Orbital Ring Builder and no Deep-Space Installations), and selecting a Planet, Harvester, or Deep-Space Structure shows only that entity.
 
 **Files.**
 - Extract or refactor the bottom panel renderer (for example `src/client/ui/contextualInspectorView.ts` and `src/client/ui/quickDockView.ts`) driven by a single typed `HudSelectionState` (`planet | fleet | harvester | deep_space | none`).
-- Implement the wide bottom container (`width: min(800px, calc(100vw - 468px))`) and stacked Fleet hull cards (hull name and supply on row 1, `- / count / +` stepper on row 2, `min-w-0`) so `Dreadnought` and all other classes render with zero overlap.
-- Clicking empty space in the 3D viewport clears selection and collapses the bottom inspector to the subtle hint pill.
+- When a Fleet is selected, render only the Fleet header, actions, stacked Fleet hull cards (hull name and supply on row 1, `- / count / +` stepper on row 2, `min-w-0` so `Dreadnought` and all other classes render with zero overlap), and Stance controls. Omit the Orbital Ring Builder while a Fleet is selected.
+- Implement the wide bottom container (`width: min(800px, calc(100vw - 468px))`).
+- Clicking empty space in the 3D viewport clears selection and collapses the bottom inspector to a subtle hint pill.
 - Preserve `data-slot-index`, `data-build-struct`, `data-fleet-inc`, and `data-action` selectors used by `TutorialController`.
-- Update `src/client/ui/__tests__/systemHud.test.ts` for contextual selection switching and empty-selection collapse.
+- Update `src/client/ui/__tests__/systemHud.test.ts` for contextual selection switching (including Fleet-only inspector output) and empty-selection collapse.
+
+**Verification.**
+- `npm run build` passes.
+- `npm test` passes.
+
+### Menu follow-up task 1: Main Menu layout and Feedback button
+
+**Goal.** Reorder the Main Menu action cards into a 2-column grid matching the target layout and add a GitHub Issues Feedback button.
+
+**Tasks.**
+- Arrange the Main Menu cards in `src/client/ui/menuController.ts` (and CSS in `index.html`) into three explicit rows:
+  1. Top row: `Guided Tutorial` (left) and `Start Single Player` (right, primary highlight).
+  2. Second row: `Host Online Room` (left) and `Join Online Room` (right).
+  3. Third row: `Battle Simulator` (left) and `Feedback` (right).
+- Wire the `Feedback` button/link to open `https://github.com/Harkole/StarConquest/issues` in a new tab (`target="_blank" rel="noopener noreferrer"`).
+- Update `src/client/ui/__tests__/lobbyController.test.ts` to verify card order and the `Feedback` link URL.
+
+**Verification.**
+- `npm run build` passes.
+- `npm test` passes.
+
+### Menu follow-up task 2: Single Player Skirmish exclusive Human slot swap
+
+**Goal.** Enforce exactly one Human slot in Single Player Skirmish so selecting `Human` on another starter system swaps the player into that sector and converts the previous Human slot into an AI Bot.
+
+**Tasks.**
+- In Single Player Skirmish (`src/client/ui/menuController.ts` and `src/client/ui/lobbySetupHelpers.ts`), allow only one slot to be `Human`; all other slots may only be `AI Bot` or `Empty`.
+- When the player clicks `Human` on a different sector slot, assign that slot to `Human` (updating `localPlayerId` to that slot) and automatically switch the previously Human slot to `AI Bot` (preserving all other slots' current `AI Bot` or `Empty` state).
+- Never allow zero Human slots or multiple Human slots in Single Player Skirmish.
+- Add unit tests in `src/client/ui/__tests__/lobbyController.test.ts` verifying Human-to-AI slot exchange and confirming untouched slots remain unchanged.
 
 **Verification.**
 - `npm run build` passes.
@@ -136,6 +181,9 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 - [x] Phase 1: App state machine and lazy match lifecycle
 - [x] Phase 2: Main Menu and pre-match setup screens
 - [x] Phase 3: Split HUD shell, Top Bar, and Left Outliner
-- [ ] Phase 4: Contextual Bottom Inspector and Quick Action Dock
+- [ ] Menu follow-up task 1: Main Menu layout and Feedback button
+- [ ] Menu follow-up task 2: Single Player Skirmish exclusive Human slot swap
+- [ ] Phase 4a: Move Deep-Space Installations to the Quick Action Dock
+- [ ] Phase 4b: Contextual Bottom Inspector (Fleet-only when Fleet selected)
 - [ ] Phase 5: Pause Menu, Match Outcome overlay, and Tutorial Coach anchoring
 - [ ] Phase 6: End-to-end verification, documentation sync, and release prep
