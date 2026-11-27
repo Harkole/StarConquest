@@ -5,7 +5,6 @@ import {
   ORBITAL_CANCEL_REFUND_RATE,
   ORBITAL_DECOMMISSION_REFUND_RATE,
   ORBITAL_STRUCTURES,
-  PLANET_CLASSES,
   SHIP_CLASSES,
   type CombatShipClassId,
   type DeepSpaceStructureId,
@@ -27,14 +26,29 @@ import {
 } from '../../shared/sim/gameSimulation.ts';
 import type { SimulationView } from '../../shared/sim/simulationView.ts';
 import type { ProjectedOrbitalStructure } from '../../shared/sim/playerIntel.ts';
+import type {
+  AppScreenState,
+  MatchOutcomeSummary,
+} from '../app/appStateMachine.ts';
 import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
-import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
 import {
-  LobbyController,
-  formatMatchClockSeconds,
-} from './lobbyController.ts';
+  renderDeepSpaceInspectorHtml,
+  renderEmptySelectionHintHtml,
+  renderFleetInspectorHtml,
+  resolveHudSelectionState,
+} from './contextualInspectorView.ts';
+import {
+  buildLeftOutlinerModel,
+  renderLeftOutlinerHtml,
+} from './leftOutlinerView.ts';
+import { LobbyController } from './lobbyController.ts';
+import {
+  renderMatchOutcomeOverlayHtml,
+  renderPauseMenuOverlayHtml,
+} from './matchOverlaysView.ts';
+import { buildTopBarModel, mountTopBar } from './topBarView.ts';
 import { TutorialController } from './tutorialController.ts';
 import { buildOrbitalSlotPills } from './orbitalSlotDisplay.ts';
 import type { TutorialUiContext } from '../../shared/sim/tutorialSteps.ts';
@@ -53,38 +67,18 @@ const BUILDABLE_DEEP_SPACE_IDS: readonly DeepSpaceStructureId[] = [
   'hull_breaker_tower',
 ];
 
-const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label: string }[] = [
-  { id: 'aggressive', label: 'Aggressive' },
-  { id: 'hold_the_line', label: 'Hold the Line' },
-  { id: 'passive', label: 'Passive' },
-];
-
-export type HudSectionId =
-  | 'galaxy'
-  | 'fleet'
-  | 'battle_sim'
-  | 'planets_wormholes'
-  | 'deep_space'
-  | 'orbital_ring';
+export type HudSectionId = 'battle_sim' | 'orbital_ring';
 
 export type HudCollapsedState = Record<HudSectionId, boolean>;
 
 const HUD_SECTION_IDS: readonly HudSectionId[] = [
-  'galaxy',
-  'fleet',
   'battle_sim',
-  'planets_wormholes',
-  'deep_space',
   'orbital_ring',
 ];
 
 export function createDefaultHudCollapsedState(): HudCollapsedState {
   return {
-    galaxy: false,
-    fleet: false,
     battle_sim: true,
-    planets_wormholes: false,
-    deep_space: false,
     orbital_ring: false,
   };
 }
@@ -106,9 +100,11 @@ export function isHudSectionId(value: string | undefined): value is HudSectionId
 export interface MainPanelSignatureParams {
   readonly playerId?: PlayerSlotId;
   readonly activeSystemId: string;
-  readonly selectedPlanetId: string;
+  readonly selectedPlanetId: string | null;
   readonly selectedSlotIndex: number;
   readonly selectedHarvesterId: string | null;
+  readonly selectedFleetId?: string | null;
+  readonly selectedDeepSpaceId?: string | null;
   readonly pendingDeepSpace: DeepSpaceStructureId | null;
   readonly statusBannerMessage: string;
   readonly wormholeStates: readonly { readonly id: string; readonly isOpen: boolean }[];
@@ -176,9 +172,9 @@ export function computeMainPanelSignature(
     })
     .join(',');
 
-  const selectedPlanetView = systemView.planets.find(
-    (p) => p.planet.id === params.selectedPlanetId,
-  );
+  const selectedPlanetView = params.selectedPlanetId
+    ? systemView.planets.find((p) => p.planet.id === params.selectedPlanetId)
+    : undefined;
   const selectedStructures = selectedPlanetView?.structures ?? [];
   const structSig = selectedStructures
     .map((item) => {
@@ -243,9 +239,11 @@ export function computeMainPanelSignature(
   return [
     viewerId,
     params.activeSystemId,
-    params.selectedPlanetId,
+    params.selectedPlanetId ?? 'none',
     params.selectedSlotIndex,
     params.selectedHarvesterId ?? 'none',
+    params.selectedFleetId ?? 'none',
+    params.selectedDeepSpaceId ?? 'none',
     params.pendingDeepSpace ?? 'none',
     params.statusBannerMessage,
     planetSummarySig,
@@ -283,16 +281,38 @@ function formatHarvesterState(
   }
 }
 
-const SPEAKER_UNMUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>`;
+interface HudRegions {
+  readonly topBar: HTMLElement;
+  readonly leftOutliner: HTMLElement;
+  readonly bottomInspector: HTMLElement;
+  readonly quickDock: HTMLElement;
+  readonly topRightSlot: HTMLElement;
+  readonly modalLayer: HTMLElement;
+}
 
-const SPEAKER_MUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+export interface SystemHudHandle {
+  readonly syncAppState: (state: AppScreenState) => void;
+  readonly dispose: () => void;
+}
+
+export interface MountSystemHudOptions {
+  readonly getAppState?: () => AppScreenState;
+  readonly onPauseMatch?: () => void;
+  readonly onResumeMatch?: () => void;
+  readonly onRecordMatchOutcome?: (outcome: MatchOutcomeSummary) => void;
+  readonly onRematch?: () => void;
+  readonly onQuitToMainMenu?: () => void;
+  readonly isBattleSimulator?: boolean;
+  readonly isMultiplayer?: boolean;
+}
 
 export function mountSystemHud(
   container: HTMLElement,
   galaxy: GalaxyTopology,
   sceneManager: SystemSceneManager,
   musicPlayer?: AmbientMusicPlayer,
-): void {
+  options?: MountSystemHudOptions,
+): SystemHudHandle {
   let simAdapter = sceneManager.simAdapter;
   let sim = simAdapter.simulation;
   let playerId = simAdapter.localPlayerId;
@@ -303,11 +323,15 @@ export function mountSystemHud(
     playerId = simAdapter.localPlayerId;
   }
 
+  const isBattleSimulator = options?.isBattleSimulator === true;
   let selectedSlotIndex = 2;
   let statusBannerMessage = '';
   let crossSystemMiningEnabled = false;
   let selectedFleetStance: FleetStance = 'aggressive';
   let collapsedSections = createDefaultHudCollapsedState();
+  if (isBattleSimulator) {
+    collapsedSections = { ...collapsedSections, battle_sim: false };
+  }
   let lastWormholeClick: { readonly id: string; readonly atMs: number } | null = null;
   let lastWormholeTransitAtMs = 0;
   const battleSimFriendly: Record<CombatShipClassId, number> = {
@@ -325,93 +349,174 @@ export function mountSystemHud(
     dreadnought: 1,
   };
 
-  const topBarEl = document.createElement('div');
-  topBarEl.className = 'hud-econ-bar';
+  const regions: HudRegions = {
+    topBar: document.createElement('div'),
+    leftOutliner: document.createElement('div'),
+    bottomInspector: document.createElement('div'),
+    quickDock: document.createElement('div'),
+    topRightSlot: document.createElement('div'),
+    modalLayer: document.createElement('div'),
+  };
+  regions.topBar.className = 'hud-top-bar';
+  regions.leftOutliner.className = 'hud-left-outliner';
+  regions.bottomInspector.className = 'hud-bottom-inspector';
+  regions.quickDock.className = 'hud-quick-dock';
+  regions.topRightSlot.className = 'hud-top-right-slot';
+  regions.modalLayer.className = 'hud-modal-layer';
+  regions.modalLayer.style.display = 'none';
+
   const lobbyHostEl = document.createElement('div');
   const tutorialHostEl = document.createElement('div');
   const mainBodyEl = document.createElement('div');
-  mainBodyEl.className = 'hud-main-body';
+  mainBodyEl.className = 'hud-inspector-body';
   const harvesterInspectorEl = document.createElement('div');
   harvesterInspectorEl.className = 'hud-harvester-inspector';
+
+  regions.topRightSlot.append(tutorialHostEl, lobbyHostEl);
+  regions.bottomInspector.append(harvesterInspectorEl, mainBodyEl);
+
   container.innerHTML = '';
   container.append(
-    topBarEl,
-    lobbyHostEl,
-    harvesterInspectorEl,
-    mainBodyEl,
+    regions.topBar,
+    regions.leftOutliner,
+    regions.bottomInspector,
+    regions.quickDock,
+    regions.topRightSlot,
+    regions.modalLayer,
   );
-  (container.parentElement ?? container).append(tutorialHostEl);
 
-  topBarEl.innerHTML = `
-    <div class="econ-metrics">
-      <div class="econ-pill ore">
-        <span class="econ-label">ORE</span>
-        <strong id="econ-ore-val">0</strong>
-      </div>
-      <div class="econ-pill crystal">
-        <span class="econ-label">CRYSTAL</span>
-        <strong id="econ-crystal-val">0</strong>
-      </div>
-      <div class="econ-pill supply">
-        <span class="econ-label">SUPPLY</span>
-        <strong id="econ-supply-val">0 / 0</strong>
-      </div>
-      <div class="econ-pill harvesters">
-        <span class="econ-label">HARVESTERS</span>
-        <strong id="econ-harvesters-val">0</strong>
-      </div>
-      <div class="econ-pill" id="hud-match-status-pill" title="Active Match Contenders & Victory Telemetry">
-        <span class="econ-label">MATCH</span>
-        <strong id="hud-match-status-val">4 Contenders</strong>
-      </div>
-    </div>
-    <div class="econ-actions">
-      <button class="hud-btn" data-action="start-tutorial" title="Launch Guided Tutorial vs. Cadet AI">
-        Tutorial
-      </button>
-      <button class="hud-btn" data-action="toggle-lobby" title="Configure Match Mode, Human/AI Slots & Victory Conditions">
-        <span>Match Lobby</span>
-        <span class="hud-badge" id="hud-lobby-preset-badge">Standard Tactical</span>
-      </button>
-      <button class="hud-btn" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
-        Mining: Local System
-      </button>
-      <button class="hud-btn" data-speed="1">1x</button>
-      <button class="hud-btn" data-speed="2">2x</button>
-      <button class="hud-btn" data-speed="4">4x</button>
-      <button class="hud-btn" data-action="toggle-music" aria-label="Mute ambient music" title="Mute ambient music" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px;">
-        ${SPEAKER_UNMUTED_SVG}
-      </button>
-    </div>
-  `;
+  const topBar = mountTopBar(regions.topBar, {
+    onSetSpeed: (spd) => {
+      simAdapter.simSpeedMultiplier = spd;
+      renderEconomyBar();
+    },
+    onToggleMusic: () => {
+      musicPlayer?.toggleMute();
+      renderEconomyBar();
+    },
+    ...(options?.onPauseMatch
+      ? { onOpenPauseMenu: options.onPauseMatch }
+      : options?.onQuitToMainMenu
+        ? { onQuitToMainMenu: options.onQuitToMainMenu }
+        : {}),
+  });
 
-  const econOreEl = topBarEl.querySelector<HTMLElement>('#econ-ore-val');
-  const econCrystalEl = topBarEl.querySelector<HTMLElement>('#econ-crystal-val');
-  const econSupplyEl = topBarEl.querySelector<HTMLElement>('#econ-supply-val');
-  const econHarvestersEl = topBarEl.querySelector<HTMLElement>('#econ-harvesters-val');
-  const matchStatusValEl = topBarEl.querySelector<HTMLElement>('#hud-match-status-val');
-  const lobbyPresetBadgeEl = topBarEl.querySelector<HTMLElement>('#hud-lobby-preset-badge');
-  const startTutorialBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="start-tutorial"]',
-  );
-  const lobbyToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="toggle-lobby"]',
-  );
-  const hubMiningBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="toggle-hub-mining"]',
-  );
-  const musicToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="toggle-music"]',
-  );
-  const speedBtnEls = Array.from(
-    topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
-  );
+  const DEEP_SPACE_QUICK_LABELS: Readonly<
+    Record<DeepSpaceStructureId, { readonly idle: string; readonly pending: string }>
+  > = {
+    logistics_hub: {
+      idle: '+ Place Logistics Hub',
+      pending: 'Placing Logistics Hub...',
+    },
+    point_defence_tower: {
+      idle: '+ Place Point Defence',
+      pending: 'Placing Point Defence...',
+    },
+    hull_breaker_tower: {
+      idle: '+ Place Hull Breaker',
+      pending: 'Placing Hull Breaker...',
+    },
+  };
+
+  function renderQuickDock(): void {
+    syncSimRefs();
+    const activeSystem = sceneManager.getActiveSystem();
+    const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
+    const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
+    const hasCompletedFriendlyHub = systemView.deepSpaceStructures.some(
+      (item) =>
+        item.kind === 'live' &&
+        item.structure.structureId === 'logistics_hub' &&
+        item.structure.ownerId === playerId &&
+        item.structure.isComplete,
+    );
+
+    const deepSpaceButtonsHtml =
+      activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
+        ? ''
+        : BUILDABLE_DEEP_SPACE_IDS.map((dsId) => {
+            const cfg = DEEP_SPACE_STRUCTURES[dsId];
+            const labels = DEEP_SPACE_QUICK_LABELS[dsId];
+            const isPending = pendingDeepSpace === dsId;
+            const lockedByHubRule =
+              cfg.requiresLogisticsHubRadius && !hasCompletedFriendlyHub;
+            const titleText = `${cfg.displayName} (${cfg.cost.ore} Ore • ${cfg.cost.crystal} Crystal • ${cfg.buildTimeSeconds}s)${lockedByHubRule ? ' — Requires a completed friendly Logistics Hub in this system' : ''}`;
+            return `<button type="button" class="hud-btn ${isPending ? 'active' : ''}" data-place-deepspace="${dsId}" title="${titleText}" ${lockedByHubRule ? 'disabled' : ''}>
+              ${isPending ? labels.pending : labels.idle}
+            </button>`;
+          }).join('') +
+          (pendingDeepSpace
+            ? `<button type="button" class="hud-btn" data-action="cancel-deepspace">Cancel Placement (Esc)</button>`
+            : '');
+
+    regions.quickDock.innerHTML = `
+      <div class="hud-label" style="margin-bottom: 0;">Quick Actions</div>
+      ${deepSpaceButtonsHtml}
+      <button type="button" class="hud-btn ${crossSystemMiningEnabled ? 'active' : ''}" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
+        ${crossSystemMiningEnabled ? 'Mining: Central Hub' : 'Mining: Local System'}
+      </button>
+      <button type="button" class="hud-btn overview-btn" data-action="overview" title="Zoom out to System Overview">
+        Overview
+      </button>
+    `;
+
+    regions.quickDock
+      .querySelectorAll<HTMLButtonElement>('[data-place-deepspace]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dsId = btn.dataset.placeDeepspace as DeepSpaceStructureId | undefined;
+          if (!dsId) {
+            return;
+          }
+          const current = sceneManager.getPendingDeepSpacePlacement();
+          if (current === dsId) {
+            sceneManager.startDeepSpacePlacement(null);
+            statusBannerMessage = 'Cancelled deep-space placement mode.';
+          } else {
+            sceneManager.startDeepSpacePlacement(dsId);
+            const cfg = DEEP_SPACE_STRUCTURES[dsId];
+            statusBannerMessage = `Placement active: click any free location in 3D space to deploy ${cfg.displayName} (press Esc to cancel).`;
+          }
+          renderMainPanel();
+        });
+      });
+
+    regions.quickDock
+      .querySelector<HTMLButtonElement>('[data-action="cancel-deepspace"]')
+      ?.addEventListener('click', () => {
+        sceneManager.startDeepSpacePlacement(null);
+        statusBannerMessage = 'Cancelled deep-space placement mode.';
+        renderMainPanel();
+      });
+
+    regions.quickDock
+      .querySelector<HTMLButtonElement>('[data-action="toggle-hub-mining"]')
+      ?.addEventListener('click', () => {
+        syncSimRefs();
+        if (
+          'setPlayerHarvestersCrossSystemMining' in sim &&
+          typeof sim.setPlayerHarvestersCrossSystemMining === 'function'
+        ) {
+          crossSystemMiningEnabled = !crossSystemMiningEnabled;
+          sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
+        }
+        renderQuickDock();
+        renderEconomyBar();
+      });
+
+    regions.quickDock
+      .querySelector<HTMLButtonElement>('[data-action="overview"]')
+      ?.addEventListener('click', () => {
+        sceneManager.focusSystemOverview();
+      });
+  }
 
   let tutorialController: TutorialController;
 
   const lobbyController = new LobbyController({
     hostContainer: lobbyHostEl,
     sceneManager,
+    suppressOutcomeBanner: Boolean(options?.onRecordMatchOutcome),
     onMatchLaunched: (setup) => {
       syncSimRefs();
       selectedSlotIndex = 2;
@@ -443,108 +548,136 @@ export function mountSystemHud(
     },
   });
 
-  startTutorialBtnEl?.addEventListener('click', () => {
-    lobbyController.launchTutorialMatch();
-  });
-
-  lobbyToggleBtnEl?.addEventListener('click', () => {
-    lobbyController.toggleLobby();
-  });
-
-  hubMiningBtnEl?.addEventListener('click', () => {
-    syncSimRefs();
-    if (
-      'setPlayerHarvestersCrossSystemMining' in sim &&
-      typeof sim.setPlayerHarvestersCrossSystemMining === 'function'
-    ) {
-      crossSystemMiningEnabled = !crossSystemMiningEnabled;
-      sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
-    }
-    renderEconomyBar();
-  });
-
-  musicToggleBtnEl?.addEventListener('click', () => {
-    musicPlayer?.toggleMute();
-    renderEconomyBar();
-  });
-
-  for (const btn of speedBtnEls) {
-    btn.addEventListener('click', () => {
-      const spd = Number(btn.dataset.speed ?? '1');
-      simAdapter.simSpeedMultiplier = spd;
-      renderEconomyBar();
-    });
-  }
-
-  let lastRenderedMusicMuted: boolean | null = null;
-
   function renderEconomyBar(): void {
     syncSimRefs();
-    const pState = sim.getPlayerState(playerId);
-    const playerHarvesters = getVisibleHarvesters(sim, playerId).filter(
-      (h) => h.ownerId === playerId,
+    topBar.update(
+      buildTopBarModel(sim, {
+        playerId,
+        activeSystemId: sceneManager.getActiveSystem().id,
+        speed: simAdapter.simSpeedMultiplier,
+        musicMuted: musicPlayer ? musicPlayer.isMuted() : true,
+      }),
     );
-    const outcome = sim.getMatchOutcome();
-    const presetCfg = MATCH_PRESETS[sim.presetId];
-    const survivingCount =
-      outcome.activeContenderIds.length - outcome.defeatedPlayerIds.length;
-
-    if (econOreEl) econOreEl.textContent = `${pState.ore}`;
-    if (econCrystalEl) econCrystalEl.textContent = `${pState.crystal}`;
-    if (econSupplyEl) econSupplyEl.textContent = `${pState.supplyUsed} / ${pState.supplyCap}`;
-    if (econHarvestersEl) econHarvestersEl.textContent = `${playerHarvesters.length}`;
-    if (lobbyPresetBadgeEl) {
-      lobbyPresetBadgeEl.textContent = presetCfg.displayName;
-    }
-    if (lobbyToggleBtnEl) {
-      lobbyToggleBtnEl.classList.toggle('active', lobbyController.isLobbyOpen());
-    }
-    if (matchStatusValEl) {
-      if (outcome.status === 'victory') {
-        matchStatusValEl.textContent = 'VICTORY';
-        matchStatusValEl.style.color = '#22c55e';
-      } else if (outcome.status === 'defeat') {
-        matchStatusValEl.textContent = 'DEFEAT';
-        matchStatusValEl.style.color = '#ef4444';
-      } else if (
-        outcome.kingOfTheHill.enabled &&
-        outcome.kingOfTheHill.controllerId &&
-        outcome.kingOfTheHill.remainingSeconds !== null
-      ) {
-        matchStatusValEl.textContent = `KOTH ${formatMatchClockSeconds(outcome.kingOfTheHill.remainingSeconds)}`;
-        matchStatusValEl.style.color = outcome.kingOfTheHill.isContested
-          ? '#f87171'
-          : '#fcd34d';
-      } else {
-        matchStatusValEl.textContent = `${survivingCount}/${outcome.activeContenderIds.length} C&C`;
-        matchStatusValEl.style.color = '#7dd3fc';
-      }
-    }
-    if (hubMiningBtnEl) {
-      hubMiningBtnEl.classList.toggle('active', crossSystemMiningEnabled);
-      hubMiningBtnEl.textContent = crossSystemMiningEnabled
-        ? 'Mining: Central Hub'
-        : 'Mining: Local System';
-    }
-    if (musicToggleBtnEl) {
-      const isMuted = musicPlayer ? musicPlayer.isMuted() : true;
-      if (isMuted !== lastRenderedMusicMuted) {
-        lastRenderedMusicMuted = isMuted;
-        musicToggleBtnEl.classList.toggle('active', !isMuted);
-        musicToggleBtnEl.innerHTML = isMuted ? SPEAKER_MUTED_SVG : SPEAKER_UNMUTED_SVG;
-        const label = isMuted
-          ? 'Unmute ambient music (restarts from beginning)'
-          : 'Mute ambient music';
-        musicToggleBtnEl.setAttribute('aria-label', label);
-        musicToggleBtnEl.title = label;
-      }
-    }
-    for (const btn of speedBtnEls) {
-      const spd = Number(btn.dataset.speed ?? '1');
-      btn.classList.toggle('active', simAdapter.simSpeedMultiplier === spd);
-    }
     lobbyController.syncTelemetry();
+
+    if (
+      options?.onRecordMatchOutcome &&
+      options.getAppState?.().kind === 'in_match'
+    ) {
+      const outcome = sim.getMatchOutcome();
+      if (outcome.status === 'victory' || outcome.status === 'defeat') {
+        options.onRecordMatchOutcome({
+          winnerId: outcome.winnerId,
+          localPlayerWon: outcome.status === 'victory',
+          reason:
+            outcome.victoryCondition === 'king_of_the_hill'
+              ? 'king_of_the_hill'
+              : 'command_and_control',
+        });
+      }
+    }
   }
+
+  let currentOverlayState: AppScreenState | null = null;
+
+  function renderModalOverlay(): void {
+    const state = currentOverlayState ?? options?.getAppState?.() ?? null;
+    if (!state || (state.kind !== 'pause_menu' && state.kind !== 'match_outcome')) {
+      regions.modalLayer.style.display = 'none';
+      regions.modalLayer.innerHTML = '';
+      return;
+    }
+
+    regions.modalLayer.style.display = 'flex';
+    if (state.kind === 'pause_menu') {
+      const isMultiplayer =
+        options?.isMultiplayer ?? state.session.isMultiplayer;
+      const canRestart = !isMultiplayer && !isBattleSimulator;
+      regions.modalLayer.innerHTML = renderPauseMenuOverlayHtml({
+        isMultiplayer,
+        musicMuted: musicPlayer ? musicPlayer.isMuted() : true,
+        canRestart,
+      });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="resume-match"]')
+        ?.addEventListener('click', () => {
+          options?.onResumeMatch?.();
+        });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="restart-match"]')
+        ?.addEventListener('click', () => {
+          syncSimRefs();
+          const currentSetup = sim.getMatchSetup();
+          sceneManager.resetMatch(currentSetup);
+          selectedSlotIndex = 2;
+          crossSystemMiningEnabled = false;
+          statusBannerMessage = '';
+          tutorialController.resetForMatch(currentSetup.presetId);
+          options?.onResumeMatch?.();
+          renderEconomyBar();
+          renderHarvesterInspector();
+          renderMainPanel();
+        });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="toggle-music"]')
+        ?.addEventListener('click', () => {
+          musicPlayer?.toggleMute();
+          renderEconomyBar();
+          renderModalOverlay();
+        });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="quit-to-main-menu"]')
+        ?.addEventListener('click', () => {
+          options?.onQuitToMainMenu?.();
+        });
+      return;
+    }
+
+    regions.modalLayer.innerHTML = renderMatchOutcomeOverlayHtml({
+      outcome: state.outcome,
+      elapsedSeconds: sim.elapsedSeconds,
+    });
+
+    regions.modalLayer
+      .querySelector<HTMLButtonElement>('[data-overlay-action="rematch"]')
+      ?.addEventListener('click', () => {
+        options?.onRematch?.();
+      });
+
+    regions.modalLayer
+      .querySelector<HTMLButtonElement>('[data-overlay-action="quit-to-main-menu"]')
+      ?.addEventListener('click', () => {
+        options?.onQuitToMainMenu?.();
+      });
+  }
+
+  function syncAppState(state: AppScreenState): void {
+    currentOverlayState = state;
+    renderModalOverlay();
+  }
+
+  const onWindowKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || e.defaultPrevented) {
+      return;
+    }
+    if (
+      sceneManager.getPendingDeepSpacePlacement() !== null ||
+      sceneManager.getPendingFleetOrder() !== null
+    ) {
+      return;
+    }
+    const state = currentOverlayState ?? options?.getAppState?.() ?? null;
+    if (state?.kind === 'pause_menu') {
+      options?.onResumeMatch?.();
+    } else if (state?.kind === 'in_match') {
+      options?.onPauseMatch?.();
+    }
+  };
+  window.addEventListener('keydown', onWindowKeyDown);
 
   let lastInspectedHarvesterId: string | null = null;
 
@@ -726,8 +859,10 @@ export function mountSystemHud(
     }
 
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
-    const selectedPlanetState = sim.getPlanetState(selectedPlanetId);
-    const selectedStruct = selectedPlanetState.structures.find((s) =>
+    const selectedPlanetState = selectedPlanetId
+      ? sim.getPlanetState(selectedPlanetId)
+      : undefined;
+    const selectedStruct = selectedPlanetState?.structures.find((s) =>
       s.occupiedSlots.includes(selectedSlotIndex),
     );
     const selectedSlotOccupied = selectedStruct !== undefined;
@@ -750,12 +885,11 @@ export function mountSystemHud(
     return {
       homePlanetId,
       homeSystemId,
-      selectedPlanetId,
+      selectedPlanetId: selectedPlanetId ?? '',
       selectedSlotOccupied,
       selectedSlotCanQueueHarvester,
       firstEmptySlotIndex,
       isOrbitalRingCollapsed: collapsedSections.orbital_ring,
-      isFleetPanelOpen: !collapsedSections.fleet,
     };
   }
 
@@ -769,6 +903,8 @@ export function mountSystemHud(
       selectedPlanetId: sceneManager.getSelectedPlanetId(),
       selectedSlotIndex,
       selectedHarvesterId: sceneManager.getSelectedHarvesterId(),
+      selectedFleetId: sceneManager.getSelectedFleetId(),
+      selectedDeepSpaceId: sceneManager.getSelectedDeepSpaceId?.() ?? null,
       pendingDeepSpace: sceneManager.getPendingDeepSpacePlacement(),
       statusBannerMessage,
       wormholeStates: sceneManager.getActiveWormholes().map((wh) => ({
@@ -781,84 +917,54 @@ export function mountSystemHud(
   function renderMainPanel(): void {
     syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
-    const paletteInfo = NEBULA_PALETTES[activeSystem.nebulaPalette];
     const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
-    const selectedPlanetView = systemView.planets.find(
-      (p) => p.planet.id === selectedPlanetId,
-    );
-    const selectedPlanetNode =
-      selectedPlanetView?.planet ??
-      activeSystem.planets[0] ??
-      sim.getPlanetState(selectedPlanetId).planet;
-    const totalSlots = selectedPlanetNode.orbitalSlots;
+    const selectedFleetId = sceneManager.getSelectedFleetId();
+    const selectedHarvesterId = sceneManager.getSelectedHarvesterId();
+    const selectedDeepSpaceId = sceneManager.getSelectedDeepSpaceId?.() ?? null;
+    const selection = resolveHudSelectionState({
+      selectedFleetId,
+      selectedHarvesterId,
+      selectedDeepSpaceId,
+      selectedPlanetId,
+    });
 
-    if (selectedSlotIndex >= totalSlots) {
+    const selectedPlanetView =
+      selection.kind === 'planet'
+        ? systemView.planets.find((p) => p.planet.id === selection.planetId)
+        : undefined;
+    const selectedPlanetNode =
+      selection.kind === 'planet'
+        ? (selectedPlanetView?.planet ??
+          activeSystem.planets.find((p) => p.id === selection.planetId) ??
+          sim.getPlanetState(selection.planetId).planet)
+        : null;
+    const totalSlots = selectedPlanetNode?.orbitalSlots ?? 0;
+
+    if (totalSlots > 0 && selectedSlotIndex >= totalSlots) {
       selectedSlotIndex = 0;
     }
 
     lastMainPanelSignature = getCurrentMainPanelSignature();
 
-    const systemButtonsHtml = galaxy.systems
-      .map((sys) => {
-        const isActive = sys.id === activeSystem.id;
-        const sysView = sim.getPlayerSystemView(playerId, sys.id);
-        const badgeText = !sysView.isExplored
-          ? 'Unexplored'
-          : sys.isCentralHub
-            ? '12-Slot Hub • 1.6x Yield'
-            : 'Ore Heavy • Scarce Crystal';
-        return `<button class="hud-btn ${isActive ? 'active' : ''}" data-system-id="${sys.id}">
-          ${sys.name}
-          <span class="hud-badge">${badgeText}</span>
-        </button>`;
-      })
-      .join('');
+    const pendingOrderGlobal = sceneManager.getPendingFleetOrder();
 
-    const planetButtonsHtml = activeSystem.planets
-      .map((planet) => {
-        const pView = systemView.planets.find((p) => p.planet.id === planet.id);
-        const pClass = PLANET_CLASSES[planet.planetClass];
-        const isSelected =
-          planet.id === selectedPlanetId &&
-          sceneManager.getSelectedHarvesterId() === null;
-        if (!pView || pView.visibility === 'unexplored') {
-          return `<button class="hud-planet-card ${isSelected ? 'selected' : ''}" data-planet-id="${planet.id}">
-            <div class="planet-card-title">${planet.name} <span class="hud-badge">UNEXPLORED</span></div>
-            <div class="planet-card-meta">${pClass.displayName} • <strong>Unexplored (?/${planet.orbitalSlots} Slots)</strong></div>
-          </button>`;
-        }
-        const usedSlots = pView.structures.reduce(
-          (acc, item) => acc + getProjectedOrbitalData(item).occupiedSlots.length,
-          0,
-        );
-        const ownerLabel =
-          pView.ownerId === playerId
-            ? 'OWNED'
-            : pView.ownerId === null
-              ? 'UNCLAIMED'
-              : pView.ownerId.toUpperCase();
-        const ownerBadge =
-          pView.visibility === 'last_known' ? `${ownerLabel} • INTEL` : ownerLabel;
-        return `<button class="hud-planet-card ${isSelected ? 'selected' : ''}" data-planet-id="${planet.id}">
-          <div class="planet-card-title">${planet.name} <span class="hud-badge">${ownerBadge}</span></div>
-          <div class="planet-card-meta">${pClass.displayName} • <strong>${usedSlots}/${planet.orbitalSlots} Slots</strong></div>
-        </button>`;
-      })
-      .join('');
-
-    const wormholesHtml = sceneManager
-      .getActiveWormholes()
-      .map((wh) => {
-        const destSys = galaxy.systems.find((s) => s.id === wh.destinationSystemId);
-        const destName = destSys?.name ?? wh.destinationSystemId;
-        const isOpen = wh.isOpen();
-        return `<button class="hud-btn ${isOpen ? 'active' : ''}" data-wormhole-id="${wh.wormholeId}" title="Click to focus • Double-click to transit camera • Right-click with Fleet selected to transit fleet">
-          Gateway → ${destName}
-          <span class="hud-badge">${isOpen ? 'OPEN VORTEX' : 'DORMANT'}</span>
-        </button>`;
-      })
-      .join('');
+    regions.leftOutliner.innerHTML = renderLeftOutlinerHtml(
+      buildLeftOutlinerModel(sim, {
+        galaxy,
+        playerId,
+        activeSystem,
+        selectedPlanetId,
+        selectedFleetId,
+        selectedHarvesterId,
+        wormholeStates: sceneManager.getActiveWormholes().map((wh) => ({
+          id: wh.wormholeId,
+          destinationSystemId: wh.destinationSystemId,
+          isOpen: wh.isOpen(),
+        })),
+        pendingFleetOrder: pendingOrderGlobal,
+      }),
+    );
 
     const isSelectedPlanetUnexplored =
       !selectedPlanetView || selectedPlanetView.visibility === 'unexplored';
@@ -1134,158 +1240,9 @@ export function mountSystemHud(
       }
     }
 
-    const sysRes = systemView.resourceSummary;
-    const innerPct =
-      sysRes && sysRes.innerBeltInitial > 0
-        ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
-        : 0;
-    const yieldLabel = sysRes
-      ? sysRes.extractionMultiplier > 1.0
-        ? `${sysRes.extractionMultiplier}x Enriched Yield`
-        : '1.0x Standard Yield'
-      : 'Unscanned Sector';
-
-    const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
-    const deepSpaceInSystem = systemView.deepSpaceStructures;
-    const hasCompletedFriendlyHub = deepSpaceInSystem.some(
-      (item) =>
-        item.kind === 'live' &&
-        item.structure.structureId === 'logistics_hub' &&
-        item.structure.ownerId === playerId &&
-        item.structure.isComplete,
-    );
-
-    const deepSpaceBuildButtonsHtml = BUILDABLE_DEEP_SPACE_IDS.map((dsId) => {
-      const cfg = DEEP_SPACE_STRUCTURES[dsId];
-      const isPending = pendingDeepSpace === dsId;
-      const lockedByHubRule = cfg.requiresLogisticsHubRadius && !hasCompletedFriendlyHub;
-      return `<button class="hud-btn ${isPending ? 'active' : ''}" data-place-deepspace="${dsId}" ${lockedByHubRule ? 'disabled' : ''}>
-        ${isPending ? `Click 3D Space to Place ${cfg.displayName}` : `+ Place ${cfg.displayName} (${cfg.cost.ore} Ore • ${cfg.cost.crystal} Crystal • ${cfg.buildTimeSeconds}s)`}
-      </button>`;
-    }).join('');
-
-    const deepSpaceInstancesHtml =
-      deepSpaceInSystem.length > 0
-        ? `<div class="hud-btn-row" style="margin-top: 6px;">
-            ${deepSpaceInSystem
-              .map((item, idx) => {
-                const ds = item.kind === 'live' ? item.structure : item;
-                const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
-                if (item.kind === 'ghost') {
-                  const ageText = formatIntelAge(
-                    sim.elapsedSeconds - item.observedAtSeconds,
-                  );
-                  return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
-                    ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
-                    <span class="hud-badge" data-deepspace-badge="${ds.id}">LAST KNOWN (${ageText})</span>
-                  </button>`;
-                }
-                const statusText = ds.isComplete
-                  ? 'Operational'
-                  : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
-                return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
-                  ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
-                  <span class="hud-badge" data-deepspace-badge="${ds.id}">${statusText}</span>
-                </button>`;
-              })
-              .join('')}
-          </div>`
-        : '';
+    renderQuickDock();
 
     const playerFleets = sim.getFleetsForPlayer(playerId);
-    const selectedFleetId = sceneManager.getSelectedFleetId();
-    const pendingOrderGlobal = sceneManager.getPendingFleetOrder();
-    const isCreateFleetPending = pendingOrderGlobal?.mode === 'create_fleet';
-
-    const fleetTabsHtml = playerFleets
-      .map((f) => {
-        const liveCount = sim.getShipsInFleet(f.id).length;
-        const targetCount = SMALLEST_FIRST_FLEET_HULLS.reduce(
-          (acc, h) => acc + f.desiredCounts[h],
-          0,
-        );
-        const isSel = f.id === selectedFleetId;
-        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-fleet="${f.id}" title="Click to select and focus camera on ${f.name}">
-          ${f.name}
-          <span class="hud-badge">${liveCount}/${targetCount}${f.autoResupply ? ' ↻' : ''}</span>
-        </button>`;
-      })
-      .join('');
-
-    const selectedFleet = selectedFleetId
-      ? playerFleets.find((f) => f.id === selectedFleetId)
-      : undefined;
-    let selectedFleetDetailHtml = '';
-    if (selectedFleet) {
-      const fleetShips = sim.getShipsInFleet(selectedFleet.id);
-      const isFleetPatrolPending =
-        pendingOrderGlobal?.mode === 'fleet_patrol' &&
-        pendingOrderGlobal.fleetId === selectedFleet.id;
-      const otherFleets = playerFleets.filter((f) => f.id !== selectedFleet.id);
-      const techCount = sim.getPlayerTechModuleCount(playerId);
-
-      const templateRowsHtml = SMALLEST_FIRST_FLEET_HULLS.map((hull) => {
-        const sCfg = SHIP_CLASSES[hull];
-        const live = fleetShips.filter((s) => s.shipClassId === hull).length;
-        const desired = selectedFleet.desiredCounts[hull];
-        const techLock =
-          techCount < sCfg.requiredTechModuleCount
-            ? ` (Req ${sCfg.requiredTechModuleCount} Tech)`
-            : '';
-        return `<div style="display: inline-flex; align-items: center; gap: 4px; margin-right: 10px;">
-          <span class="econ-label">${sCfg.displayName}${techLock}: <strong>${live}/${desired}</strong></span>
-          <button class="hud-btn" data-fleet-dec="${hull}" data-fleet-id="${selectedFleet.id}" ${desired <= 0 ? 'disabled' : ''}>−</button>
-          <button class="hud-btn" data-fleet-inc="${hull}" data-fleet-id="${selectedFleet.id}">+</button>
-        </div>`;
-      }).join('');
-
-      const fleetStanceBtns = FLEET_STANCE_OPTIONS.map(
-        (opt) =>
-          `<button class="hud-btn ${selectedFleet.stance === opt.id ? 'active' : ''}" data-fleet-stance="${opt.id}" data-fleet-id="${selectedFleet.id}">${opt.label}</button>`,
-      ).join('');
-
-      const mergeBtns = otherFleets
-        .map(
-          (other) =>
-            `<button class="hud-btn" data-fleet-merge-src="${selectedFleet.id}" data-fleet-merge-dst="${other.id}">Merge → ${other.name}</button>`,
-        )
-        .join('');
-
-      selectedFleetDetailHtml = `
-        <div class="slot-detail-box" style="flex-direction: column; align-items: stretch; margin-top: 6px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div>
-              <strong>${selectedFleet.name}</strong> — ${fleetShips.length} ships • Right-click space to Move • Right-click hostile to Attack
-            </div>
-            <div class="hud-btn-row">
-              <button class="hud-btn" data-fleet-focus="${selectedFleet.id}" title="Jump camera to ${selectedFleet.name}">
-                Focus
-              </button>
-              <button class="hud-btn ${selectedFleet.autoResupply ? 'active' : ''}" data-fleet-resupply="${selectedFleet.id}">
-                Resupply: ${selectedFleet.autoResupply ? 'ON ↻' : 'OFF'}
-              </button>
-              <button class="hud-btn ${isFleetPatrolPending ? 'active' : ''}" data-fleet-patrol="${selectedFleet.id}">
-                ${isFleetPatrolPending ? `Patrol Wp #${(pendingOrderGlobal?.waypointCount ?? 0) + 1}/2...` : 'Patrol Route (2 Clicks)'}
-              </button>
-              <button class="hud-btn ${selectedFleet.orderType === 'flee' ? 'active' : ''}" data-fleet-flee="${selectedFleet.id}" title="Flee at full speed to the nearest Logistics Hub, Planetary Outpost, or C&C">
-                Flee
-              </button>
-              <button class="hud-btn" data-fleet-split="${selectedFleet.id}" ${fleetShips.length < 2 ? 'disabled' : ''}>Split</button>
-              ${mergeBtns}
-              <button class="hud-btn" data-fleet-disband="${selectedFleet.id}">Disband</button>
-            </div>
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">TEMPLATE (SMALLEST FIRST):</span>
-            ${templateRowsHtml}
-          </div>
-          <div class="hud-btn-row" style="margin-top: 6px;">
-            <span class="econ-label" style="margin-right: 4px;">STANCE:</span>
-            ${fleetStanceBtns}
-          </div>
-        </div>
-      `;
-    }
 
     function renderSectionHeader(
       sectionId: HudSectionId,
@@ -1313,49 +1270,95 @@ export function mountSystemHud(
       </div>`;
     }
 
-    mainBodyEl.innerHTML = `
-      <div class="hud-header">
-        <div>
-          <h1>StarConquest — ${activeSystem.name}</h1>
-          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong data-hud-field="system-reserves-ore">${sysRes ? `${sysRes.remainingOre}/${sysRes.initialOre} Ore` : 'Unknown (Unscanned)'}</strong> ${sysRes ? '&' : ''} <strong data-hud-field="system-reserves-crystal">${sysRes ? `${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal` : ''}</strong> <span data-hud-field="system-reserves-inner">${sysRes ? `(Inner Belt: ${innerPct}%)` : ''}</span></p>
-        </div>
-        <button class="hud-btn overview-btn" data-action="overview">System Overview</button>
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader('galaxy', '5-System Hub & Spoke Galaxy', { titleLabel: 'Galaxy navigation' })}
-        ${collapsedSections.galaxy ? '' : `<div class="hud-btn-row">${systemButtonsHtml}</div>`}
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader(
-          'fleet',
-          `Fleet Command (${playerFleets.length}) — Click Any Ship or Tab to Focus Fleet`,
-          { legacyAction: 'toggle-fleet-panel', titleLabel: 'Fleet Command panel' },
-        )}
-        ${
-          collapsedSections.fleet
-            ? ''
-            : `<div class="hud-btn-row">
-                <button class="hud-btn ${isCreateFleetPending ? 'active' : ''}" data-action="create-fleet">
-                  ${isCreateFleetPending ? 'Click 3D Space for Fleet Rally Point...' : '+ Create Fleet (Click 3D Rally)'}
-                </button>
-                ${fleetTabsHtml}
-                ${pendingOrderGlobal ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
-              </div>
-              ${selectedFleetDetailHtml}`
+    let contextualHtml = '';
+    let isEmptySelectionState = false;
+    if (activeSystem.id !== BATTLE_SIMULATOR_SYSTEM_ID) {
+      switch (selection.kind) {
+        case 'fleet': {
+          const selectedFleet = playerFleets.find((f) => f.id === selection.fleetId);
+          if (selectedFleet) {
+            contextualHtml = renderFleetInspectorHtml({
+              sim,
+              playerId,
+              fleet: selectedFleet,
+              allPlayerFleets: playerFleets,
+              pendingFleetOrder: pendingOrderGlobal,
+            });
+          } else {
+            contextualHtml = renderEmptySelectionHintHtml();
+            isEmptySelectionState = true;
+          }
+          break;
         }
-      </div>
+        case 'planet': {
+          if (selectedPlanetNode) {
+            contextualHtml = `<div class="hud-section" data-inspector-kind="planet">
+              ${renderSectionHeader(
+                'orbital_ring',
+                `Orbital Ring Builder — <strong>${selectedPlanetNode.name}</strong> (${totalSlots} Slots)`,
+                { titleLabel: 'Orbital Ring Builder panel' },
+              )}
+              ${
+                collapsedSections.orbital_ring
+                  ? ''
+                  : `<div class="slot-ring-grid">${slotButtonsHtml}</div>
+              <div class="build-options-grid">${slotActionsHtml}</div>`
+              }
+            </div>`;
+          } else {
+            contextualHtml = renderEmptySelectionHintHtml();
+            isEmptySelectionState = true;
+          }
+          break;
+        }
+        case 'harvester': {
+          contextualHtml = '';
+          break;
+        }
+        case 'deep_space': {
+          const dsItem = systemView.deepSpaceStructures.find(
+            (item) =>
+              (item.kind === 'live' ? item.structure.id : item.id) ===
+              selection.structureId,
+          );
+          if (dsItem) {
+            contextualHtml = renderDeepSpaceInspectorHtml(
+              dsItem,
+              sim.elapsedSeconds,
+              formatIntelAge,
+            );
+          } else {
+            contextualHtml = renderEmptySelectionHintHtml();
+            isEmptySelectionState = true;
+          }
+          break;
+        }
+        case 'none': {
+          contextualHtml = renderEmptySelectionHintHtml();
+          isEmptySelectionState = true;
+          break;
+        }
+      }
+    }
 
-      <div class="hud-section">
+    regions.bottomInspector.classList.toggle(
+      'is-empty',
+      !isBattleSimulator && isEmptySelectionState && statusBannerMessage === '',
+    );
+
+    mainBodyEl.innerHTML = `
+      ${
+        isBattleSimulator
+          ? `<div class="hud-section" data-hud-section="battle_sim">
         ${renderSectionHeader(
           'battle_sim',
           `Fleet Battle Simulator — Isolated Void Arena${activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID ? ' (ACTIVE)' : ''}`,
           {
             legacyAction: 'toggle-battle-sim',
             titleLabel: 'Fleet Battle Simulator',
-            extraActionsHtml:
-              activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
+            extraActionsHtml: options?.onQuitToMainMenu
+              ? `<button class="hud-btn active" data-action="exit-battle-sim">Return to Main Menu</button>`
+              : activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
                 ? `<button class="hud-btn active" data-action="exit-battle-sim">Return to Match</button>`
                 : undefined,
           },
@@ -1461,71 +1464,16 @@ export function mountSystemHud(
                 `;
               })()
         }
-      </div>
-
-      ${
-        activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
-          ? ''
-          : `<div class="hud-section">
-        ${renderSectionHeader(
-          'planets_wormholes',
-          `Planets & Wormholes in ${activeSystem.name}`,
-          { titleLabel: 'Planets & Wormholes panel' },
-        )}
-        ${
-          collapsedSections.planets_wormholes
-            ? ''
-            : `<div class="hud-planet-row">${planetButtonsHtml}</div>
-        <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>`
-        }
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader(
-          'deep_space',
-          'Deep-Space Installations — Free-Floating Logistics Hub ("Atlas") & Defence Towers',
-          { titleLabel: 'Deep-Space Installations panel' },
-        )}
-        ${
-          collapsedSections.deep_space
-            ? ''
-            : `<div class="hud-btn-row">
-          ${deepSpaceBuildButtonsHtml}
-          ${pendingDeepSpace ? `<button class="hud-btn" data-action="cancel-deepspace">Cancel Placement (Esc)</button>` : ''}
-        </div>
-        ${deepSpaceInstancesHtml}`
-        }
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader(
-          'orbital_ring',
-          `Orbital Ring Builder — <strong>${selectedPlanetNode.name}</strong> (${totalSlots} Slots)`,
-          { titleLabel: 'Orbital Ring Builder panel' },
-        )}
-        ${
-          collapsedSections.orbital_ring
-            ? ''
-            : `<div class="slot-ring-grid">${slotButtonsHtml}</div>
-        <div class="build-options-grid">${slotActionsHtml}</div>`
-        }
       </div>`
+          : ''
       }
 
-      ${statusBannerMessage ? `<div class="hud-status-msg">${statusBannerMessage}</div>` : ''}
+      ${contextualHtml}
 
-      <div class="hud-controls-hint">
-        <span><strong>Click Harvester/Planet:</strong> Inspect & Follow</span>
-        <span><strong>Double-Click Wormhole:</strong> Transit Camera</span>
-        <span><strong>Right-Click Space / Hostile (Fleet):</strong> Move / Attack</span>
-        <span><strong>Right-Click Wormhole (Fleet):</strong> Transit Fleet</span>
-        <span><strong>Left-Drag / WASD:</strong> Pan (Breaks Follow)</span>
-        <span><strong>Right-Drag:</strong> Orbit</span>
-        <span><strong>Scroll:</strong> Zoom</span>
-      </div>
+      ${statusBannerMessage ? `<div class="hud-status-msg">${statusBannerMessage}</div>` : ''}
     `;
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-system-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1534,12 +1482,13 @@ export function mountSystemHud(
             statusBannerMessage = '';
             sceneManager.loadSystem(sysId);
             selectedSlotIndex = 0;
+            renderEconomyBar();
             renderMainPanel();
           }
         });
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-planet-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1564,12 +1513,13 @@ export function mountSystemHud(
       statusBannerMessage = '';
       if (sceneManager.transitCameraThroughWormhole(wormholeId)) {
         selectedSlotIndex = 0;
+        renderEconomyBar();
         renderHarvesterInspector();
         renderMainPanel();
       }
     };
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-wormhole-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1635,7 +1585,7 @@ export function mountSystemHud(
       .forEach((btn) => {
         btn.addEventListener('click', () => {
           const structId = btn.dataset.buildStruct as OrbitalStructureId | undefined;
-          if (!structId) {
+          if (!structId || !selectedPlanetId) {
             return;
           }
           const res = simAdapter.submitPlayerCommand({
@@ -1657,7 +1607,10 @@ export function mountSystemHud(
       .querySelector<HTMLButtonElement>('[data-action="spawn-harvester"]')
       ?.addEventListener('click', (e) => {
         const structId =
-          (e.currentTarget as HTMLButtonElement).dataset.structId ?? selectedPlanetId;
+          (e.currentTarget as HTMLButtonElement).dataset.structId ?? selectedPlanetId ?? '';
+        if (!structId) {
+          return;
+        }
         const res = simAdapter.submitPlayerCommand({
           type: 'QUEUE_SHIP',
           playerId,
@@ -1780,7 +1733,7 @@ export function mountSystemHud(
         });
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelector<HTMLButtonElement>('[data-action="cancel-fleet-order"]')
       ?.addEventListener('click', () => {
         sceneManager.cancelFleetOrderPlacement();
@@ -1860,6 +1813,10 @@ export function mountSystemHud(
     mainBodyEl
       .querySelector<HTMLButtonElement>('[data-action="exit-battle-sim"]')
       ?.addEventListener('click', () => {
+        if (options?.onQuitToMainMenu) {
+          options.onQuitToMainMenu();
+          return;
+        }
         sceneManager.loadSystem(sceneManager.getLastMatchSystemId());
         renderMainPanel();
       });
@@ -1874,7 +1831,7 @@ export function mountSystemHud(
         renderMainPanel();
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelector<HTMLButtonElement>('[data-action="create-fleet"]')
       ?.addEventListener('click', () => {
         sceneManager.startCreateFleetPlacement(selectedFleetStance, true);
@@ -1883,7 +1840,7 @@ export function mountSystemHud(
         renderMainPanel();
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-select-fleet]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -2077,31 +2034,10 @@ export function mountSystemHud(
       });
 
     mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-place-deepspace]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const dsId = btn.dataset.placeDeepspace as DeepSpaceStructureId | undefined;
-          if (!dsId) {
-            return;
-          }
-          const current = sceneManager.getPendingDeepSpacePlacement();
-          if (current === dsId) {
-            sceneManager.startDeepSpacePlacement(null);
-            statusBannerMessage = 'Cancelled deep-space placement mode.';
-          } else {
-            sceneManager.startDeepSpacePlacement(dsId);
-            const cfg = DEEP_SPACE_STRUCTURES[dsId];
-            statusBannerMessage = `Placement active: click any free location in 3D space to deploy ${cfg.displayName} (press Esc to cancel).`;
-          }
-          renderMainPanel();
-        });
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="cancel-deepspace"]')
+      .querySelector<HTMLButtonElement>('[data-action="clear-selection"]')
       ?.addEventListener('click', () => {
-        sceneManager.startDeepSpacePlacement(null);
-        statusBannerMessage = 'Cancelled deep-space placement mode.';
+        sceneManager.clearSelection?.();
+        renderHarvesterInspector();
         renderMainPanel();
       });
 
@@ -2115,12 +2051,6 @@ export function mountSystemHud(
             renderMainPanel();
           }
         });
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="overview"]')
-      ?.addEventListener('click', () => {
-        sceneManager.focusSystemOverview();
       });
 
     tutorialController.applyCurrentHighlight(
@@ -2150,19 +2080,20 @@ export function mountSystemHud(
     syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
     const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
-    const selectedPlanetView = systemView.planets.find(
-      (p) => p.planet.id === sceneManager.getSelectedPlanetId(),
-    );
+    const currentSelectedPlanetId = sceneManager.getSelectedPlanetId();
+    const selectedPlanetView = currentSelectedPlanetId
+      ? systemView.planets.find((p) => p.planet.id === currentSelectedPlanetId)
+      : undefined;
 
     // 1. System resource reserves
     const sysRes = systemView.resourceSummary;
-    const oreResEl = mainBodyEl.querySelector<HTMLElement>(
+    const oreResEl = regions.leftOutliner.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-ore"]',
     );
-    const crystalResEl = mainBodyEl.querySelector<HTMLElement>(
+    const crystalResEl = regions.leftOutliner.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-crystal"]',
     );
-    const innerResEl = mainBodyEl.querySelector<HTMLElement>(
+    const innerResEl = regions.leftOutliner.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-inner"]',
     );
     if (!sysRes) {
@@ -2300,24 +2231,37 @@ export function mountSystemHud(
       }
     }
 
-    // 4. Deep-space installation construction percentages
-    for (const item of systemView.deepSpaceStructures) {
-      const ds = item.kind === 'live' ? item.structure : item;
-      const badgeEl = mainBodyEl.querySelector<HTMLElement>(
-        `[data-deepspace-badge="${ds.id}"]`,
+    const currentDeepSpaceId = sceneManager.getSelectedDeepSpaceId?.() ?? null;
+    if (currentDeepSpaceId) {
+      const dsItem = systemView.deepSpaceStructures.find(
+        (item) =>
+          (item.kind === 'live' ? item.structure.id : item.id) === currentDeepSpaceId,
       );
-      if (badgeEl) {
-        badgeEl.textContent =
-          item.kind === 'ghost'
-            ? `LAST KNOWN (${formatIntelAge(sim.elapsedSeconds - item.observedAtSeconds)})`
-            : ds.isComplete
-              ? 'Operational'
-              : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
+      if (dsItem) {
+        const ds = dsItem.kind === 'live' ? dsItem.structure : dsItem;
+        const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
+        const dsStatusEl = mainBodyEl.querySelector<HTMLElement>(
+          '[data-hud-field="deepspace-status"]',
+        );
+        if (dsStatusEl) {
+          dsStatusEl.textContent =
+            dsItem.kind === 'ghost'
+              ? `Last Known (${formatIntelAge(sim.elapsedSeconds - dsItem.observedAtSeconds)})`
+              : dsItem.structure.isComplete
+                ? 'Operational'
+                : `Constructing (${Math.floor((dsItem.structure.buildProgressSeconds / Math.max(1, dsItem.structure.totalBuildTimeSeconds)) * 100)}%)`;
+        }
+        const dsHpEl = mainBodyEl.querySelector<HTMLElement>(
+          '[data-hud-field="deepspace-hp"]',
+        );
+        if (dsHpEl) {
+          dsHpEl.textContent = `Shields: ${Math.round(ds.shields)}/${cfg.maxShields} • Hull: ${Math.round(ds.hull)}/${cfg.maxHull}`;
+        }
       }
     }
   }
 
-  window.setInterval(() => {
+  const pollIntervalId = window.setInterval(() => {
     renderEconomyBar();
     renderHarvesterInspector();
     const nextSignature = getCurrentMainPanelSignature();
@@ -2328,4 +2272,15 @@ export function mountSystemHud(
     }
     tutorialController.sync(sim, playerId, buildTutorialUiContext());
   }, 250);
+
+  return {
+    syncAppState,
+    dispose: () => {
+      window.clearInterval(pollIntervalId);
+      window.removeEventListener('keydown', onWindowKeyDown);
+      tutorialController.dispose();
+      tutorialHostEl.remove();
+      container.innerHTML = '';
+    },
+  };
 }

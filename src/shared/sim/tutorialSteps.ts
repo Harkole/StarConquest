@@ -21,9 +21,9 @@ export type TutorialLifecycleStatus =
 export type TutorialHighlightTarget =
   | { readonly kind: 'planet'; readonly planetId: string }
   | { readonly kind: 'slot'; readonly slotIndex: number }
-  | { readonly kind: 'section'; readonly sectionId: 'orbital_ring' | 'fleet_command' }
+  | { readonly kind: 'section'; readonly sectionId: 'orbital_ring' }
   | { readonly kind: 'build-struct'; readonly structureId: OrbitalStructureId }
-  | { readonly kind: 'action'; readonly action: 'create-fleet' | 'toggle-fleet-panel' | 'spawn-harvester' }
+  | { readonly kind: 'action'; readonly action: 'create-fleet' | 'spawn-harvester' }
   | { readonly kind: 'fleet-inc'; readonly hull: FleetHullClassId }
   | { readonly kind: 'speed'; readonly speed: 4 }
   | { readonly kind: 'system-nav'; readonly systemId: string }
@@ -37,7 +37,6 @@ export interface TutorialUiContext {
   readonly selectedSlotCanQueueHarvester?: boolean;
   readonly firstEmptySlotIndex: number | null;
   readonly isOrbitalRingCollapsed: boolean;
-  readonly isFleetPanelOpen: boolean;
 }
 
 export interface TutorialStepDefinition {
@@ -122,12 +121,8 @@ function resolveOrbitalBuildHighlight(
 function resolveFleetTemplateHighlight(
   sim: SimulationView,
   playerId: PlayerSlotId,
-  ui: TutorialUiContext,
   hull: FleetHullClassId,
 ): TutorialHighlightTarget {
-  if (!ui.isFleetPanelOpen) {
-    return { kind: 'action', action: 'toggle-fleet-panel' };
-  }
   if (sim.getFleetsForPlayer(playerId).length === 0) {
     return { kind: 'action', action: 'create-fleet' };
   }
@@ -217,8 +212,8 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
     hint: 'Destroyers are fast, hull-only raiders that cost mostly Ore and form your initial vanguard.',
     isComplete: (sim, playerId) =>
       sim.getFleetsForPlayer(playerId).some((f) => f.desiredCounts.destroyer >= 3),
-    resolveHighlight: (sim, playerId, ui) =>
-      resolveFleetTemplateHighlight(sim, playerId, ui, 'destroyer'),
+    resolveHighlight: (sim, playerId) =>
+      resolveFleetTemplateHighlight(sim, playerId, 'destroyer'),
   },
   {
     id: 'tech_and_cruisers',
@@ -234,7 +229,7 @@ export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
       if (sim.getPlayerTechModuleCount(playerId) < 1) {
         return resolveOrbitalBuildHighlight(ui, 'tech_module');
       }
-      return resolveFleetTemplateHighlight(sim, playerId, ui, 'cruiser');
+      return resolveFleetTemplateHighlight(sim, playerId, 'cruiser');
     },
   },
   {

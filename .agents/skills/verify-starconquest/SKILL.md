@@ -5,7 +5,7 @@ description: "Drive the live StarConquest 3D browser RTS (Three.js WebGL canvas 
 
 # Verify StarConquest
 
-StarConquest is a browser-based 3D space RTS (`#app-canvas` WebGL scene + `#hud-overlay` tactical HUD) running a deterministic in-browser simulation (`LocalSimAdapter('standard_tactical')`). Every page load starts a clean match with zero external backend, database, or auth dependencies.
+StarConquest is a browser-based 3D space RTS (`#app-canvas` WebGL scene + `#hud-root` tactical HUD) booting on a static `MainMenu` screen (`#app-canvas` hidden until a match starts) and running a deterministic in-browser simulation (`LocalSimAdapter('standard_tactical')`). Every page load starts cleanly with zero external backend, database, or auth dependencies.
 
 Read [features/README.md](./features/README.md) first, then follow the matching feature recipe.
 
@@ -19,7 +19,7 @@ Always start an isolated Vite dev server on a dedicated verification port (defau
 npx vite --host 127.0.0.1 --port 5179 --strictPort
 ```
 
-- **Ready check:** Wait for Vite stdout to print `Local:   http://127.0.0.1:5179/` (typically `< 2s`). Usable readiness means the page renders `#app-canvas` with non-zero dimensions, `#hud-overlay` displays `StarConquest —`, `#econ-ore-val` shows a positive number (starting Ore), and `#econ-harvesters-val` shows `1`.
+- **Ready check:** Wait for Vite stdout to print `Local:   http://127.0.0.1:5179/` (typically `< 2s`). Usable readiness during an active match means the page renders `#app-canvas` with non-zero dimensions, `#hud-root` renders `.hud-top-bar`, `#econ-ore-val` shows a positive number (starting Ore), and `#econ-harvesters-val` shows `1`.
 - **Production subpath check (optional, for GitHub Pages / asset path fixes):** Run `npm run build`, then launch `npx vite preview --host 127.0.0.1 --port 5180 --strictPort` (`BypassSandbox: true`, `IsDaemon: true`) and open `http://127.0.0.1:5180/StarConquest/`.
 - **Isolation:** Multiple Vite instances can run side by side on distinct `--port` values with zero shared state. Never drive an existing server on `5173`.
 
@@ -31,7 +31,7 @@ Run this read-only check before driving any feature (and anytime something looks
 2. In the `browser` subagent, navigate to `http://127.0.0.1:5179/` and verify all five signals (requires Google Chrome running with remote debugging enabled at `chrome://inspect/#remote-debugging`):
    - Document title is `StarConquest — 3D Space RTS`.
    - `#app-canvas` exists with `width > 0` and `height > 0` (WebGL context active).
-   - `#hud-overlay` renders `.hud-econ-bar` with `#econ-ore-val > 0`, `#econ-crystal-val > 0`, `#econ-supply-val` (`0 / 30`), and `#econ-harvesters-val` (`1`).
+   - `#hud-root` renders `.hud-top-bar` with `#econ-ore-val > 0`, `#econ-crystal-val > 0`, `#econ-supply-val` (`0 / 30`), and `#econ-harvesters-val` (`1`).
    - Browser console has `0` uncaught JS errors and `0` WebGL shader compilation errors.
    - Network tab has `0` app/asset `404` responses (including `/audio/*.mp3` — note `206 Partial Content` on `.mp3` is normal range streaming, and a `404` on `/favicon.ico` is benign).
    - Note: if `evaluate_script` is disabled by policy, verify all Doctor and feature assertions using a11y snapshots, console/network inspection, and viewport screenshots.
@@ -42,13 +42,15 @@ If any signal fails, stop, capture the console/network error as evidence, and fi
 
 Drive StarConquest through the Antigravity `browser` subagent (`invoke_subagent` with `TypeName: "browser"`). Always prefer stable `data-*` attributes, IDs, and ARIA labels over raw screen coordinates:
 
-- **Top Economy & Control Bar:** `#econ-ore-val`, `#econ-crystal-val`, `#econ-supply-val`, `#econ-harvesters-val`, `[data-action="toggle-hub-mining"]`, `[data-speed="1"]`, `[data-speed="2"]`, `[data-speed="4"]`, `[data-action="toggle-music"]` (ARIA label `"Mute ambient music"` / `"Unmute ambient music (restarts from beginning)"`).
-- **Galaxy & Camera Navigation:** `[data-system-id="system_starter_1"]` .. `[data-system-id="system_central_hub"]`, `[data-action="overview"]`, `[data-planet-id]`, `[data-wormhole-id]`.
-- **Orbital Ring Builder:** `[data-slot-index="0"]` .. `[data-slot-index="9"]`, `[data-build-struct="refinery"|"orbital_dockyard"|"tech_module"|"heavy_defense_platform"|"planetary_outpost"]`, `[data-action="spawn-harvester"]`, `[data-set-focus="auto"|"ore"|"crystal"]`, `[data-toggle-dockyard-fleet-building]`, `[data-hud-field="struct-status"]`, `.hud-status-msg`.
-- **Fleet Command Panel:** `[data-action="toggle-fleet-panel"]`, `[data-action="create-fleet"]`, `[data-action="cancel-fleet-order"]`, `[data-select-fleet]`, `[data-fleet-focus]`, `[data-fleet-inc="destroyer"|"cruiser"|"carrier"|"dreadnought"]`, `[data-fleet-dec=...]`, `[data-fleet-resupply]`, `[data-fleet-stance="aggressive"|"hold_the_line"|"passive"]`, `[data-fleet-patrol]`, `[data-fleet-flee]`, `[data-fleet-split]`, `[data-fleet-merge-src]`, `[data-fleet-disband]`.
-- **Fleet Battle Simulator:** `[data-action="toggle-battle-sim"]`, `[data-sim-inc]` / `[data-sim-dec]` (with `[data-sim-side="friendly"|"hostile"]`), `[data-action="launch-battle-sim"]`, `[data-action="clear-battle-sim"]`, `[data-action="exit-battle-sim"]`, `[data-action="dismiss-battle-stats"]`.
-- **Deep-Space Installations:** `[data-place-deepspace="logistics_hub"|"point_defence_tower"|"hull_breaker_tower"]`, `[data-action="cancel-deepspace"]`, `[data-focus-deepspace]`.
-- **3D Canvas (`#app-canvas`):** Left-click open canvas space to the right of `#hud-overlay` (e.g. `x ≈ 75%` of viewport width, `y ≈ 50%` of viewport height) when placing deep-space structures or fleet rally/patrol points. Short right-click (`<= 5px` drag) moves the selected fleet; right-drag orbits; left-drag or `WASD` pans; wheel zooms.
+- **Main Menu & Lifecycle Overlays:** `[data-app-screen="main_menu"|"single_player_setup"|"host_room_lobby"|"join_room_lobby"]`, `[data-menu-action="launch-tutorial"|"open-single-player"|"open-host-room"|"open-join-room"|"launch-battle-sim"|"open-feedback"|"start-match"|"back-to-main"]`, `[data-action="open-pause-menu"]`, `[data-app-overlay="pause_menu"|"match_outcome"]`, `[data-overlay-action="resume-match"|"restart-match"|"toggle-music"|"rematch"|"quit-to-main-menu"]`.
+- **Top Economy & Control Bar:** `#econ-ore-val`, `#econ-crystal-val`, `#econ-supply-val`, `#econ-harvesters-val`, `[data-speed="1"]`, `[data-speed="2"]`, `[data-speed="4"]`, `[data-action="toggle-music"]` (ARIA label `"Mute ambient music"` / `"Unmute ambient music (restarts from beginning)"`), `[data-action="open-pause-menu"]`.
+- **Quick Actions Dock (`.hud-quick-dock`):** `[data-place-deepspace="logistics_hub"|"point_defence_tower"|"hull_breaker_tower"]`, `[data-action="cancel-deepspace"]`, `[data-action="toggle-hub-mining"]`, `[data-action="overview"]`.
+- **Galaxy & Camera Navigation (`.hud-left-outliner`):** `[data-system-id="system_starter_1"]` .. `[data-system-id="system_central_hub"]`, `[data-planet-id]`, `[data-wormhole-id]`.
+- **Contextual Bottom Inspector (`.hud-bottom-inspector`):** Shows only the active entity (`[data-inspector-kind="planet"|"fleet"|"deep_space"|"none"]` or `.harvester-telemetry-card`), collapsing to a hint pill on empty selection:
+  - **Orbital Ring Builder:** `[data-slot-index="0"]` .. `[data-slot-index="9"]`, `[data-build-struct="refinery"|"orbital_dockyard"|"tech_module"|"heavy_defense_platform"|"planetary_outpost"]`, `[data-action="spawn-harvester"]`, `[data-set-focus="auto"|"ore"|"crystal"]`, `[data-toggle-dockyard-fleet-building]`, `[data-hud-field="struct-status"]`, `.hud-status-msg`.
+  - **Fleet Command:** `[data-action="create-fleet"]`, `[data-action="cancel-fleet-order"]`, `[data-select-fleet]` in `.hud-left-outliner`, plus stacked hull cards `[data-fleet-hull-card="destroyer"|"cruiser"|"carrier"|"dreadnought"]`, `[data-fleet-focus]`, `[data-fleet-inc=...]`, `[data-fleet-dec=...]`, `[data-fleet-resupply]`, `[data-fleet-stance="aggressive"|"hold_the_line"|"passive"]`, `[data-fleet-patrol]`, `[data-fleet-flee]`, `[data-fleet-split]`, `[data-fleet-merge-src]`, `[data-fleet-disband]`, `[data-action="clear-selection"]` in `.hud-bottom-inspector`.
+  - **Fleet Battle Simulator:** Launched from `MainMenu` (`[data-menu-action="launch-battle-sim"]`), `[data-action="toggle-battle-sim"]`, `[data-sim-inc]` / `[data-sim-dec]` (with `[data-sim-side="friendly"|"hostile"]`), `[data-action="launch-battle-sim"]`, `[data-action="clear-battle-sim"]`, `[data-action="exit-battle-sim"]`, `[data-action="dismiss-battle-stats"]`.
+- **3D Canvas (`#app-canvas`):** Left-click open canvas space away from `#hud-root` perimeter panels (e.g. `x ≈ 55%` of viewport width, `y ≈ 35%` of viewport height) when placing deep-space structures or fleet rally/patrol points. Short right-click (`<= 5px` drag) moves the selected fleet; right-drag orbits; left-drag or `WASD` pans; wheel zooms.
 - **Speed acceleration:** Click `[data-speed="4"]` before waiting on construction or ship build timers so 12s–30s builds complete in 3s–7.5s of wall-clock time.
 
 ## Evidence

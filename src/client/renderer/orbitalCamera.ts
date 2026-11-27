@@ -29,12 +29,22 @@ export class OrbitalCameraController {
   private readonly pressedKeys = new Set<string>();
 
   private pinnedTargetProvider: CameraTargetProvider | null = null;
+  private cleanupEvents: (() => void) | null = null;
 
   constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement) {
     this.camera = camera;
     this.domElement = domElement;
     this.bindEvents();
     this.syncCameraTransform();
+  }
+
+  public dispose(): void {
+    this.cleanupEvents?.();
+    this.cleanupEvents = null;
+    this.isPanning = false;
+    this.isOrbiting = false;
+    this.pressedKeys.clear();
+    this.pinnedTargetProvider = null;
   }
 
   public focusOn(x: number, z: number, distance = 120): void {
@@ -143,9 +153,11 @@ export class OrbitalCameraController {
   }
 
   private bindEvents(): void {
-    this.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+    const onContextMenu = (e: MouseEvent): void => {
+      e.preventDefault();
+    };
 
-    this.domElement.addEventListener('pointerdown', (e) => {
+    const onPointerDown = (e: PointerEvent): void => {
       this.pointerDownX = e.clientX;
       this.pointerDownY = e.clientY;
       this.lastPointerX = e.clientX;
@@ -155,14 +167,14 @@ export class OrbitalCameraController {
       } else if (e.button === 0 || e.button === 1) {
         this.isPanning = true;
       }
-    });
+    };
 
-    window.addEventListener('pointerup', () => {
+    const onPointerUp = (): void => {
       this.isPanning = false;
       this.isOrbiting = false;
-    });
+    };
 
-    window.addEventListener('pointermove', (e) => {
+    const onPointerMove = (e: PointerEvent): void => {
       const dx = e.clientX - this.lastPointerX;
       const dy = e.clientY - this.lastPointerY;
       this.lastPointerX = e.clientX;
@@ -181,7 +193,6 @@ export class OrbitalCameraController {
           e.clientY - this.pointerDownY,
         );
         if (dragTotal > 4) {
-          // User dragged to pan -> break camera follow pin
           this.pinnedTargetProvider = null;
           this.desiredTarget.y = 0;
         }
@@ -194,27 +205,42 @@ export class OrbitalCameraController {
         this.desiredTarget.x -= (dx * rightX - dy * forwardX) * panScale;
         this.desiredTarget.z -= (dx * rightZ - dy * forwardZ) * panScale;
       }
-    });
+    };
 
-    this.domElement.addEventListener(
-      'wheel',
-      (e) => {
-        e.preventDefault();
-        const zoomFactor = e.deltaY > 0 ? 1.12 : 0.89;
-        this.desiredDistance = THREE.MathUtils.clamp(
-          this.desiredDistance * zoomFactor,
-          32,
-          3200,
-        );
-      },
-      { passive: false },
-    );
+    const onWheel = (e: WheelEvent): void => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY > 0 ? 1.12 : 0.89;
+      this.desiredDistance = THREE.MathUtils.clamp(
+        this.desiredDistance * zoomFactor,
+        32,
+        3200,
+      );
+    };
 
-    window.addEventListener('keydown', (e) => {
+    const onKeyDown = (e: KeyboardEvent): void => {
       this.pressedKeys.add(e.code);
-    });
-    window.addEventListener('keyup', (e) => {
+    };
+
+    const onKeyUp = (e: KeyboardEvent): void => {
       this.pressedKeys.delete(e.code);
-    });
+    };
+
+    this.domElement.addEventListener('contextmenu', onContextMenu);
+    this.domElement.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointermove', onPointerMove);
+    this.domElement.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
+    this.cleanupEvents = () => {
+      this.domElement.removeEventListener('contextmenu', onContextMenu);
+      this.domElement.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      this.domElement.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }
 }

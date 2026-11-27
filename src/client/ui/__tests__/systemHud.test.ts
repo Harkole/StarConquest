@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GameSimulation } from '../../../shared/sim/gameSimulation.ts';
+import { LocalSimAdapter } from '../../net/localSimAdapter.ts';
+import type { SystemSceneManager } from '../../renderer/systemSceneManager.ts';
 import {
   computeMainPanelSignature,
   createDefaultHudCollapsedState,
   isHudSectionId,
+  mountSystemHud,
   toggleHudSection,
   type HudSectionId,
   type MainPanelSignatureParams,
@@ -215,23 +218,15 @@ describe('systemHud — computeMainPanelSignature', () => {
 
 describe('systemHud — collapsible sections state', () => {
   const allSections: readonly HudSectionId[] = [
-    'galaxy',
-    'fleet',
     'battle_sim',
-    'planets_wormholes',
-    'deep_space',
     'orbital_ring',
   ];
 
-  it('defaults battle_sim to collapsed and all other 5 sections to expanded', () => {
+  it('defaults battle_sim to collapsed and orbital_ring to expanded', () => {
     const state = createDefaultHudCollapsedState();
     expect(Object.keys(state).sort()).toEqual([...allSections].sort());
     expect(state.battle_sim).toBe(true);
-    for (const id of allSections) {
-      if (id !== 'battle_sim') {
-        expect(state[id], `${id} should default expanded`).toBe(false);
-      }
-    }
+    expect(state.orbital_ring).toBe(false);
   });
 
   it('toggles individual sections immutably without affecting sibling sections', () => {
@@ -254,6 +249,10 @@ describe('systemHud — collapsible sections state', () => {
     for (const id of allSections) {
       expect(isHudSectionId(id)).toBe(true);
     }
+    expect(isHudSectionId('deep_space')).toBe(false);
+    expect(isHudSectionId('galaxy')).toBe(false);
+    expect(isHudSectionId('fleet')).toBe(false);
+    expect(isHudSectionId('planets_wormholes')).toBe(false);
     expect(isHudSectionId(undefined)).toBe(false);
     expect(isHudSectionId('')).toBe(false);
     expect(isHudSectionId('unknown_section')).toBe(false);
@@ -294,5 +293,610 @@ describe('systemHud — fog-of-war intel projection', () => {
     expect(p2Sig).toContain('system_starter_2_homeworld:live:player_2:');
     expect(p2Sig).toContain('|known|');
     expect(p2Sig).not.toBe(unexploredSig);
+  });
+});
+
+class FakeHudElement {
+  public className = '';
+  public dataset: Record<string, string> = {};
+  public style: Record<string, string> = {};
+  public textContent = '';
+  public title = '';
+  public parentElement: FakeHudElement | null = null;
+  public children: FakeHudElement[] = [];
+  private readonly attrs = new Map<string, string>();
+  private readonly classSet = new Set<string>();
+  public readonly classList = {
+    add: (cls: string): void => {
+      this.classSet.add(cls);
+    },
+    remove: (cls: string): void => {
+      this.classSet.delete(cls);
+    },
+    toggle: (cls: string, force?: boolean): boolean => {
+      const next = force !== undefined ? force : !this.classSet.has(cls);
+      if (next) {
+        this.classSet.add(cls);
+      } else {
+        this.classSet.delete(cls);
+      }
+      return next;
+    },
+    contains: (cls: string): boolean => this.classSet.has(cls),
+  };
+  private html = '';
+  private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly interactiveBySelector = new Map<string, FakeHudElement[]>();
+
+  public get innerHTML(): string {
+    return this.html;
+  }
+
+  public set innerHTML(value: string) {
+    this.html = value;
+    this.interactiveBySelector.clear();
+  }
+
+  public append(...nodes: FakeHudElement[]): void {
+    for (const node of nodes) {
+      node.parentElement = this;
+      this.children.push(node);
+    }
+  }
+
+  public remove(): void {}
+
+  public setAttribute(name: string, value: string): void {
+    this.attrs.set(name, value);
+  }
+
+  public removeAttribute(name: string): void {
+    this.attrs.delete(name);
+  }
+
+  public addEventListener(type: string, cb: () => void): void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(cb);
+    this.listeners.set(type, set);
+  }
+
+  public click(): void {
+    for (const fn of this.listeners.get('click') ?? []) {
+      fn();
+    }
+  }
+
+  public getBoundingClientRect(): { right: number; top: number; left: number; bottom: number } {
+    return { left: 0, top: 0, right: 400, bottom: 600 };
+  }
+
+  public querySelector<T = FakeHudElement>(selector: string): T | null {
+    const list = this.querySelectorAll<T>(selector);
+    return list[0] ?? null;
+  }
+
+  public querySelectorAll<T = FakeHudElement>(selector: string): T[] {
+    let matches = this.interactiveBySelector.get(selector);
+    if (!matches) {
+      matches = [];
+      if (selector.startsWith('[data-action="')) {
+        const action = selector.slice('[data-action="'.length, -2);
+        if (this.html.includes(`data-action="${action}"`)) {
+          const el = new FakeHudElement();
+          el.dataset.action = action;
+          matches.push(el);
+        }
+      } else if (selector.startsWith('[data-overlay-action="')) {
+        const action = selector.slice('[data-overlay-action="'.length, -2);
+        if (this.html.includes(`data-overlay-action="${action}"`)) {
+          const el = new FakeHudElement();
+          el.dataset.overlayAction = action;
+          matches.push(el);
+        }
+      } else if (selector === '[data-place-deepspace]') {
+        const regex = /data-place-deepspace="([^"]+)"/g;
+        for (const m of this.html.matchAll(regex)) {
+          const el = new FakeHudElement();
+          el.dataset.placeDeepspace = m[1]!;
+          matches.push(el);
+        }
+      }
+      this.interactiveBySelector.set(selector, matches);
+    }
+    const childMatches = this.children.flatMap((child) =>
+      child.querySelectorAll<FakeHudElement>(selector),
+    );
+    return [...matches, ...childMatches] as unknown as T[];
+  }
+}
+
+describe('systemHud — battle simulator section visibility', () => {
+  function runWithFakeDom<T>(fn: () => T): T {
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    const prevWin = (globalThis as { window?: unknown }).window;
+    (globalThis as { document?: unknown }).document = {
+      createElement: () => new FakeHudElement(),
+    };
+    (globalThis as { window?: unknown }).window = {
+      innerWidth: 1440,
+      setInterval: () => 1,
+      clearInterval: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+    try {
+      return fn();
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+      (globalThis as { window?: unknown }).window = prevWin;
+    }
+  }
+
+  function createFakeSceneManager(adapter: LocalSimAdapter): SystemSceneManager {
+    const activeSystem = adapter.simulation.galaxy.systems[0]!;
+    let pendingDeepSpace: string | null = null;
+    let selectedPlanetId: string | null = activeSystem.planets[0]?.id ?? null;
+    let selectedFleetId: string | null = null;
+    let selectedHarvesterId: string | null = null;
+    let selectedDeepSpaceId: string | null = null;
+    const selectionCallbacks: Array<() => void> = [];
+    const notify = (): void => {
+      for (const cb of selectionCallbacks) {
+        cb();
+      }
+    };
+    return {
+      simAdapter: adapter,
+      getActiveSystem: () => activeSystem,
+      getSelectedPlanetId: () => selectedPlanetId,
+      getSelectedHarvesterId: () => selectedHarvesterId,
+      getSelectedFleetId: () => selectedFleetId,
+      getSelectedDeepSpaceId: () => selectedDeepSpaceId,
+      getPendingDeepSpacePlacement: () => pendingDeepSpace,
+      startDeepSpacePlacement: (dsId: string | null) => {
+        pendingDeepSpace = dsId;
+      },
+      clearSelection: () => {
+        selectedPlanetId = null;
+        selectedFleetId = null;
+        selectedHarvesterId = null;
+        selectedDeepSpaceId = null;
+        notify();
+      },
+      getPendingFleetOrder: () => null,
+      getPendingRallyDockyardId: () => null,
+      getActiveWormholes: () => [],
+      getLastMatchSystemId: () => activeSystem.id,
+      onSelectionChange: (cb: () => void) => {
+        selectionCallbacks.push(cb);
+      },
+      triggerSelectionChange: () => {
+        notify();
+      },
+      onDeepSpacePlacementResult: () => {},
+      loadSystem: () => {},
+      focusPlanet: (planetId: string) => {
+        selectedPlanetId = planetId;
+        selectedFleetId = null;
+        selectedHarvesterId = null;
+        selectedDeepSpaceId = null;
+        notify();
+      },
+      selectHarvester: (hId: string | null) => {
+        selectedHarvesterId = hId;
+        if (hId) {
+          selectedPlanetId = null;
+          selectedFleetId = null;
+          selectedDeepSpaceId = null;
+        }
+        notify();
+      },
+      selectAndPinHarvester: (hId: string | null) => {
+        selectedHarvesterId = hId;
+        if (hId) {
+          selectedPlanetId = null;
+          selectedFleetId = null;
+          selectedDeepSpaceId = null;
+        }
+        notify();
+      },
+      selectFleet: (fId: string | null) => {
+        selectedFleetId = fId;
+        if (fId) {
+          selectedPlanetId = null;
+          selectedHarvesterId = null;
+          selectedDeepSpaceId = null;
+        }
+        notify();
+      },
+      focusFleet: (fId: string) => {
+        selectedFleetId = fId;
+        selectedPlanetId = null;
+        selectedHarvesterId = null;
+        selectedDeepSpaceId = null;
+        notify();
+      },
+      focusDeepSpaceStructure: (dsId: string) => {
+        selectedDeepSpaceId = dsId;
+        selectedPlanetId = null;
+        selectedFleetId = null;
+        selectedHarvesterId = null;
+        notify();
+      },
+      focusWorldPoint: () => {},
+      focusWormhole: () => {},
+      enterSystemOverview: () => {},
+      cameraController: {
+        isPinned: () => false,
+      },
+      resetMatch: (presetOrSetup: Parameters<LocalSimAdapter['resetMatch']>[0]) =>
+        adapter.resetMatch(presetOrSetup),
+    } as unknown as SystemSceneManager;
+  }
+
+  function readSubtreeHtml(node: FakeHudElement): string {
+    return [node.innerHTML, ...node.children.map((c) => readSubtreeHtml(c))].join('');
+  }
+
+  it('mounts the five perimeter HUD regions and controls battle_sim visibility inside hud-bottom-inspector', () => {
+    runWithFakeDom(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const sceneManager = createFakeSceneManager(adapter);
+
+      const normalContainer = new FakeHudElement();
+      const normalHud = mountSystemHud(
+        normalContainer as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+      );
+      expect(normalContainer.children.map((c) => c.className)).toEqual([
+        'hud-top-bar',
+        'hud-left-outliner',
+        'hud-bottom-inspector',
+        'hud-quick-dock',
+        'hud-top-right-slot',
+        'hud-modal-layer',
+      ]);
+      const normalBottomInspector = normalContainer.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
+      )!;
+      const normalInspectorHtml = readSubtreeHtml(normalBottomInspector);
+      expect(normalInspectorHtml).not.toContain('data-hud-section="battle_sim"');
+      expect(normalInspectorHtml).not.toContain('Launch Battle in Void Arena');
+
+      const quickDock = normalContainer.children.find(
+        (c) => c.className === 'hud-quick-dock',
+      )!;
+      expect(quickDock.innerHTML).toContain('data-action="toggle-hub-mining"');
+      expect(quickDock.innerHTML).toContain('data-action="overview"');
+      expect(quickDock.innerHTML).toContain('data-place-deepspace="logistics_hub"');
+      expect(quickDock.innerHTML).toContain('data-place-deepspace="point_defence_tower"');
+      expect(quickDock.innerHTML).toContain('data-place-deepspace="hull_breaker_tower"');
+      expect(normalInspectorHtml).not.toContain('data-place-deepspace=');
+      expect(normalInspectorHtml).not.toContain('Deep-Space Installations');
+      normalHud.dispose();
+
+      let quitCalls = 0;
+      const simContainer = new FakeHudElement();
+      const simHud = mountSystemHud(
+        simContainer as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+        undefined,
+        {
+          isBattleSimulator: true,
+          onQuitToMainMenu: () => {
+            quitCalls += 1;
+          },
+        },
+      );
+      const simBottomInspector = simContainer.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
+      )!;
+      const simInspectorHtml = readSubtreeHtml(simBottomInspector);
+      expect(simInspectorHtml).toContain('data-hud-section="battle_sim"');
+      expect(simInspectorHtml).toContain('Launch Battle in Void Arena');
+      expect(simInspectorHtml).toContain('Return to Main Menu');
+
+      const exitBtn = simBottomInspector.querySelector('[data-action="exit-battle-sim"]');
+      expect(exitBtn).not.toBeNull();
+      exitBtn!.click();
+      expect(quitCalls).toBe(1);
+      simHud.dispose();
+    });
+  });
+
+  it('places Deep-Space controls in hud-quick-dock with Logistics Hub radius gating and cancel action', () => {
+    runWithFakeDom(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const sceneManager = createFakeSceneManager(adapter);
+      const container = new FakeHudElement();
+
+      const hud = mountSystemHud(
+        container as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+      );
+
+      const quickDock = container.children.find(
+        (c) => c.className === 'hud-quick-dock',
+      )!;
+      const bottomInspector = container.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
+      )!;
+
+      // Deep-space placement lives in quick dock, never in bottom inspector
+      expect(readSubtreeHtml(bottomInspector)).not.toContain('data-place-deepspace=');
+      expect(quickDock.innerHTML).toMatch(
+        /data-place-deepspace="logistics_hub"[^>]*>(?!.*disabled)/,
+      );
+      expect(quickDock.innerHTML).toMatch(
+        /data-place-deepspace="point_defence_tower"[^>]*disabled/,
+      );
+      expect(quickDock.innerHTML).toMatch(
+        /data-place-deepspace="hull_breaker_tower"[^>]*disabled/,
+      );
+
+      // Clicking Place Logistics Hub activates placement and renders Cancel Placement in quick dock
+      const hubBtn = quickDock
+        .querySelectorAll('[data-place-deepspace]')
+        .find((b) => b.dataset.placeDeepspace === 'logistics_hub')!;
+      hubBtn.click();
+      expect(sceneManager.getPendingDeepSpacePlacement()).toBe('logistics_hub');
+      expect(quickDock.innerHTML).toContain('data-action="cancel-deepspace"');
+
+      const cancelBtn = quickDock.querySelector('[data-action="cancel-deepspace"]')!;
+      cancelBtn.click();
+      expect(sceneManager.getPendingDeepSpacePlacement()).toBeNull();
+      expect(quickDock.innerHTML).not.toContain('data-action="cancel-deepspace"');
+
+      // Completing a friendly Logistics Hub unlocks PD Tower and Hull Breaker buttons
+      const p1 = adapter.simulation.getPlayerState('player_1');
+      p1.ore = 2000;
+      p1.crystal = 1000;
+      expect(
+        adapter.simulation.submitCommand({
+          type: 'BUILD_DEEP_SPACE_STRUCTURE',
+          playerId: 'player_1',
+          systemId: 'system_starter_1',
+          position: { x: 500, z: 300 },
+          structureId: 'logistics_hub',
+        }).ok,
+      ).toBe(true);
+      adapter.simulation.stepTick(21);
+
+      (sceneManager as unknown as { triggerSelectionChange: () => void }).triggerSelectionChange();
+
+      expect(quickDock.innerHTML).not.toMatch(
+        /data-place-deepspace="point_defence_tower"[^>]*disabled/,
+      );
+      expect(quickDock.innerHTML).not.toMatch(
+        /data-place-deepspace="hull_breaker_tower"[^>]*disabled/,
+      );
+
+      hud.dispose();
+    });
+  });
+
+  it('renders contextual bottom inspector strictly per selection (planet, fleet-only with stacked hull cards, deep_space, harvester, and empty hint collapse)', () => {
+    runWithFakeDom(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const p1 = adapter.simulation.getPlayerState('player_1');
+      p1.ore = 2000;
+      p1.crystal = 1000;
+
+      expect(
+        adapter.simulation.submitCommand({
+          type: 'CREATE_FLEET',
+          playerId: 'player_1',
+          rallySystemId: 'system_starter_1',
+          rallyPosition: { x: 180, z: 120 },
+          stance: 'aggressive',
+          autoResupply: true,
+        }).ok,
+      ).toBe(true);
+      const fleet = adapter.simulation.getFleetsForPlayer('player_1')[0]!;
+
+      expect(
+        adapter.simulation.submitCommand({
+          type: 'BUILD_DEEP_SPACE_STRUCTURE',
+          playerId: 'player_1',
+          systemId: 'system_starter_1',
+          position: { x: 500, z: 300 },
+          structureId: 'logistics_hub',
+        }).ok,
+      ).toBe(true);
+      const hub = adapter.simulation.getDeepSpaceStructuresInSystem('system_starter_1')[0]!;
+      const harvester = adapter.simulation.getAllHarvesters().find((h) => h.ownerId === 'player_1')!;
+
+      const sceneManager = createFakeSceneManager(adapter);
+      const container = new FakeHudElement();
+      const hud = mountSystemHud(
+        container as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+      );
+
+      const bottomInspector = container.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
+      )!;
+
+      // 1. Default selection: Planet (shows Orbital Ring Builder, no Fleet details)
+      const planetHtml = readSubtreeHtml(bottomInspector);
+      expect(planetHtml).toContain('data-inspector-kind="planet"');
+      expect(planetHtml).toContain('Orbital Ring Builder');
+      expect(planetHtml).toContain('data-slot-index=');
+      expect(planetHtml).not.toContain('data-inspector-kind="fleet"');
+      expect(bottomInspector.classList.contains('is-empty')).toBe(false);
+
+      // 2. Fleet selected: strictly Fleet-only (stacked hull cards incl. Dreadnought, zero Orbital Ring Builder)
+      sceneManager.focusFleet(fleet.id);
+      const fleetHtml = readSubtreeHtml(bottomInspector);
+      expect(fleetHtml).toContain('data-inspector-kind="fleet"');
+      expect(fleetHtml).toContain('fleet-hull-grid');
+      expect(fleetHtml).toContain('data-fleet-hull-card="dreadnought"');
+      expect(fleetHtml).toContain('data-fleet-inc="destroyer"');
+      expect(fleetHtml).toContain('data-fleet-inc="dreadnought"');
+      expect(fleetHtml).not.toContain('Orbital Ring Builder');
+      expect(fleetHtml).not.toContain('data-slot-index=');
+      expect(bottomInspector.classList.contains('is-empty')).toBe(false);
+
+      // 3. Deep-Space Structure selected: strictly Deep-Space details
+      sceneManager.focusDeepSpaceStructure(hub.id);
+      const dsHtml = readSubtreeHtml(bottomInspector);
+      expect(dsHtml).toContain('data-inspector-kind="deep_space"');
+      expect(dsHtml).toContain('Logistics Hub');
+      expect(dsHtml).not.toContain('Orbital Ring Builder');
+      expect(dsHtml).not.toContain('data-inspector-kind="fleet"');
+
+      // 4. Harvester selected: strictly Harvester telemetry
+      sceneManager.selectAndPinHarvester(harvester.id);
+      const harvHtml = readSubtreeHtml(bottomInspector);
+      expect(harvHtml).toContain('harvester-telemetry-card');
+      expect(harvHtml).not.toContain('Orbital Ring Builder');
+      expect(harvHtml).not.toContain('data-inspector-kind="fleet"');
+      expect(harvHtml).not.toContain('data-inspector-kind="deep_space"');
+
+      // 5. Empty selection: collapses to hint pill
+      sceneManager.clearSelection();
+      const emptyHtml = readSubtreeHtml(bottomInspector);
+      expect(emptyHtml).toContain('data-inspector-kind="none"');
+      expect(emptyHtml).toContain('hud-empty-hint-pill');
+      expect(emptyHtml).not.toContain('Orbital Ring Builder');
+      expect(emptyHtml).not.toContain('data-inspector-kind="fleet"');
+      expect(bottomInspector.classList.contains('is-empty')).toBe(true);
+
+      hud.dispose();
+    });
+  });
+
+  it('renders PauseMenu via Menu (Esc) or Escape key and centered MatchOutcome overlay with Rematch and Return to Main Menu', () => {
+    const keyListeners = new Set<(e: KeyboardEvent) => void>();
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    const prevWin = (globalThis as { window?: unknown }).window;
+    (globalThis as { document?: unknown }).document = {
+      createElement: () => new FakeHudElement(),
+    };
+    (globalThis as { window?: unknown }).window = {
+      innerWidth: 1440,
+      setInterval: () => 1,
+      clearInterval: () => {},
+      addEventListener: (type: string, cb: (e: KeyboardEvent) => void) => {
+        if (type === 'keydown') keyListeners.add(cb);
+      },
+      removeEventListener: (type: string, cb: (e: KeyboardEvent) => void) => {
+        if (type === 'keydown') keyListeners.delete(cb);
+      },
+    };
+
+    try {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const sceneManager = createFakeSceneManager(adapter);
+      const container = new FakeHudElement();
+      let appState: import('../../app/appStateMachine.ts').AppScreenState = {
+        kind: 'in_match',
+        session: {
+          sessionKind: 'single_player',
+          presetId: 'standard_tactical',
+          isMultiplayer: false,
+          roomCode: null,
+        },
+      };
+      let pauseCount = 0;
+      let resumeCount = 0;
+      let rematchCount = 0;
+      let quitCount = 0;
+      let musicMuted = false;
+
+      const hud = mountSystemHud(
+        container as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+        {
+          isMuted: () => musicMuted,
+          toggleMute: () => {
+            musicMuted = !musicMuted;
+          },
+        } as unknown as import('../../audio/ambientMusicPlayer.ts').AmbientMusicPlayer,
+        {
+          getAppState: () => appState,
+          onPauseMatch: () => {
+            pauseCount += 1;
+            appState = { kind: 'pause_menu', session: appState.kind === 'in_match' ? appState.session : { sessionKind: 'single_player', presetId: 'standard_tactical', isMultiplayer: false, roomCode: null } };
+            hud.syncAppState(appState);
+          },
+          onResumeMatch: () => {
+            resumeCount += 1;
+            appState = { kind: 'in_match', session: { sessionKind: 'single_player', presetId: 'standard_tactical', isMultiplayer: false, roomCode: null } };
+            hud.syncAppState(appState);
+          },
+          onRematch: () => {
+            rematchCount += 1;
+          },
+          onQuitToMainMenu: () => {
+            quitCount += 1;
+          },
+        },
+      );
+
+      const modalLayer = container.children.find(
+        (c) => c.className === 'hud-modal-layer',
+      )!;
+      expect(modalLayer.style.display).toBe('none');
+
+      // Press Escape -> opens PauseMenu
+      for (const listener of keyListeners) {
+        listener({ key: 'Escape', defaultPrevented: false } as KeyboardEvent);
+      }
+      expect(pauseCount).toBe(1);
+      expect(modalLayer.style.display).toBe('flex');
+      expect(modalLayer.innerHTML).toContain('data-app-overlay="pause_menu"');
+      expect(modalLayer.innerHTML).toContain('Simulation Paused');
+      expect(modalLayer.innerHTML).toContain('data-overlay-action="restart-match"');
+
+      // Toggle Mute Music inside PauseMenu
+      modalLayer.querySelector('[data-overlay-action="toggle-music"]')!.click();
+      expect(musicMuted).toBe(true);
+      expect(modalLayer.innerHTML).toContain('Unmute Music');
+
+      // Press Escape again -> resumes match and hides PauseMenu
+      for (const listener of keyListeners) {
+        listener({ key: 'Escape', defaultPrevented: false } as KeyboardEvent);
+      }
+      expect(resumeCount).toBe(1);
+      expect(modalLayer.style.display).toBe('none');
+
+      // Sync centered MatchOutcome overlay
+      appState = {
+        kind: 'match_outcome',
+        session: {
+          sessionKind: 'single_player',
+          presetId: 'standard_tactical',
+          isMultiplayer: false,
+          roomCode: null,
+        },
+        outcome: {
+          winnerId: 'player_1',
+          localPlayerWon: true,
+          reason: 'command_and_control',
+        },
+      };
+      hud.syncAppState(appState);
+      expect(modalLayer.style.display).toBe('flex');
+      expect(modalLayer.innerHTML).toContain('data-app-overlay="match_outcome"');
+      expect(modalLayer.innerHTML).toContain('VICTORY');
+
+      modalLayer.querySelector('[data-overlay-action="rematch"]')!.click();
+      expect(rematchCount).toBe(1);
+
+      modalLayer.querySelector('[data-overlay-action="quit-to-main-menu"]')!.click();
+      expect(quitCount).toBe(1);
+
+      hud.dispose();
+      expect(keyListeners.size).toBe(0);
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+      (globalThis as { window?: unknown }).window = prevWin;
+    }
   });
 });

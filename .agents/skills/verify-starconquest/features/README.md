@@ -14,7 +14,7 @@ This directory is the maintained source for verifying user-facing behavior in St
 - Start each feature recipe from a fresh reload of `http://127.0.0.1:5179/` unless the recipe chains preconditions explicitly.
 - Prefer `data-*` attributes, element IDs, and ARIA labels over DOM index or CSS layout positions.
 - Click `[data-speed="4"]` whenever waiting on multi-second construction or ship fabrication timers.
-- For 3D canvas clicks (rally points, deep-space placement, right-click fleet moves), click open space to the right of `#hud-overlay` (`x ≈ 75%` viewport width, `y ≈ 50%` viewport height) so the HUD does not intercept the pointer event.
+- For 3D canvas clicks (rally points, deep-space placement, right-click fleet moves), click open space away from `#hud-root` perimeter panels (`x ≈ 55%` viewport width, `y ≈ 35%` viewport height) so the HUD does not intercept the pointer event.
 - Do not delete proof artifacts during cleanup.
 
 ## Proof and skip reporting
