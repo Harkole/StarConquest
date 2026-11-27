@@ -59,20 +59,18 @@ const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label:
   { id: 'passive', label: 'Passive' },
 ];
 
-export type HudSectionId = 'battle_sim' | 'deep_space' | 'orbital_ring';
+export type HudSectionId = 'battle_sim' | 'orbital_ring';
 
 export type HudCollapsedState = Record<HudSectionId, boolean>;
 
 const HUD_SECTION_IDS: readonly HudSectionId[] = [
   'battle_sim',
-  'deep_space',
   'orbital_ring',
 ];
 
 export function createDefaultHudCollapsedState(): HudCollapsedState {
   return {
     battle_sim: true,
-    deep_space: false,
     orbital_ring: false,
   };
 }
@@ -377,22 +375,115 @@ export function mountSystemHud(
       : {}),
   });
 
-  regions.quickDock.innerHTML = `
-    <div class="hud-label" style="margin-bottom: 0;">Quick Actions</div>
-    <button class="hud-btn" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
-      Mining: Local System
-    </button>
-    <button class="hud-btn overview-btn" data-action="overview" title="Zoom out to System Overview">
-      Overview
-    </button>
-  `;
+  const DEEP_SPACE_QUICK_LABELS: Readonly<
+    Record<DeepSpaceStructureId, { readonly idle: string; readonly pending: string }>
+  > = {
+    logistics_hub: {
+      idle: '+ Place Logistics Hub',
+      pending: 'Placing Logistics Hub...',
+    },
+    point_defence_tower: {
+      idle: '+ Place Point Defence',
+      pending: 'Placing Point Defence...',
+    },
+    hull_breaker_tower: {
+      idle: '+ Place Hull Breaker',
+      pending: 'Placing Hull Breaker...',
+    },
+  };
 
-  const hubMiningBtnEl = regions.quickDock.querySelector<HTMLButtonElement>(
-    '[data-action="toggle-hub-mining"]',
-  );
-  const overviewBtnEl = regions.quickDock.querySelector<HTMLButtonElement>(
-    '[data-action="overview"]',
-  );
+  function renderQuickDock(): void {
+    syncSimRefs();
+    const activeSystem = sceneManager.getActiveSystem();
+    const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
+    const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
+    const hasCompletedFriendlyHub = systemView.deepSpaceStructures.some(
+      (item) =>
+        item.kind === 'live' &&
+        item.structure.structureId === 'logistics_hub' &&
+        item.structure.ownerId === playerId &&
+        item.structure.isComplete,
+    );
+
+    const deepSpaceButtonsHtml =
+      activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
+        ? ''
+        : BUILDABLE_DEEP_SPACE_IDS.map((dsId) => {
+            const cfg = DEEP_SPACE_STRUCTURES[dsId];
+            const labels = DEEP_SPACE_QUICK_LABELS[dsId];
+            const isPending = pendingDeepSpace === dsId;
+            const lockedByHubRule =
+              cfg.requiresLogisticsHubRadius && !hasCompletedFriendlyHub;
+            const titleText = `${cfg.displayName} (${cfg.cost.ore} Ore • ${cfg.cost.crystal} Crystal • ${cfg.buildTimeSeconds}s)${lockedByHubRule ? ' — Requires a completed friendly Logistics Hub in this system' : ''}`;
+            return `<button type="button" class="hud-btn ${isPending ? 'active' : ''}" data-place-deepspace="${dsId}" title="${titleText}" ${lockedByHubRule ? 'disabled' : ''}>
+              ${isPending ? labels.pending : labels.idle}
+            </button>`;
+          }).join('') +
+          (pendingDeepSpace
+            ? `<button type="button" class="hud-btn" data-action="cancel-deepspace">Cancel Placement (Esc)</button>`
+            : '');
+
+    regions.quickDock.innerHTML = `
+      <div class="hud-label" style="margin-bottom: 0;">Quick Actions</div>
+      ${deepSpaceButtonsHtml}
+      <button type="button" class="hud-btn ${crossSystemMiningEnabled ? 'active' : ''}" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
+        ${crossSystemMiningEnabled ? 'Mining: Central Hub' : 'Mining: Local System'}
+      </button>
+      <button type="button" class="hud-btn overview-btn" data-action="overview" title="Zoom out to System Overview">
+        Overview
+      </button>
+    `;
+
+    regions.quickDock
+      .querySelectorAll<HTMLButtonElement>('[data-place-deepspace]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dsId = btn.dataset.placeDeepspace as DeepSpaceStructureId | undefined;
+          if (!dsId) {
+            return;
+          }
+          const current = sceneManager.getPendingDeepSpacePlacement();
+          if (current === dsId) {
+            sceneManager.startDeepSpacePlacement(null);
+            statusBannerMessage = 'Cancelled deep-space placement mode.';
+          } else {
+            sceneManager.startDeepSpacePlacement(dsId);
+            const cfg = DEEP_SPACE_STRUCTURES[dsId];
+            statusBannerMessage = `Placement active: click any free location in 3D space to deploy ${cfg.displayName} (press Esc to cancel).`;
+          }
+          renderMainPanel();
+        });
+      });
+
+    regions.quickDock
+      .querySelector<HTMLButtonElement>('[data-action="cancel-deepspace"]')
+      ?.addEventListener('click', () => {
+        sceneManager.startDeepSpacePlacement(null);
+        statusBannerMessage = 'Cancelled deep-space placement mode.';
+        renderMainPanel();
+      });
+
+    regions.quickDock
+      .querySelector<HTMLButtonElement>('[data-action="toggle-hub-mining"]')
+      ?.addEventListener('click', () => {
+        syncSimRefs();
+        if (
+          'setPlayerHarvestersCrossSystemMining' in sim &&
+          typeof sim.setPlayerHarvestersCrossSystemMining === 'function'
+        ) {
+          crossSystemMiningEnabled = !crossSystemMiningEnabled;
+          sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
+        }
+        renderQuickDock();
+        renderEconomyBar();
+      });
+
+    regions.quickDock
+      .querySelector<HTMLButtonElement>('[data-action="overview"]')
+      ?.addEventListener('click', () => {
+        sceneManager.focusSystemOverview();
+      });
+  }
 
   let tutorialController: TutorialController;
 
@@ -430,22 +521,6 @@ export function mountSystemHud(
     },
   });
 
-  hubMiningBtnEl?.addEventListener('click', () => {
-    syncSimRefs();
-    if (
-      'setPlayerHarvestersCrossSystemMining' in sim &&
-      typeof sim.setPlayerHarvestersCrossSystemMining === 'function'
-    ) {
-      crossSystemMiningEnabled = !crossSystemMiningEnabled;
-      sim.setPlayerHarvestersCrossSystemMining(playerId, crossSystemMiningEnabled);
-    }
-    renderEconomyBar();
-  });
-
-  overviewBtnEl?.addEventListener('click', () => {
-    sceneManager.focusSystemOverview();
-  });
-
   function renderEconomyBar(): void {
     syncSimRefs();
     topBar.update(
@@ -456,12 +531,6 @@ export function mountSystemHud(
         musicMuted: musicPlayer ? musicPlayer.isMuted() : true,
       }),
     );
-    if (hubMiningBtnEl) {
-      hubMiningBtnEl.classList.toggle('active', crossSystemMiningEnabled);
-      hubMiningBtnEl.textContent = crossSystemMiningEnabled
-        ? 'Mining: Central Hub'
-        : 'Mining: Local System';
-    }
     lobbyController.syncTelemetry();
   }
 
@@ -1011,52 +1080,7 @@ export function mountSystemHud(
       }
     }
 
-    const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
-    const deepSpaceInSystem = systemView.deepSpaceStructures;
-    const hasCompletedFriendlyHub = deepSpaceInSystem.some(
-      (item) =>
-        item.kind === 'live' &&
-        item.structure.structureId === 'logistics_hub' &&
-        item.structure.ownerId === playerId &&
-        item.structure.isComplete,
-    );
-
-    const deepSpaceBuildButtonsHtml = BUILDABLE_DEEP_SPACE_IDS.map((dsId) => {
-      const cfg = DEEP_SPACE_STRUCTURES[dsId];
-      const isPending = pendingDeepSpace === dsId;
-      const lockedByHubRule = cfg.requiresLogisticsHubRadius && !hasCompletedFriendlyHub;
-      return `<button class="hud-btn ${isPending ? 'active' : ''}" data-place-deepspace="${dsId}" ${lockedByHubRule ? 'disabled' : ''}>
-        ${isPending ? `Click 3D Space to Place ${cfg.displayName}` : `+ Place ${cfg.displayName} (${cfg.cost.ore} Ore • ${cfg.cost.crystal} Crystal • ${cfg.buildTimeSeconds}s)`}
-      </button>`;
-    }).join('');
-
-    const deepSpaceInstancesHtml =
-      deepSpaceInSystem.length > 0
-        ? `<div class="hud-btn-row" style="margin-top: 6px;">
-            ${deepSpaceInSystem
-              .map((item, idx) => {
-                const ds = item.kind === 'live' ? item.structure : item;
-                const cfg = DEEP_SPACE_STRUCTURES[ds.structureId];
-                if (item.kind === 'ghost') {
-                  const ageText = formatIntelAge(
-                    sim.elapsedSeconds - item.observedAtSeconds,
-                  );
-                  return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
-                    ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
-                    <span class="hud-badge" data-deepspace-badge="${ds.id}">LAST KNOWN (${ageText})</span>
-                  </button>`;
-                }
-                const statusText = ds.isComplete
-                  ? 'Operational'
-                  : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
-                return `<button class="hud-btn" data-focus-deepspace="${ds.id}">
-                  ${cfg.displayName} #${idx + 1} (${Math.round(ds.position.x)}, ${Math.round(ds.position.z)})
-                  <span class="hud-badge" data-deepspace-badge="${ds.id}">${statusText}</span>
-                </button>`;
-              })
-              .join('')}
-          </div>`
-        : '';
+    renderQuickDock();
 
     const playerFleets = sim.getFleetsForPlayer(playerId);
 
@@ -1289,23 +1313,6 @@ export function mountSystemHud(
         activeSystem.id === BATTLE_SIMULATOR_SYSTEM_ID
           ? ''
           : `<div class="hud-section">
-        ${renderSectionHeader(
-          'deep_space',
-          'Deep-Space Installations — Free-Floating Logistics Hub ("Atlas") & Defence Towers',
-          { titleLabel: 'Deep-Space Installations panel' },
-        )}
-        ${
-          collapsedSections.deep_space
-            ? ''
-            : `<div class="hud-btn-row">
-          ${deepSpaceBuildButtonsHtml}
-          ${pendingDeepSpace ? `<button class="hud-btn" data-action="cancel-deepspace">Cancel Placement (Esc)</button>` : ''}
-        </div>
-        ${deepSpaceInstancesHtml}`
-        }
-      </div>
-
-      <div class="hud-section">
         ${renderSectionHeader(
           'orbital_ring',
           `Orbital Ring Builder — <strong>${selectedPlanetNode.name}</strong> (${totalSlots} Slots)`,
@@ -1890,47 +1897,6 @@ export function mountSystemHud(
         });
       });
 
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-place-deepspace]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const dsId = btn.dataset.placeDeepspace as DeepSpaceStructureId | undefined;
-          if (!dsId) {
-            return;
-          }
-          const current = sceneManager.getPendingDeepSpacePlacement();
-          if (current === dsId) {
-            sceneManager.startDeepSpacePlacement(null);
-            statusBannerMessage = 'Cancelled deep-space placement mode.';
-          } else {
-            sceneManager.startDeepSpacePlacement(dsId);
-            const cfg = DEEP_SPACE_STRUCTURES[dsId];
-            statusBannerMessage = `Placement active: click any free location in 3D space to deploy ${cfg.displayName} (press Esc to cancel).`;
-          }
-          renderMainPanel();
-        });
-      });
-
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="cancel-deepspace"]')
-      ?.addEventListener('click', () => {
-        sceneManager.startDeepSpacePlacement(null);
-        statusBannerMessage = 'Cancelled deep-space placement mode.';
-        renderMainPanel();
-      });
-
-    mainBodyEl
-      .querySelectorAll<HTMLButtonElement>('[data-focus-deepspace]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const dsId = btn.dataset.focusDeepspace;
-          if (dsId) {
-            sceneManager.focusDeepSpaceStructure(dsId);
-            renderMainPanel();
-          }
-        });
-      });
-
     tutorialController.applyCurrentHighlight(
       sim,
       playerId,
@@ -2105,22 +2071,6 @@ export function mountSystemHud(
             badgeEl.textContent = `${h.cargoType.toUpperCase()} ${pct}%`;
           }
         }
-      }
-    }
-
-    // 4. Deep-space installation construction percentages
-    for (const item of systemView.deepSpaceStructures) {
-      const ds = item.kind === 'live' ? item.structure : item;
-      const badgeEl = mainBodyEl.querySelector<HTMLElement>(
-        `[data-deepspace-badge="${ds.id}"]`,
-      );
-      if (badgeEl) {
-        badgeEl.textContent =
-          item.kind === 'ghost'
-            ? `LAST KNOWN (${formatIntelAge(sim.elapsedSeconds - item.observedAtSeconds)})`
-            : ds.isComplete
-              ? 'Operational'
-              : `${Math.floor((ds.buildProgressSeconds / Math.max(1, ds.totalBuildTimeSeconds)) * 100)}%`;
       }
     }
   }

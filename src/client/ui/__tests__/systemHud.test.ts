@@ -219,19 +219,14 @@ describe('systemHud — computeMainPanelSignature', () => {
 describe('systemHud — collapsible sections state', () => {
   const allSections: readonly HudSectionId[] = [
     'battle_sim',
-    'deep_space',
     'orbital_ring',
   ];
 
-  it('defaults battle_sim to collapsed and deep_space/orbital_ring to expanded', () => {
+  it('defaults battle_sim to collapsed and orbital_ring to expanded', () => {
     const state = createDefaultHudCollapsedState();
     expect(Object.keys(state).sort()).toEqual([...allSections].sort());
     expect(state.battle_sim).toBe(true);
-    for (const id of allSections) {
-      if (id !== 'battle_sim') {
-        expect(state[id], `${id} should default expanded`).toBe(false);
-      }
-    }
+    expect(state.orbital_ring).toBe(false);
   });
 
   it('toggles individual sections immutably without affecting sibling sections', () => {
@@ -254,6 +249,7 @@ describe('systemHud — collapsible sections state', () => {
     for (const id of allSections) {
       expect(isHudSectionId(id)).toBe(true);
     }
+    expect(isHudSectionId('deep_space')).toBe(false);
     expect(isHudSectionId('galaxy')).toBe(false);
     expect(isHudSectionId('fleet')).toBe(false);
     expect(isHudSectionId('planets_wormholes')).toBe(false);
@@ -390,6 +386,13 @@ class FakeHudElement {
           el.dataset.action = action;
           matches.push(el);
         }
+      } else if (selector === '[data-place-deepspace]') {
+        const regex = /data-place-deepspace="([^"]+)"/g;
+        for (const m of this.html.matchAll(regex)) {
+          const el = new FakeHudElement();
+          el.dataset.placeDeepspace = m[1]!;
+          matches.push(el);
+        }
       }
       this.interactiveBySelector.set(selector, matches);
     }
@@ -424,18 +427,30 @@ describe('systemHud — battle simulator section visibility', () => {
 
   function createFakeSceneManager(adapter: LocalSimAdapter): SystemSceneManager {
     const activeSystem = adapter.simulation.galaxy.systems[0]!;
+    let pendingDeepSpace: string | null = null;
+    const selectionCallbacks: Array<() => void> = [];
     return {
       simAdapter: adapter,
       getActiveSystem: () => activeSystem,
       getSelectedPlanetId: () => activeSystem.planets[0]?.id ?? null,
       getSelectedHarvesterId: () => null,
       getSelectedFleetId: () => null,
-      getPendingDeepSpacePlacement: () => null,
+      getPendingDeepSpacePlacement: () => pendingDeepSpace,
+      startDeepSpacePlacement: (dsId: string | null) => {
+        pendingDeepSpace = dsId;
+      },
       getPendingFleetOrder: () => null,
       getPendingRallyDockyardId: () => null,
       getActiveWormholes: () => [],
       getLastMatchSystemId: () => activeSystem.id,
-      onSelectionChange: () => {},
+      onSelectionChange: (cb: () => void) => {
+        selectionCallbacks.push(cb);
+      },
+      triggerSelectionChange: () => {
+        for (const cb of selectionCallbacks) {
+          cb();
+        }
+      },
       onDeepSpacePlacementResult: () => {},
       loadSystem: () => {},
       focusPlanet: () => {},
@@ -484,6 +499,11 @@ describe('systemHud — battle simulator section visibility', () => {
       )!;
       expect(quickDock.innerHTML).toContain('data-action="toggle-hub-mining"');
       expect(quickDock.innerHTML).toContain('data-action="overview"');
+      expect(quickDock.innerHTML).toContain('data-place-deepspace="logistics_hub"');
+      expect(quickDock.innerHTML).toContain('data-place-deepspace="point_defence_tower"');
+      expect(quickDock.innerHTML).toContain('data-place-deepspace="hull_breaker_tower"');
+      expect(normalInspectorHtml).not.toContain('data-place-deepspace=');
+      expect(normalInspectorHtml).not.toContain('Deep-Space Installations');
       normalHud.dispose();
 
       let quitCalls = 0;
@@ -513,6 +533,78 @@ describe('systemHud — battle simulator section visibility', () => {
       exitBtn!.click();
       expect(quitCalls).toBe(1);
       simHud.dispose();
+    });
+  });
+
+  it('places Deep-Space controls in hud-quick-dock with Logistics Hub radius gating and cancel action', () => {
+    runWithFakeDom(() => {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const sceneManager = createFakeSceneManager(adapter);
+      const container = new FakeHudElement();
+
+      const hud = mountSystemHud(
+        container as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+      );
+
+      const quickDock = container.children.find(
+        (c) => c.className === 'hud-quick-dock',
+      )!;
+      const bottomInspector = container.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
+      )!;
+
+      // Deep-space placement lives in quick dock, never in bottom inspector
+      expect(readSubtreeHtml(bottomInspector)).not.toContain('data-place-deepspace=');
+      expect(quickDock.innerHTML).toMatch(
+        /data-place-deepspace="logistics_hub"[^>]*>(?!.*disabled)/,
+      );
+      expect(quickDock.innerHTML).toMatch(
+        /data-place-deepspace="point_defence_tower"[^>]*disabled/,
+      );
+      expect(quickDock.innerHTML).toMatch(
+        /data-place-deepspace="hull_breaker_tower"[^>]*disabled/,
+      );
+
+      // Clicking Place Logistics Hub activates placement and renders Cancel Placement in quick dock
+      const hubBtn = quickDock
+        .querySelectorAll('[data-place-deepspace]')
+        .find((b) => b.dataset.placeDeepspace === 'logistics_hub')!;
+      hubBtn.click();
+      expect(sceneManager.getPendingDeepSpacePlacement()).toBe('logistics_hub');
+      expect(quickDock.innerHTML).toContain('data-action="cancel-deepspace"');
+
+      const cancelBtn = quickDock.querySelector('[data-action="cancel-deepspace"]')!;
+      cancelBtn.click();
+      expect(sceneManager.getPendingDeepSpacePlacement()).toBeNull();
+      expect(quickDock.innerHTML).not.toContain('data-action="cancel-deepspace"');
+
+      // Completing a friendly Logistics Hub unlocks PD Tower and Hull Breaker buttons
+      const p1 = adapter.simulation.getPlayerState('player_1');
+      p1.ore = 2000;
+      p1.crystal = 1000;
+      expect(
+        adapter.simulation.submitCommand({
+          type: 'BUILD_DEEP_SPACE_STRUCTURE',
+          playerId: 'player_1',
+          systemId: 'system_starter_1',
+          position: { x: 500, z: 300 },
+          structureId: 'logistics_hub',
+        }).ok,
+      ).toBe(true);
+      adapter.simulation.stepTick(21);
+
+      (sceneManager as unknown as { triggerSelectionChange: () => void }).triggerSelectionChange();
+
+      expect(quickDock.innerHTML).not.toMatch(
+        /data-place-deepspace="point_defence_tower"[^>]*disabled/,
+      );
+      expect(quickDock.innerHTML).not.toMatch(
+        /data-place-deepspace="hull_breaker_tower"[^>]*disabled/,
+      );
+
+      hud.dispose();
     });
   });
 });
