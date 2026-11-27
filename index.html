@@ -203,6 +203,71 @@
       .hud-top-right-slot > div {
         pointer-events: none;
       }
+      .hud-modal-layer {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        z-index: 40;
+      }
+      .hud-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(2, 6, 23, 0.72);
+        backdrop-filter: blur(8px);
+      }
+      .hud-modal-card {
+        width: 100%;
+        max-width: 420px;
+        background: rgba(8, 13, 26, 0.96);
+        border: 1px solid rgba(56, 189, 248, 0.55);
+        border-radius: 12px;
+        padding: 20px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+      }
+      .hud-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+      }
+      .hud-modal-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: #f8fafc;
+      }
+      .hud-modal-subtitle,
+      .hud-modal-summary {
+        font-size: 0.8rem;
+        color: #cbd5e1;
+        line-height: 1.5;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .hud-modal-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hud-modal-actions .hud-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 8px 12px;
+        font-size: 0.82rem;
+      }
       .top-bar-system strong {
         color: #38bdf8;
       }

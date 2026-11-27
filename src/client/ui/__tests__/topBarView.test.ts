@@ -169,4 +169,24 @@ describe('topBarView', () => {
     host.querySelector('[data-action="quit-to-main-menu"]')!.click();
     expect(quitCalls).toBe(1);
   });
+
+  it('renders Menu (Esc) button when onOpenPauseMenu is provided', () => {
+    const host = new FakeTopBarElement();
+    let pauseCalls = 0;
+
+    mountTopBar(host as unknown as HTMLElement, {
+      onSetSpeed: () => {},
+      onToggleMusic: () => {},
+      onOpenPauseMenu: () => {
+        pauseCalls += 1;
+      },
+    });
+
+    expect(host.innerHTML).toContain('data-action="open-pause-menu"');
+    expect(host.innerHTML).toContain('Menu (Esc)');
+    expect(host.innerHTML).not.toContain('data-action="quit-to-main-menu"');
+
+    host.querySelector('[data-action="open-pause-menu"]')!.click();
+    expect(pauseCalls).toBe(1);
+  });
 });

@@ -27,6 +27,7 @@ export interface TopBarModel {
 export interface TopBarActions {
   readonly onSetSpeed: (speed: number) => void;
   readonly onToggleMusic: () => void;
+  readonly onOpenPauseMenu?: () => void;
   readonly onQuitToMainMenu?: () => void;
 }
 
@@ -155,9 +156,11 @@ export function mountTopBar(
         ${SPEAKER_UNMUTED_SVG}
       </button>
       ${
-        actions.onQuitToMainMenu
-          ? `<button class="hud-btn" data-action="quit-to-main-menu" title="Return to Main Menu">Main Menu</button>`
-          : ''
+        actions.onOpenPauseMenu
+          ? `<button class="hud-btn" data-action="open-pause-menu" title="Open Match Menu (Esc)">Menu (Esc)</button>`
+          : actions.onQuitToMainMenu
+            ? `<button class="hud-btn" data-action="quit-to-main-menu" title="Return to Main Menu">Main Menu</button>`
+            : ''
       }
     </div>
   `;
@@ -172,6 +175,9 @@ export function mountTopBar(
   const matchStatusValEl = el.querySelector<HTMLElement>('#hud-match-status-val');
   const musicToggleBtnEl = el.querySelector<HTMLButtonElement>(
     '[data-action="toggle-music"]',
+  );
+  const pauseMenuBtnEl = el.querySelector<HTMLButtonElement>(
+    '[data-action="open-pause-menu"]',
   );
   const quitBtnEl = el.querySelector<HTMLButtonElement>(
     '[data-action="quit-to-main-menu"]',
@@ -188,6 +194,10 @@ export function mountTopBar(
 
   musicToggleBtnEl?.addEventListener('click', () => {
     actions.onToggleMusic();
+  });
+
+  pauseMenuBtnEl?.addEventListener('click', () => {
+    actions.onOpenPauseMenu?.();
   });
 
   quitBtnEl?.addEventListener('click', () => {

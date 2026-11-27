@@ -139,7 +139,6 @@ function makeBaseUiContext(overrides: Partial<TutorialUiContext> = {}): Tutorial
     selectedSlotOccupied: false,
     firstEmptySlotIndex: 2,
     isOrbitalRingCollapsed: false,
-    isFleetPanelOpen: true,
     ...overrides,
   };
 }
@@ -277,6 +276,35 @@ describe('TutorialController', () => {
       expect(controller.getState().status).toBe('inactive');
       expect(coachEl.style.display).toBe('none');
       expect(refineryBtn.classList.contains('tutorial-highlight')).toBe(false);
+    });
+  });
+
+  it('anchors inside hostContainer without getBoundingClientRect and highlights create-fleet directly on Step 4', () => {
+    withFakeDocument(() => {
+      const sim = new GameSimulation('tutorial');
+      const topRightSlot = new FakeElement();
+      topRightSlot.className = 'hud-top-right-slot';
+      const hudRoot = new FakeElement();
+      const createFleetBtn = makeTargetNode('action', 'create-fleet');
+      hudRoot.append(createFleetBtn);
+
+      const controller = new TutorialController({
+        hostContainer: topRightSlot as unknown as HTMLElement,
+        hudRoot: hudRoot as unknown as HTMLElement,
+        initialPresetId: 'tutorial',
+      });
+
+      expect(topRightSlot.children).toContain(controller.getRootElement());
+      expect(controller.getRootElement().style.left).toBeUndefined();
+      expect(controller.getRootElement().style.top).toBeUndefined();
+
+      // Advance to Step 4 (create_fleet)
+      const coachEl = controller.getRootElement();
+      for (let i = 0; i < 3; i += 1) {
+        coachEl.querySelector<HTMLButtonElement>('[data-action="tutorial-skip"]')!.click();
+      }
+      controller.applyCurrentHighlight(sim, 'player_1', makeBaseUiContext());
+      expect(createFleetBtn.classList.contains('tutorial-highlight')).toBe(true);
     });
   });
 });

@@ -25,7 +25,6 @@ function makeUiContext(overrides: Partial<TutorialUiContext> = {}): TutorialUiCo
     selectedSlotOccupied: false,
     firstEmptySlotIndex: 2,
     isOrbitalRingCollapsed: false,
-    isFleetPanelOpen: true,
     ...overrides,
   };
 }

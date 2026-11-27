@@ -47,6 +47,7 @@ export interface LobbyControllerOptions {
   readonly sceneManager: LobbySceneManagerContract;
   readonly onMatchLaunched?: (setup: MatchSetupConfig) => void;
   readonly onOpenStateChange?: (isOpen: boolean) => void;
+  readonly suppressOutcomeBanner?: boolean;
   readonly createP2PAdapter?: () => MultiplayerRoomAdapter;
   readonly createLocalAdapter?: (
     presetOrSetup: MatchPresetId | MatchSetupInput,
@@ -64,6 +65,7 @@ export class LobbyController {
   private readonly sceneManager: LobbySceneManagerContract;
   private readonly onMatchLaunched?: (setup: MatchSetupConfig) => void;
   private readonly onOpenStateChange?: (isOpen: boolean) => void;
+  private readonly suppressOutcomeBanner: boolean;
   private readonly createP2PAdapter: () => MultiplayerRoomAdapter;
   private readonly createLocalAdapter: (
     presetOrSetup: MatchPresetId | MatchSetupInput,
@@ -88,6 +90,7 @@ export class LobbyController {
     this.sceneManager = options.sceneManager;
     this.onMatchLaunched = options.onMatchLaunched;
     this.onOpenStateChange = options.onOpenStateChange;
+    this.suppressOutcomeBanner = options.suppressOutcomeBanner === true;
     this.createP2PAdapter =
       options.createP2PAdapter ?? (() => new WebRTCPeerAdapter());
     this.createLocalAdapter =
@@ -170,7 +173,9 @@ export class LobbyController {
     const outcome = sim.getMatchOutcome();
 
     this.patchKothBanner(outcome);
-    this.patchOutcomeBanner(sim, outcome);
+    if (!this.suppressOutcomeBanner) {
+      this.patchOutcomeBanner(sim, outcome);
+    }
 
     if (this.isOpen) {
       this.patchLiveStandingsInDrawer(outcome);

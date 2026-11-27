@@ -932,9 +932,11 @@ export class SystemSceneManager {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         if (this.pendingDeepSpaceBuildType !== null) {
+          e.preventDefault();
           this.startDeepSpacePlacement(null);
           this.notifyPlacementResult('Cancelled deep-space placement mode.', false);
         } else if (this.pendingFleetOrder !== null) {
+          e.preventDefault();
           this.cancelFleetOrderPlacement();
           this.notifyPlacementResult('Cancelled fleet order placement.', false);
         }

@@ -386,6 +386,13 @@ class FakeHudElement {
           el.dataset.action = action;
           matches.push(el);
         }
+      } else if (selector.startsWith('[data-overlay-action="')) {
+        const action = selector.slice('[data-overlay-action="'.length, -2);
+        if (this.html.includes(`data-overlay-action="${action}"`)) {
+          const el = new FakeHudElement();
+          el.dataset.overlayAction = action;
+          matches.push(el);
+        }
       } else if (selector === '[data-place-deepspace]') {
         const regex = /data-place-deepspace="([^"]+)"/g;
         for (const m of this.html.matchAll(regex)) {
@@ -548,6 +555,7 @@ describe('systemHud — battle simulator section visibility', () => {
         'hud-bottom-inspector',
         'hud-quick-dock',
         'hud-top-right-slot',
+        'hud-modal-layer',
       ]);
       const normalBottomInspector = normalContainer.children.find(
         (c) => c.className === 'hud-bottom-inspector',
@@ -760,5 +768,135 @@ describe('systemHud — battle simulator section visibility', () => {
 
       hud.dispose();
     });
+  });
+
+  it('renders PauseMenu via Menu (Esc) or Escape key and centered MatchOutcome overlay with Rematch and Return to Main Menu', () => {
+    const keyListeners = new Set<(e: KeyboardEvent) => void>();
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    const prevWin = (globalThis as { window?: unknown }).window;
+    (globalThis as { document?: unknown }).document = {
+      createElement: () => new FakeHudElement(),
+    };
+    (globalThis as { window?: unknown }).window = {
+      innerWidth: 1440,
+      setInterval: () => 1,
+      clearInterval: () => {},
+      addEventListener: (type: string, cb: (e: KeyboardEvent) => void) => {
+        if (type === 'keydown') keyListeners.add(cb);
+      },
+      removeEventListener: (type: string, cb: (e: KeyboardEvent) => void) => {
+        if (type === 'keydown') keyListeners.delete(cb);
+      },
+    };
+
+    try {
+      const adapter = new LocalSimAdapter('standard_tactical');
+      const sceneManager = createFakeSceneManager(adapter);
+      const container = new FakeHudElement();
+      let appState: import('../../app/appStateMachine.ts').AppScreenState = {
+        kind: 'in_match',
+        session: {
+          sessionKind: 'single_player',
+          presetId: 'standard_tactical',
+          isMultiplayer: false,
+          roomCode: null,
+        },
+      };
+      let pauseCount = 0;
+      let resumeCount = 0;
+      let rematchCount = 0;
+      let quitCount = 0;
+      let musicMuted = false;
+
+      const hud = mountSystemHud(
+        container as unknown as HTMLElement,
+        adapter.simulation.galaxy,
+        sceneManager,
+        {
+          isMuted: () => musicMuted,
+          toggleMute: () => {
+            musicMuted = !musicMuted;
+          },
+        } as unknown as import('../../audio/ambientMusicPlayer.ts').AmbientMusicPlayer,
+        {
+          getAppState: () => appState,
+          onPauseMatch: () => {
+            pauseCount += 1;
+            appState = { kind: 'pause_menu', session: appState.kind === 'in_match' ? appState.session : { sessionKind: 'single_player', presetId: 'standard_tactical', isMultiplayer: false, roomCode: null } };
+            hud.syncAppState(appState);
+          },
+          onResumeMatch: () => {
+            resumeCount += 1;
+            appState = { kind: 'in_match', session: { sessionKind: 'single_player', presetId: 'standard_tactical', isMultiplayer: false, roomCode: null } };
+            hud.syncAppState(appState);
+          },
+          onRematch: () => {
+            rematchCount += 1;
+          },
+          onQuitToMainMenu: () => {
+            quitCount += 1;
+          },
+        },
+      );
+
+      const modalLayer = container.children.find(
+        (c) => c.className === 'hud-modal-layer',
+      )!;
+      expect(modalLayer.style.display).toBe('none');
+
+      // Press Escape -> opens PauseMenu
+      for (const listener of keyListeners) {
+        listener({ key: 'Escape', defaultPrevented: false } as KeyboardEvent);
+      }
+      expect(pauseCount).toBe(1);
+      expect(modalLayer.style.display).toBe('flex');
+      expect(modalLayer.innerHTML).toContain('data-app-overlay="pause_menu"');
+      expect(modalLayer.innerHTML).toContain('Simulation Paused');
+      expect(modalLayer.innerHTML).toContain('data-overlay-action="restart-match"');
+
+      // Toggle Mute Music inside PauseMenu
+      modalLayer.querySelector('[data-overlay-action="toggle-music"]')!.click();
+      expect(musicMuted).toBe(true);
+      expect(modalLayer.innerHTML).toContain('Unmute Music');
+
+      // Press Escape again -> resumes match and hides PauseMenu
+      for (const listener of keyListeners) {
+        listener({ key: 'Escape', defaultPrevented: false } as KeyboardEvent);
+      }
+      expect(resumeCount).toBe(1);
+      expect(modalLayer.style.display).toBe('none');
+
+      // Sync centered MatchOutcome overlay
+      appState = {
+        kind: 'match_outcome',
+        session: {
+          sessionKind: 'single_player',
+          presetId: 'standard_tactical',
+          isMultiplayer: false,
+          roomCode: null,
+        },
+        outcome: {
+          winnerId: 'player_1',
+          localPlayerWon: true,
+          reason: 'command_and_control',
+        },
+      };
+      hud.syncAppState(appState);
+      expect(modalLayer.style.display).toBe('flex');
+      expect(modalLayer.innerHTML).toContain('data-app-overlay="match_outcome"');
+      expect(modalLayer.innerHTML).toContain('VICTORY');
+
+      modalLayer.querySelector('[data-overlay-action="rematch"]')!.click();
+      expect(rematchCount).toBe(1);
+
+      modalLayer.querySelector('[data-overlay-action="quit-to-main-menu"]')!.click();
+      expect(quitCount).toBe(1);
+
+      hud.dispose();
+      expect(keyListeners.size).toBe(0);
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+      (globalThis as { window?: unknown }).window = prevWin;
+    }
   });
 });

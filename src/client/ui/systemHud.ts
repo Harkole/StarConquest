@@ -26,6 +26,10 @@ import {
 } from '../../shared/sim/gameSimulation.ts';
 import type { SimulationView } from '../../shared/sim/simulationView.ts';
 import type { ProjectedOrbitalStructure } from '../../shared/sim/playerIntel.ts';
+import type {
+  AppScreenState,
+  MatchOutcomeSummary,
+} from '../app/appStateMachine.ts';
 import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
@@ -40,6 +44,10 @@ import {
   renderLeftOutlinerHtml,
 } from './leftOutlinerView.ts';
 import { LobbyController } from './lobbyController.ts';
+import {
+  renderMatchOutcomeOverlayHtml,
+  renderPauseMenuOverlayHtml,
+} from './matchOverlaysView.ts';
 import { buildTopBarModel, mountTopBar } from './topBarView.ts';
 import { TutorialController } from './tutorialController.ts';
 import { buildOrbitalSlotPills } from './orbitalSlotDisplay.ts';
@@ -279,15 +287,23 @@ interface HudRegions {
   readonly bottomInspector: HTMLElement;
   readonly quickDock: HTMLElement;
   readonly topRightSlot: HTMLElement;
+  readonly modalLayer: HTMLElement;
 }
 
 export interface SystemHudHandle {
+  readonly syncAppState: (state: AppScreenState) => void;
   readonly dispose: () => void;
 }
 
 export interface MountSystemHudOptions {
+  readonly getAppState?: () => AppScreenState;
+  readonly onPauseMatch?: () => void;
+  readonly onResumeMatch?: () => void;
+  readonly onRecordMatchOutcome?: (outcome: MatchOutcomeSummary) => void;
+  readonly onRematch?: () => void;
   readonly onQuitToMainMenu?: () => void;
   readonly isBattleSimulator?: boolean;
+  readonly isMultiplayer?: boolean;
 }
 
 export function mountSystemHud(
@@ -339,12 +355,15 @@ export function mountSystemHud(
     bottomInspector: document.createElement('div'),
     quickDock: document.createElement('div'),
     topRightSlot: document.createElement('div'),
+    modalLayer: document.createElement('div'),
   };
   regions.topBar.className = 'hud-top-bar';
   regions.leftOutliner.className = 'hud-left-outliner';
   regions.bottomInspector.className = 'hud-bottom-inspector';
   regions.quickDock.className = 'hud-quick-dock';
   regions.topRightSlot.className = 'hud-top-right-slot';
+  regions.modalLayer.className = 'hud-modal-layer';
+  regions.modalLayer.style.display = 'none';
 
   const lobbyHostEl = document.createElement('div');
   const tutorialHostEl = document.createElement('div');
@@ -363,6 +382,7 @@ export function mountSystemHud(
     regions.bottomInspector,
     regions.quickDock,
     regions.topRightSlot,
+    regions.modalLayer,
   );
 
   const topBar = mountTopBar(regions.topBar, {
@@ -374,9 +394,11 @@ export function mountSystemHud(
       musicPlayer?.toggleMute();
       renderEconomyBar();
     },
-    ...(options?.onQuitToMainMenu
-      ? { onQuitToMainMenu: options.onQuitToMainMenu }
-      : {}),
+    ...(options?.onPauseMatch
+      ? { onOpenPauseMenu: options.onPauseMatch }
+      : options?.onQuitToMainMenu
+        ? { onQuitToMainMenu: options.onQuitToMainMenu }
+        : {}),
   });
 
   const DEEP_SPACE_QUICK_LABELS: Readonly<
@@ -494,6 +516,7 @@ export function mountSystemHud(
   const lobbyController = new LobbyController({
     hostContainer: lobbyHostEl,
     sceneManager,
+    suppressOutcomeBanner: Boolean(options?.onRecordMatchOutcome),
     onMatchLaunched: (setup) => {
       syncSimRefs();
       selectedSlotIndex = 2;
@@ -536,7 +559,125 @@ export function mountSystemHud(
       }),
     );
     lobbyController.syncTelemetry();
+
+    if (
+      options?.onRecordMatchOutcome &&
+      options.getAppState?.().kind === 'in_match'
+    ) {
+      const outcome = sim.getMatchOutcome();
+      if (outcome.status === 'victory' || outcome.status === 'defeat') {
+        options.onRecordMatchOutcome({
+          winnerId: outcome.winnerId,
+          localPlayerWon: outcome.status === 'victory',
+          reason:
+            outcome.victoryCondition === 'king_of_the_hill'
+              ? 'king_of_the_hill'
+              : 'command_and_control',
+        });
+      }
+    }
   }
+
+  let currentOverlayState: AppScreenState | null = null;
+
+  function renderModalOverlay(): void {
+    const state = currentOverlayState ?? options?.getAppState?.() ?? null;
+    if (!state || (state.kind !== 'pause_menu' && state.kind !== 'match_outcome')) {
+      regions.modalLayer.style.display = 'none';
+      regions.modalLayer.innerHTML = '';
+      return;
+    }
+
+    regions.modalLayer.style.display = 'flex';
+    if (state.kind === 'pause_menu') {
+      const isMultiplayer =
+        options?.isMultiplayer ?? state.session.isMultiplayer;
+      const canRestart = !isMultiplayer && !isBattleSimulator;
+      regions.modalLayer.innerHTML = renderPauseMenuOverlayHtml({
+        isMultiplayer,
+        musicMuted: musicPlayer ? musicPlayer.isMuted() : true,
+        canRestart,
+      });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="resume-match"]')
+        ?.addEventListener('click', () => {
+          options?.onResumeMatch?.();
+        });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="restart-match"]')
+        ?.addEventListener('click', () => {
+          syncSimRefs();
+          const currentSetup = sim.getMatchSetup();
+          sceneManager.resetMatch(currentSetup);
+          selectedSlotIndex = 2;
+          crossSystemMiningEnabled = false;
+          statusBannerMessage = '';
+          tutorialController.resetForMatch(currentSetup.presetId);
+          options?.onResumeMatch?.();
+          renderEconomyBar();
+          renderHarvesterInspector();
+          renderMainPanel();
+        });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="toggle-music"]')
+        ?.addEventListener('click', () => {
+          musicPlayer?.toggleMute();
+          renderEconomyBar();
+          renderModalOverlay();
+        });
+
+      regions.modalLayer
+        .querySelector<HTMLButtonElement>('[data-overlay-action="quit-to-main-menu"]')
+        ?.addEventListener('click', () => {
+          options?.onQuitToMainMenu?.();
+        });
+      return;
+    }
+
+    regions.modalLayer.innerHTML = renderMatchOutcomeOverlayHtml({
+      outcome: state.outcome,
+      elapsedSeconds: sim.elapsedSeconds,
+    });
+
+    regions.modalLayer
+      .querySelector<HTMLButtonElement>('[data-overlay-action="rematch"]')
+      ?.addEventListener('click', () => {
+        options?.onRematch?.();
+      });
+
+    regions.modalLayer
+      .querySelector<HTMLButtonElement>('[data-overlay-action="quit-to-main-menu"]')
+      ?.addEventListener('click', () => {
+        options?.onQuitToMainMenu?.();
+      });
+  }
+
+  function syncAppState(state: AppScreenState): void {
+    currentOverlayState = state;
+    renderModalOverlay();
+  }
+
+  const onWindowKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || e.defaultPrevented) {
+      return;
+    }
+    if (
+      sceneManager.getPendingDeepSpacePlacement() !== null ||
+      sceneManager.getPendingFleetOrder() !== null
+    ) {
+      return;
+    }
+    const state = currentOverlayState ?? options?.getAppState?.() ?? null;
+    if (state?.kind === 'pause_menu') {
+      options?.onResumeMatch?.();
+    } else if (state?.kind === 'in_match') {
+      options?.onPauseMatch?.();
+    }
+  };
+  window.addEventListener('keydown', onWindowKeyDown);
 
   let lastInspectedHarvesterId: string | null = null;
 
@@ -749,7 +890,6 @@ export function mountSystemHud(
       selectedSlotCanQueueHarvester,
       firstEmptySlotIndex,
       isOrbitalRingCollapsed: collapsedSections.orbital_ring,
-      isFleetPanelOpen: true,
     };
   }
 
@@ -2134,8 +2274,10 @@ export function mountSystemHud(
   }, 250);
 
   return {
+    syncAppState,
     dispose: () => {
       window.clearInterval(pollIntervalId);
+      window.removeEventListener('keydown', onWindowKeyDown);
       tutorialController.dispose();
       tutorialHostEl.remove();
       container.innerHTML = '';

@@ -11,6 +11,7 @@ import {
   type AppScreenState,
   type AppStateEvent,
   type AppTransitionResult,
+  type MatchOutcomeSummary,
 } from './app/appStateMachine.ts';
 import { LocalSimAdapter } from './net/localSimAdapter.ts';
 import type { ClientSimAdapter, MultiplayerRoomAdapter } from './net/simAdapter.ts';
@@ -25,6 +26,7 @@ import {
 import { mountSystemHud } from './ui/systemHud.ts';
 
 export interface MatchRuntimeHandle {
+  readonly syncAppState?: (state: AppScreenState) => void;
   readonly dispose: () => void;
 }
 
@@ -33,6 +35,10 @@ export interface MatchRuntimeFactoryParams {
   readonly hudContainer: HTMLElement;
   readonly session: ActiveMatchSession;
   readonly getState: () => AppScreenState;
+  readonly onPauseMatch?: () => void;
+  readonly onResumeMatch?: () => void;
+  readonly onRecordMatchOutcome?: (outcome: MatchOutcomeSummary) => void;
+  readonly onRematch?: () => void;
   readonly onQuitToMainMenu: () => void;
   readonly matchSetup?: MatchSetupConfig;
   readonly simAdapter?: ClientSimAdapter;
@@ -131,8 +137,16 @@ function createDefaultMatchRuntime(
   musicPlayer.start();
 
   const hudHandle = mountSystemHud(hudContainer, galaxy, sceneManager, musicPlayer, {
+    getAppState: getState,
+    ...(params.onPauseMatch ? { onPauseMatch: params.onPauseMatch } : {}),
+    ...(params.onResumeMatch ? { onResumeMatch: params.onResumeMatch } : {}),
+    ...(params.onRecordMatchOutcome
+      ? { onRecordMatchOutcome: params.onRecordMatchOutcome }
+      : {}),
+    ...(params.onRematch ? { onRematch: params.onRematch } : {}),
     onQuitToMainMenu,
     isBattleSimulator: session.sessionKind === 'battle_simulator',
+    isMultiplayer: session.isMultiplayer,
   });
 
   const composer = new EffectComposer(renderer);
@@ -191,6 +205,9 @@ function createDefaultMatchRuntime(
   animate();
 
   return {
+    syncAppState: (nextState) => {
+      hudHandle.syncAppState(nextState);
+    },
     dispose: () => {
       if (disposed) {
         return;
@@ -310,11 +327,24 @@ export function createClientAppShell(
           hudContainer,
           session: nextState.session,
           getState: () => state,
+          onPauseMatch: () => {
+            dispatch({ type: 'PAUSE_MATCH' });
+          },
+          onResumeMatch: () => {
+            dispatch({ type: 'RESUME_MATCH' });
+          },
+          onRecordMatchOutcome: (outcome) => {
+            dispatch({ type: 'RECORD_MATCH_OUTCOME', outcome });
+          },
+          onRematch: () => {
+            dispatch({ type: 'REMATCH' });
+          },
           onQuitToMainMenu: quitToMainMenu,
           ...(launch?.setup ? { matchSetup: launch.setup } : {}),
           ...(launch?.simAdapter ? { simAdapter: launch.simAdapter } : {}),
         });
       }
+      activeRuntime?.syncAppState?.(nextState);
     } else {
       pendingLaunchRequest = null;
       disposeMatchRuntime();
