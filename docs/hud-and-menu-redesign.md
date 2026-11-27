@@ -181,7 +181,7 @@ Create one dedicated feature branch (`feature/hud-redesign-and-menu`) before sta
 - [x] Phase 1: App state machine and lazy match lifecycle
 - [x] Phase 2: Main Menu and pre-match setup screens
 - [x] Phase 3: Split HUD shell, Top Bar, and Left Outliner
-- [ ] Menu follow-up task 1: Main Menu layout and Feedback button
+- [x] Menu follow-up task 1: Main Menu layout and Feedback button
 - [ ] Menu follow-up task 2: Single Player Skirmish exclusive Human slot swap
 - [ ] Phase 4a: Move Deep-Space Installations to the Quick Action Dock
 - [ ] Phase 4b: Contextual Bottom Inspector (Fleet-only when Fleet selected)

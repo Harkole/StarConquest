@@ -392,6 +392,10 @@ export class MenuController {
             </p>
           </div>
           <div class="menu-actions-grid">
+            <button type="button" class="menu-action-card" data-menu-action="launch-tutorial">
+              <span class="menu-action-title">Guided Tutorial</span>
+              <span class="menu-action-desc">8-step interactive coach vs. defensive Cadet AI (10-15 min).</span>
+            </button>
             <button type="button" class="menu-action-card primary" data-menu-action="open-single-player">
               <span class="menu-action-title">Start Single Player</span>
               <span class="menu-action-desc">Configure match mode, 4-sector slots, and AI difficulty levels.</span>
@@ -404,14 +408,20 @@ export class MenuController {
               <span class="menu-action-title">Join Online Room</span>
               <span class="menu-action-desc">Connect with a Room Code or cross-network Manual Invite Token.</span>
             </button>
-            <button type="button" class="menu-action-card" data-menu-action="launch-tutorial">
-              <span class="menu-action-title">Guided Tutorial</span>
-              <span class="menu-action-desc">8-step interactive coach vs. defensive Cadet AI (10-15 min).</span>
-            </button>
             <button type="button" class="menu-action-card" data-menu-action="launch-battle-sim">
               <span class="menu-action-title">Battle Simulator</span>
               <span class="menu-action-desc">Test fleet compositions directly in the isolated Void Arena.</span>
             </button>
+            <a
+              class="menu-action-card"
+              data-menu-action="open-feedback"
+              href="https://github.com/Harkole/StarConquest/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="menu-action-title">Feedback</span>
+              <span class="menu-action-desc">Report bugs, suggest features, or share balance feedback on GitHub.</span>
+            </a>
           </div>
         </div>
       </div>

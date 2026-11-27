@@ -953,6 +953,39 @@ describe('MenuController & createClientAppShell pre-match flows', () => {
 
     app.dispose();
   });
+
+  it('renders MainMenu action cards in the 3x2 grid order with the GitHub Issues Feedback link', () => {
+    const canvas = new FakeHtmlElement();
+    const hudContainer = new FakeHtmlElement();
+
+    const app = createClientAppShell({
+      canvas: canvas as unknown as HTMLCanvasElement,
+      hudContainer: hudContainer as unknown as HTMLElement,
+      createMatchRuntime: () => ({ dispose: () => {} }),
+    });
+
+    const renderedActions = Array.from(
+      hudContainer.innerHTML.matchAll(/data-menu-action="([^"]+)"/g),
+      (match) => match[1],
+    );
+    expect(renderedActions).toEqual([
+      'launch-tutorial',
+      'open-single-player',
+      'open-host-room',
+      'open-join-room',
+      'launch-battle-sim',
+      'open-feedback',
+    ]);
+
+    expect(hudContainer.innerHTML).toMatch(
+      /class="menu-action-card primary"\s+data-menu-action="open-single-player"/,
+    );
+    expect(hudContainer.innerHTML).toMatch(
+      /<a[\s\S]*data-menu-action="open-feedback"[\s\S]*href="https:\/\/github\.com\/Harkole\/StarConquest\/issues"[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/,
+    );
+
+    app.dispose();
+  });
 });
 
 class FakeDataChannel implements DataChannelLike {

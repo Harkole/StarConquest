@@ -735,8 +735,13 @@
       }
       .menu-actions-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
+      }
+      @media (max-width: 560px) {
+        .menu-actions-grid {
+          grid-template-columns: 1fr;
+        }
       }
       .menu-action-card {
         background: rgba(15, 23, 42, 0.9);
@@ -745,6 +750,7 @@
         border-radius: 9px;
         padding: 14px 16px;
         text-align: left;
+        text-decoration: none;
         cursor: pointer;
         display: flex;
         flex-direction: column;
