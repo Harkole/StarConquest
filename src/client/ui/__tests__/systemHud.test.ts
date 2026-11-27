@@ -218,15 +218,12 @@ describe('systemHud — computeMainPanelSignature', () => {
 
 describe('systemHud — collapsible sections state', () => {
   const allSections: readonly HudSectionId[] = [
-    'galaxy',
-    'fleet',
     'battle_sim',
-    'planets_wormholes',
     'deep_space',
     'orbital_ring',
   ];
 
-  it('defaults battle_sim to collapsed and all other 5 sections to expanded', () => {
+  it('defaults battle_sim to collapsed and deep_space/orbital_ring to expanded', () => {
     const state = createDefaultHudCollapsedState();
     expect(Object.keys(state).sort()).toEqual([...allSections].sort());
     expect(state.battle_sim).toBe(true);
@@ -257,6 +254,9 @@ describe('systemHud — collapsible sections state', () => {
     for (const id of allSections) {
       expect(isHudSectionId(id)).toBe(true);
     }
+    expect(isHudSectionId('galaxy')).toBe(false);
+    expect(isHudSectionId('fleet')).toBe(false);
+    expect(isHudSectionId('planets_wormholes')).toBe(false);
     expect(isHudSectionId(undefined)).toBe(false);
     expect(isHudSectionId('')).toBe(false);
     expect(isHudSectionId('unknown_section')).toBe(false);
@@ -380,21 +380,23 @@ class FakeHudElement {
   }
 
   public querySelectorAll<T = FakeHudElement>(selector: string): T[] {
-    const cached = this.interactiveBySelector.get(selector);
-    if (cached) {
-      return cached as unknown as T[];
-    }
-    const matches: FakeHudElement[] = [];
-    if (selector.startsWith('[data-action="')) {
-      const action = selector.slice('[data-action="'.length, -2);
-      if (this.html.includes(`data-action="${action}"`)) {
-        const el = new FakeHudElement();
-        el.dataset.action = action;
-        matches.push(el);
+    let matches = this.interactiveBySelector.get(selector);
+    if (!matches) {
+      matches = [];
+      if (selector.startsWith('[data-action="')) {
+        const action = selector.slice('[data-action="'.length, -2);
+        if (this.html.includes(`data-action="${action}"`)) {
+          const el = new FakeHudElement();
+          el.dataset.action = action;
+          matches.push(el);
+        }
       }
+      this.interactiveBySelector.set(selector, matches);
     }
-    this.interactiveBySelector.set(selector, matches);
-    return matches as unknown as T[];
+    const childMatches = this.children.flatMap((child) =>
+      child.querySelectorAll<FakeHudElement>(selector),
+    );
+    return [...matches, ...childMatches] as unknown as T[];
   }
 }
 
@@ -448,7 +450,11 @@ describe('systemHud — battle simulator section visibility', () => {
     } as unknown as SystemSceneManager;
   }
 
-  it('omits battle_sim section in normal matches and renders it expanded with Return to Main Menu when isBattleSimulator is true', () => {
+  function readSubtreeHtml(node: FakeHudElement): string {
+    return [node.innerHTML, ...node.children.map((c) => readSubtreeHtml(c))].join('');
+  }
+
+  it('mounts the five perimeter HUD regions and controls battle_sim visibility inside hud-bottom-inspector', () => {
     runWithFakeDom(() => {
       const adapter = new LocalSimAdapter('standard_tactical');
       const sceneManager = createFakeSceneManager(adapter);
@@ -459,11 +465,25 @@ describe('systemHud — battle simulator section visibility', () => {
         adapter.simulation.galaxy,
         sceneManager,
       );
-      const normalMainBody = normalContainer.children.find(
-        (c) => c.className === 'hud-main-body',
+      expect(normalContainer.children.map((c) => c.className)).toEqual([
+        'hud-top-bar',
+        'hud-left-outliner',
+        'hud-bottom-inspector',
+        'hud-quick-dock',
+        'hud-top-right-slot',
+      ]);
+      const normalBottomInspector = normalContainer.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
       )!;
-      expect(normalMainBody.innerHTML).not.toContain('data-hud-section="battle_sim"');
-      expect(normalMainBody.innerHTML).not.toContain('Launch Battle in Void Arena');
+      const normalInspectorHtml = readSubtreeHtml(normalBottomInspector);
+      expect(normalInspectorHtml).not.toContain('data-hud-section="battle_sim"');
+      expect(normalInspectorHtml).not.toContain('Launch Battle in Void Arena');
+
+      const quickDock = normalContainer.children.find(
+        (c) => c.className === 'hud-quick-dock',
+      )!;
+      expect(quickDock.innerHTML).toContain('data-action="toggle-hub-mining"');
+      expect(quickDock.innerHTML).toContain('data-action="overview"');
       normalHud.dispose();
 
       let quitCalls = 0;
@@ -480,14 +500,15 @@ describe('systemHud — battle simulator section visibility', () => {
           },
         },
       );
-      const simMainBody = simContainer.children.find(
-        (c) => c.className === 'hud-main-body',
+      const simBottomInspector = simContainer.children.find(
+        (c) => c.className === 'hud-bottom-inspector',
       )!;
-      expect(simMainBody.innerHTML).toContain('data-hud-section="battle_sim"');
-      expect(simMainBody.innerHTML).toContain('Launch Battle in Void Arena');
-      expect(simMainBody.innerHTML).toContain('Return to Main Menu');
+      const simInspectorHtml = readSubtreeHtml(simBottomInspector);
+      expect(simInspectorHtml).toContain('data-hud-section="battle_sim"');
+      expect(simInspectorHtml).toContain('Launch Battle in Void Arena');
+      expect(simInspectorHtml).toContain('Return to Main Menu');
 
-      const exitBtn = simMainBody.querySelector('[data-action="exit-battle-sim"]');
+      const exitBtn = simBottomInspector.querySelector('[data-action="exit-battle-sim"]');
       expect(exitBtn).not.toBeNull();
       exitBtn!.click();
       expect(quitCalls).toBe(1);

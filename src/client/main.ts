@@ -343,9 +343,9 @@ export function createClientAppShell(
 
 export function bootstrapClient(): ClientAppController {
   const canvas = document.getElementById('app-canvas');
-  const hudContainer = document.getElementById('hud-overlay');
+  const hudContainer = document.getElementById('hud-root');
   if (!(canvas instanceof HTMLCanvasElement) || !hudContainer) {
-    throw new Error('Missing #app-canvas or #hud-overlay element');
+    throw new Error('Missing #app-canvas or #hud-root element');
   }
 
   return createClientAppShell({ canvas, hudContainer });
@@ -354,7 +354,7 @@ export function bootstrapClient(): ClientAppController {
 if (
   typeof document !== 'undefined' &&
   document.getElementById('app-canvas') instanceof HTMLCanvasElement &&
-  document.getElementById('hud-overlay')
+  document.getElementById('hud-root')
 ) {
   bootstrapClient();
 }

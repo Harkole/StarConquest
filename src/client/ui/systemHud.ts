@@ -5,7 +5,6 @@ import {
   ORBITAL_CANCEL_REFUND_RATE,
   ORBITAL_DECOMMISSION_REFUND_RATE,
   ORBITAL_STRUCTURES,
-  PLANET_CLASSES,
   SHIP_CLASSES,
   type CombatShipClassId,
   type DeepSpaceStructureId,
@@ -30,11 +29,12 @@ import type { ProjectedOrbitalStructure } from '../../shared/sim/playerIntel.ts'
 import type { AmbientMusicPlayer } from '../audio/ambientMusicPlayer.ts';
 import { FACTION_PALETTES } from '../renderer/factionColors.ts';
 import type { SystemSceneManager } from '../renderer/systemSceneManager.ts';
-import { NEBULA_PALETTES } from '../shaders/nebulaShaders.ts';
 import {
-  LobbyController,
-  formatMatchClockSeconds,
-} from './lobbyController.ts';
+  buildLeftOutlinerModel,
+  renderLeftOutlinerHtml,
+} from './leftOutlinerView.ts';
+import { LobbyController } from './lobbyController.ts';
+import { buildTopBarModel, mountTopBar } from './topBarView.ts';
 import { TutorialController } from './tutorialController.ts';
 import { buildOrbitalSlotPills } from './orbitalSlotDisplay.ts';
 import type { TutorialUiContext } from '../../shared/sim/tutorialSteps.ts';
@@ -59,31 +59,19 @@ const FLEET_STANCE_OPTIONS: readonly { readonly id: FleetStance; readonly label:
   { id: 'passive', label: 'Passive' },
 ];
 
-export type HudSectionId =
-  | 'galaxy'
-  | 'fleet'
-  | 'battle_sim'
-  | 'planets_wormholes'
-  | 'deep_space'
-  | 'orbital_ring';
+export type HudSectionId = 'battle_sim' | 'deep_space' | 'orbital_ring';
 
 export type HudCollapsedState = Record<HudSectionId, boolean>;
 
 const HUD_SECTION_IDS: readonly HudSectionId[] = [
-  'galaxy',
-  'fleet',
   'battle_sim',
-  'planets_wormholes',
   'deep_space',
   'orbital_ring',
 ];
 
 export function createDefaultHudCollapsedState(): HudCollapsedState {
   return {
-    galaxy: false,
-    fleet: false,
     battle_sim: true,
-    planets_wormholes: false,
     deep_space: false,
     orbital_ring: false,
   };
@@ -283,9 +271,13 @@ function formatHarvesterState(
   }
 }
 
-const SPEAKER_UNMUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>`;
-
-const SPEAKER_MUTED_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+interface HudRegions {
+  readonly topBar: HTMLElement;
+  readonly leftOutliner: HTMLElement;
+  readonly bottomInspector: HTMLElement;
+  readonly quickDock: HTMLElement;
+  readonly topRightSlot: HTMLElement;
+}
 
 export interface SystemHudHandle {
   readonly dispose: () => void;
@@ -339,97 +331,67 @@ export function mountSystemHud(
     dreadnought: 1,
   };
 
-  const topBarEl = document.createElement('div');
-  topBarEl.className = 'hud-econ-bar';
+  const regions: HudRegions = {
+    topBar: document.createElement('div'),
+    leftOutliner: document.createElement('div'),
+    bottomInspector: document.createElement('div'),
+    quickDock: document.createElement('div'),
+    topRightSlot: document.createElement('div'),
+  };
+  regions.topBar.className = 'hud-top-bar';
+  regions.leftOutliner.className = 'hud-left-outliner';
+  regions.bottomInspector.className = 'hud-bottom-inspector';
+  regions.quickDock.className = 'hud-quick-dock';
+  regions.topRightSlot.className = 'hud-top-right-slot';
+
   const lobbyHostEl = document.createElement('div');
   const tutorialHostEl = document.createElement('div');
   const mainBodyEl = document.createElement('div');
-  mainBodyEl.className = 'hud-main-body';
+  mainBodyEl.className = 'hud-inspector-body';
   const harvesterInspectorEl = document.createElement('div');
   harvesterInspectorEl.className = 'hud-harvester-inspector';
+
+  regions.topRightSlot.append(tutorialHostEl, lobbyHostEl);
+  regions.bottomInspector.append(harvesterInspectorEl, mainBodyEl);
+
   container.innerHTML = '';
   container.append(
-    topBarEl,
-    lobbyHostEl,
-    harvesterInspectorEl,
-    mainBodyEl,
+    regions.topBar,
+    regions.leftOutliner,
+    regions.bottomInspector,
+    regions.quickDock,
+    regions.topRightSlot,
   );
-  (container.parentElement ?? container).append(tutorialHostEl);
 
-  topBarEl.innerHTML = `
-    <div class="econ-metrics">
-      <div class="econ-pill ore">
-        <span class="econ-label">ORE</span>
-        <strong id="econ-ore-val">0</strong>
-      </div>
-      <div class="econ-pill crystal">
-        <span class="econ-label">CRYSTAL</span>
-        <strong id="econ-crystal-val">0</strong>
-      </div>
-      <div class="econ-pill supply">
-        <span class="econ-label">SUPPLY</span>
-        <strong id="econ-supply-val">0 / 0</strong>
-      </div>
-      <div class="econ-pill harvesters">
-        <span class="econ-label">HARVESTERS</span>
-        <strong id="econ-harvesters-val">0</strong>
-      </div>
-      <div class="econ-pill" id="hud-match-status-pill" title="Active Match Contenders & Victory Telemetry">
-        <span class="econ-label">MATCH</span>
-        <strong id="hud-match-status-val">4 Contenders</strong>
-      </div>
-    </div>
-    <div class="econ-actions">
-      <button class="hud-btn" data-action="start-tutorial" title="Launch Guided Tutorial vs. Cadet AI">
-        Tutorial
-      </button>
-      <button class="hud-btn" data-action="toggle-lobby" title="Configure Match Mode, Human/AI Slots & Victory Conditions">
-        <span>Match Lobby</span>
-        <span class="hud-badge" id="hud-lobby-preset-badge">Standard Tactical</span>
-      </button>
-      <button class="hud-btn" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
-        Mining: Local System
-      </button>
-      <button class="hud-btn" data-speed="1">1x</button>
-      <button class="hud-btn" data-speed="2">2x</button>
-      <button class="hud-btn" data-speed="4">4x</button>
-      <button class="hud-btn" data-action="toggle-music" aria-label="Mute ambient music" title="Mute ambient music" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px;">
-        ${SPEAKER_UNMUTED_SVG}
-      </button>
-      ${
-        options?.onQuitToMainMenu
-          ? `<button class="hud-btn" data-action="quit-to-main-menu" title="Return to Main Menu">Main Menu</button>`
-          : ''
-      }
-    </div>
+  const topBar = mountTopBar(regions.topBar, {
+    onSetSpeed: (spd) => {
+      simAdapter.simSpeedMultiplier = spd;
+      renderEconomyBar();
+    },
+    onToggleMusic: () => {
+      musicPlayer?.toggleMute();
+      renderEconomyBar();
+    },
+    ...(options?.onQuitToMainMenu
+      ? { onQuitToMainMenu: options.onQuitToMainMenu }
+      : {}),
+  });
+
+  regions.quickDock.innerHTML = `
+    <div class="hud-label" style="margin-bottom: 0;">Quick Actions</div>
+    <button class="hud-btn" data-action="toggle-hub-mining" title="Send Harvesters through the Wormhole to mine the Central Nexus">
+      Mining: Local System
+    </button>
+    <button class="hud-btn overview-btn" data-action="overview" title="Zoom out to System Overview">
+      Overview
+    </button>
   `;
 
-  const econOreEl = topBarEl.querySelector<HTMLElement>('#econ-ore-val');
-  const econCrystalEl = topBarEl.querySelector<HTMLElement>('#econ-crystal-val');
-  const econSupplyEl = topBarEl.querySelector<HTMLElement>('#econ-supply-val');
-  const econHarvestersEl = topBarEl.querySelector<HTMLElement>('#econ-harvesters-val');
-  const matchStatusValEl = topBarEl.querySelector<HTMLElement>('#hud-match-status-val');
-  const lobbyPresetBadgeEl = topBarEl.querySelector<HTMLElement>('#hud-lobby-preset-badge');
-  const startTutorialBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="start-tutorial"]',
-  );
-  const lobbyToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="toggle-lobby"]',
-  );
-  const hubMiningBtnEl = topBarEl.querySelector<HTMLButtonElement>(
+  const hubMiningBtnEl = regions.quickDock.querySelector<HTMLButtonElement>(
     '[data-action="toggle-hub-mining"]',
   );
-  const musicToggleBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="toggle-music"]',
-  );
-  const quitToMainMenuBtnEl = topBarEl.querySelector<HTMLButtonElement>(
-    '[data-action="quit-to-main-menu"]',
-  );
-  quitToMainMenuBtnEl?.addEventListener('click', () => {
-    options?.onQuitToMainMenu?.();
-  });
-  const speedBtnEls = Array.from(
-    topBarEl.querySelectorAll<HTMLButtonElement>('[data-speed]'),
+  const overviewBtnEl = regions.quickDock.querySelector<HTMLButtonElement>(
+    '[data-action="overview"]',
   );
 
   let tutorialController: TutorialController;
@@ -468,14 +430,6 @@ export function mountSystemHud(
     },
   });
 
-  startTutorialBtnEl?.addEventListener('click', () => {
-    lobbyController.launchTutorialMatch();
-  });
-
-  lobbyToggleBtnEl?.addEventListener('click', () => {
-    lobbyController.toggleLobby();
-  });
-
   hubMiningBtnEl?.addEventListener('click', () => {
     syncSimRefs();
     if (
@@ -488,85 +442,25 @@ export function mountSystemHud(
     renderEconomyBar();
   });
 
-  musicToggleBtnEl?.addEventListener('click', () => {
-    musicPlayer?.toggleMute();
-    renderEconomyBar();
+  overviewBtnEl?.addEventListener('click', () => {
+    sceneManager.focusSystemOverview();
   });
-
-  for (const btn of speedBtnEls) {
-    btn.addEventListener('click', () => {
-      const spd = Number(btn.dataset.speed ?? '1');
-      simAdapter.simSpeedMultiplier = spd;
-      renderEconomyBar();
-    });
-  }
-
-  let lastRenderedMusicMuted: boolean | null = null;
 
   function renderEconomyBar(): void {
     syncSimRefs();
-    const pState = sim.getPlayerState(playerId);
-    const playerHarvesters = getVisibleHarvesters(sim, playerId).filter(
-      (h) => h.ownerId === playerId,
+    topBar.update(
+      buildTopBarModel(sim, {
+        playerId,
+        activeSystemId: sceneManager.getActiveSystem().id,
+        speed: simAdapter.simSpeedMultiplier,
+        musicMuted: musicPlayer ? musicPlayer.isMuted() : true,
+      }),
     );
-    const outcome = sim.getMatchOutcome();
-    const presetCfg = MATCH_PRESETS[sim.presetId];
-    const survivingCount =
-      outcome.activeContenderIds.length - outcome.defeatedPlayerIds.length;
-
-    if (econOreEl) econOreEl.textContent = `${pState.ore}`;
-    if (econCrystalEl) econCrystalEl.textContent = `${pState.crystal}`;
-    if (econSupplyEl) econSupplyEl.textContent = `${pState.supplyUsed} / ${pState.supplyCap}`;
-    if (econHarvestersEl) econHarvestersEl.textContent = `${playerHarvesters.length}`;
-    if (lobbyPresetBadgeEl) {
-      lobbyPresetBadgeEl.textContent = presetCfg.displayName;
-    }
-    if (lobbyToggleBtnEl) {
-      lobbyToggleBtnEl.classList.toggle('active', lobbyController.isLobbyOpen());
-    }
-    if (matchStatusValEl) {
-      if (outcome.status === 'victory') {
-        matchStatusValEl.textContent = 'VICTORY';
-        matchStatusValEl.style.color = '#22c55e';
-      } else if (outcome.status === 'defeat') {
-        matchStatusValEl.textContent = 'DEFEAT';
-        matchStatusValEl.style.color = '#ef4444';
-      } else if (
-        outcome.kingOfTheHill.enabled &&
-        outcome.kingOfTheHill.controllerId &&
-        outcome.kingOfTheHill.remainingSeconds !== null
-      ) {
-        matchStatusValEl.textContent = `KOTH ${formatMatchClockSeconds(outcome.kingOfTheHill.remainingSeconds)}`;
-        matchStatusValEl.style.color = outcome.kingOfTheHill.isContested
-          ? '#f87171'
-          : '#fcd34d';
-      } else {
-        matchStatusValEl.textContent = `${survivingCount}/${outcome.activeContenderIds.length} C&C`;
-        matchStatusValEl.style.color = '#7dd3fc';
-      }
-    }
     if (hubMiningBtnEl) {
       hubMiningBtnEl.classList.toggle('active', crossSystemMiningEnabled);
       hubMiningBtnEl.textContent = crossSystemMiningEnabled
         ? 'Mining: Central Hub'
         : 'Mining: Local System';
-    }
-    if (musicToggleBtnEl) {
-      const isMuted = musicPlayer ? musicPlayer.isMuted() : true;
-      if (isMuted !== lastRenderedMusicMuted) {
-        lastRenderedMusicMuted = isMuted;
-        musicToggleBtnEl.classList.toggle('active', !isMuted);
-        musicToggleBtnEl.innerHTML = isMuted ? SPEAKER_MUTED_SVG : SPEAKER_UNMUTED_SVG;
-        const label = isMuted
-          ? 'Unmute ambient music (restarts from beginning)'
-          : 'Mute ambient music';
-        musicToggleBtnEl.setAttribute('aria-label', label);
-        musicToggleBtnEl.title = label;
-      }
-    }
-    for (const btn of speedBtnEls) {
-      const spd = Number(btn.dataset.speed ?? '1');
-      btn.classList.toggle('active', simAdapter.simSpeedMultiplier === spd);
     }
     lobbyController.syncTelemetry();
   }
@@ -780,7 +674,7 @@ export function mountSystemHud(
       selectedSlotCanQueueHarvester,
       firstEmptySlotIndex,
       isOrbitalRingCollapsed: collapsedSections.orbital_ring,
-      isFleetPanelOpen: !collapsedSections.fleet,
+      isFleetPanelOpen: true,
     };
   }
 
@@ -806,7 +700,6 @@ export function mountSystemHud(
   function renderMainPanel(): void {
     syncSimRefs();
     const activeSystem = sceneManager.getActiveSystem();
-    const paletteInfo = NEBULA_PALETTES[activeSystem.nebulaPalette];
     const systemView = sim.getPlayerSystemView(playerId, activeSystem.id);
     const selectedPlanetId = sceneManager.getSelectedPlanetId();
     const selectedPlanetView = systemView.planets.find(
@@ -824,66 +717,25 @@ export function mountSystemHud(
 
     lastMainPanelSignature = getCurrentMainPanelSignature();
 
-    const systemButtonsHtml = galaxy.systems
-      .map((sys) => {
-        const isActive = sys.id === activeSystem.id;
-        const sysView = sim.getPlayerSystemView(playerId, sys.id);
-        const badgeText = !sysView.isExplored
-          ? 'Unexplored'
-          : sys.isCentralHub
-            ? '12-Slot Hub • 1.6x Yield'
-            : 'Ore Heavy • Scarce Crystal';
-        return `<button class="hud-btn ${isActive ? 'active' : ''}" data-system-id="${sys.id}">
-          ${sys.name}
-          <span class="hud-badge">${badgeText}</span>
-        </button>`;
-      })
-      .join('');
+    const selectedFleetId = sceneManager.getSelectedFleetId();
+    const pendingOrderGlobal = sceneManager.getPendingFleetOrder();
 
-    const planetButtonsHtml = activeSystem.planets
-      .map((planet) => {
-        const pView = systemView.planets.find((p) => p.planet.id === planet.id);
-        const pClass = PLANET_CLASSES[planet.planetClass];
-        const isSelected =
-          planet.id === selectedPlanetId &&
-          sceneManager.getSelectedHarvesterId() === null;
-        if (!pView || pView.visibility === 'unexplored') {
-          return `<button class="hud-planet-card ${isSelected ? 'selected' : ''}" data-planet-id="${planet.id}">
-            <div class="planet-card-title">${planet.name} <span class="hud-badge">UNEXPLORED</span></div>
-            <div class="planet-card-meta">${pClass.displayName} • <strong>Unexplored (?/${planet.orbitalSlots} Slots)</strong></div>
-          </button>`;
-        }
-        const usedSlots = pView.structures.reduce(
-          (acc, item) => acc + getProjectedOrbitalData(item).occupiedSlots.length,
-          0,
-        );
-        const ownerLabel =
-          pView.ownerId === playerId
-            ? 'OWNED'
-            : pView.ownerId === null
-              ? 'UNCLAIMED'
-              : pView.ownerId.toUpperCase();
-        const ownerBadge =
-          pView.visibility === 'last_known' ? `${ownerLabel} • INTEL` : ownerLabel;
-        return `<button class="hud-planet-card ${isSelected ? 'selected' : ''}" data-planet-id="${planet.id}">
-          <div class="planet-card-title">${planet.name} <span class="hud-badge">${ownerBadge}</span></div>
-          <div class="planet-card-meta">${pClass.displayName} • <strong>${usedSlots}/${planet.orbitalSlots} Slots</strong></div>
-        </button>`;
-      })
-      .join('');
-
-    const wormholesHtml = sceneManager
-      .getActiveWormholes()
-      .map((wh) => {
-        const destSys = galaxy.systems.find((s) => s.id === wh.destinationSystemId);
-        const destName = destSys?.name ?? wh.destinationSystemId;
-        const isOpen = wh.isOpen();
-        return `<button class="hud-btn ${isOpen ? 'active' : ''}" data-wormhole-id="${wh.wormholeId}" title="Click to focus • Double-click to transit camera • Right-click with Fleet selected to transit fleet">
-          Gateway → ${destName}
-          <span class="hud-badge">${isOpen ? 'OPEN VORTEX' : 'DORMANT'}</span>
-        </button>`;
-      })
-      .join('');
+    regions.leftOutliner.innerHTML = renderLeftOutlinerHtml(
+      buildLeftOutlinerModel(sim, {
+        galaxy,
+        playerId,
+        activeSystem,
+        selectedPlanetId,
+        selectedFleetId,
+        selectedHarvesterId: sceneManager.getSelectedHarvesterId(),
+        wormholeStates: sceneManager.getActiveWormholes().map((wh) => ({
+          id: wh.wormholeId,
+          destinationSystemId: wh.destinationSystemId,
+          isOpen: wh.isOpen(),
+        })),
+        pendingFleetOrder: pendingOrderGlobal,
+      }),
+    );
 
     const isSelectedPlanetUnexplored =
       !selectedPlanetView || selectedPlanetView.visibility === 'unexplored';
@@ -1159,17 +1011,6 @@ export function mountSystemHud(
       }
     }
 
-    const sysRes = systemView.resourceSummary;
-    const innerPct =
-      sysRes && sysRes.innerBeltInitial > 0
-        ? Math.round((sysRes.innerBeltRemaining / sysRes.innerBeltInitial) * 100)
-        : 0;
-    const yieldLabel = sysRes
-      ? sysRes.extractionMultiplier > 1.0
-        ? `${sysRes.extractionMultiplier}x Enriched Yield`
-        : '1.0x Standard Yield'
-      : 'Unscanned Sector';
-
     const pendingDeepSpace = sceneManager.getPendingDeepSpacePlacement();
     const deepSpaceInSystem = systemView.deepSpaceStructures;
     const hasCompletedFriendlyHub = deepSpaceInSystem.some(
@@ -1218,24 +1059,6 @@ export function mountSystemHud(
         : '';
 
     const playerFleets = sim.getFleetsForPlayer(playerId);
-    const selectedFleetId = sceneManager.getSelectedFleetId();
-    const pendingOrderGlobal = sceneManager.getPendingFleetOrder();
-    const isCreateFleetPending = pendingOrderGlobal?.mode === 'create_fleet';
-
-    const fleetTabsHtml = playerFleets
-      .map((f) => {
-        const liveCount = sim.getShipsInFleet(f.id).length;
-        const targetCount = SMALLEST_FIRST_FLEET_HULLS.reduce(
-          (acc, h) => acc + f.desiredCounts[h],
-          0,
-        );
-        const isSel = f.id === selectedFleetId;
-        return `<button class="hud-btn ${isSel ? 'active' : ''}" data-select-fleet="${f.id}" title="Click to select and focus camera on ${f.name}">
-          ${f.name}
-          <span class="hud-badge">${liveCount}/${targetCount}${f.autoResupply ? ' ↻' : ''}</span>
-        </button>`;
-      })
-      .join('');
 
     const selectedFleet = selectedFleetId
       ? playerFleets.find((f) => f.id === selectedFleetId)
@@ -1339,38 +1162,7 @@ export function mountSystemHud(
     }
 
     mainBodyEl.innerHTML = `
-      <div class="hud-header">
-        <div>
-          <h1>StarConquest — ${activeSystem.name}</h1>
-          <p class="hud-subtitle">${paletteInfo.displayName} • ${yieldLabel} • Reserves: <strong data-hud-field="system-reserves-ore">${sysRes ? `${sysRes.remainingOre}/${sysRes.initialOre} Ore` : 'Unknown (Unscanned)'}</strong> ${sysRes ? '&' : ''} <strong data-hud-field="system-reserves-crystal">${sysRes ? `${sysRes.remainingCrystal}/${sysRes.initialCrystal} Crystal` : ''}</strong> <span data-hud-field="system-reserves-inner">${sysRes ? `(Inner Belt: ${innerPct}%)` : ''}</span></p>
-        </div>
-        <button class="hud-btn overview-btn" data-action="overview">System Overview</button>
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader('galaxy', '5-System Hub & Spoke Galaxy', { titleLabel: 'Galaxy navigation' })}
-        ${collapsedSections.galaxy ? '' : `<div class="hud-btn-row">${systemButtonsHtml}</div>`}
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader(
-          'fleet',
-          `Fleet Command (${playerFleets.length}) — Click Any Ship or Tab to Focus Fleet`,
-          { legacyAction: 'toggle-fleet-panel', titleLabel: 'Fleet Command panel' },
-        )}
-        ${
-          collapsedSections.fleet
-            ? ''
-            : `<div class="hud-btn-row">
-                <button class="hud-btn ${isCreateFleetPending ? 'active' : ''}" data-action="create-fleet">
-                  ${isCreateFleetPending ? 'Click 3D Space for Fleet Rally Point...' : '+ Create Fleet (Click 3D Rally)'}
-                </button>
-                ${fleetTabsHtml}
-                ${pendingOrderGlobal ? `<button class="hud-btn" data-action="cancel-fleet-order">Cancel (Esc)</button>` : ''}
-              </div>
-              ${selectedFleetDetailHtml}`
-        }
-      </div>
+      ${selectedFleetDetailHtml}
 
       ${
         isBattleSimulator
@@ -1498,20 +1290,6 @@ export function mountSystemHud(
           ? ''
           : `<div class="hud-section">
         ${renderSectionHeader(
-          'planets_wormholes',
-          `Planets & Wormholes in ${activeSystem.name}`,
-          { titleLabel: 'Planets & Wormholes panel' },
-        )}
-        ${
-          collapsedSections.planets_wormholes
-            ? ''
-            : `<div class="hud-planet-row">${planetButtonsHtml}</div>
-        <div class="hud-btn-row" style="margin-top: 6px;">${wormholesHtml}</div>`
-        }
-      </div>
-
-      <div class="hud-section">
-        ${renderSectionHeader(
           'deep_space',
           'Deep-Space Installations — Free-Floating Logistics Hub ("Atlas") & Defence Towers',
           { titleLabel: 'Deep-Space Installations panel' },
@@ -1555,7 +1333,7 @@ export function mountSystemHud(
       </div>
     `;
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-system-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1564,12 +1342,13 @@ export function mountSystemHud(
             statusBannerMessage = '';
             sceneManager.loadSystem(sysId);
             selectedSlotIndex = 0;
+            renderEconomyBar();
             renderMainPanel();
           }
         });
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-planet-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1594,12 +1373,13 @@ export function mountSystemHud(
       statusBannerMessage = '';
       if (sceneManager.transitCameraThroughWormhole(wormholeId)) {
         selectedSlotIndex = 0;
+        renderEconomyBar();
         renderHarvesterInspector();
         renderMainPanel();
       }
     };
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-wormhole-id]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1810,7 +1590,7 @@ export function mountSystemHud(
         });
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelector<HTMLButtonElement>('[data-action="cancel-fleet-order"]')
       ?.addEventListener('click', () => {
         sceneManager.cancelFleetOrderPlacement();
@@ -1908,7 +1688,7 @@ export function mountSystemHud(
         renderMainPanel();
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelector<HTMLButtonElement>('[data-action="create-fleet"]')
       ?.addEventListener('click', () => {
         sceneManager.startCreateFleetPlacement(selectedFleetStance, true);
@@ -1917,7 +1697,7 @@ export function mountSystemHud(
         renderMainPanel();
       });
 
-    mainBodyEl
+    regions.leftOutliner
       .querySelectorAll<HTMLButtonElement>('[data-select-fleet]')
       .forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -2151,12 +1931,6 @@ export function mountSystemHud(
         });
       });
 
-    mainBodyEl
-      .querySelector<HTMLButtonElement>('[data-action="overview"]')
-      ?.addEventListener('click', () => {
-        sceneManager.focusSystemOverview();
-      });
-
     tutorialController.applyCurrentHighlight(
       sim,
       playerId,
@@ -2190,13 +1964,13 @@ export function mountSystemHud(
 
     // 1. System resource reserves
     const sysRes = systemView.resourceSummary;
-    const oreResEl = mainBodyEl.querySelector<HTMLElement>(
+    const oreResEl = regions.leftOutliner.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-ore"]',
     );
-    const crystalResEl = mainBodyEl.querySelector<HTMLElement>(
+    const crystalResEl = regions.leftOutliner.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-crystal"]',
     );
-    const innerResEl = mainBodyEl.querySelector<HTMLElement>(
+    const innerResEl = regions.leftOutliner.querySelector<HTMLElement>(
       '[data-hud-field="system-reserves-inner"]',
     );
     if (!sysRes) {

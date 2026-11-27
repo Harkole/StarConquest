@@ -95,30 +95,7 @@ export class TutorialController {
     if (nextSig !== this.lastRenderSig) {
       this.renderCoach();
     }
-    this.updatePosition();
     this.applyCurrentHighlight(sim, playerId, uiContext);
-  }
-
-  private updatePosition(): void {
-    if (
-      this.state.status !== 'active' &&
-      this.state.status !== 'completed'
-    ) {
-      return;
-    }
-    if (typeof this.hudRoot.getBoundingClientRect !== 'function') {
-      return;
-    }
-    const rect = this.hudRoot.getBoundingClientRect();
-    if (rect.right <= 0) {
-      return;
-    }
-    const maxLeft =
-      typeof window !== 'undefined' ? Math.max(14, window.innerWidth - 336) : rect.right + 14;
-    const left = Math.min(Math.round(rect.right + 14), maxLeft);
-    this.coachEl.style.top = `${Math.max(14, Math.round(rect.top))}px`;
-    this.coachEl.style.left = `${left}px`;
-    this.coachEl.style.right = 'auto';
   }
 
   public applyCurrentHighlight(
